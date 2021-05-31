@@ -6,7 +6,6 @@ from .wpa import AttackWPA
 from .wps import AttackWPS
 from .pmkid import AttackPMKID
 from ..config import Configuration
-from ..exceptions.timeoutException import TimeoutException
 from ..util.color import Color
 from ..model.target import WPSState
 
@@ -104,9 +103,9 @@ class AttackAll(object):
             except Exception as e:
                 Color.pexception(e)
                 continue
-            except TimeoutException(e):
-                Color.pexception(e)
-                continue
+            # except TimeoutException(e):
+            #     Color.pexception(e)
+            #     continue
             except KeyboardInterrupt:
                 Color.pl('\n{!} {O}Interrupted{W}\n')
                 answer = cls.user_wants_to_continue(targets_remaining, len(attacks))
