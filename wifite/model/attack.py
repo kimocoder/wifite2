@@ -3,7 +3,6 @@
 
 import time
 from ..config import Configuration
-from ..exceptions.timeoutException import TimeoutException
 
 class Attack(object):
     '''Contains functionality common to all attacks.'''
@@ -23,7 +22,7 @@ class Attack(object):
         while len(targets) == 0:
             # Wait for target to appear in airodump.
             if int(time.time() - start_time) > Attack.target_wait:
-                raise TimeoutException('Target did not appear after %d seconds, stopping' % Attack.target_wait)
+                raise Exception('Target did not appear after %d seconds, stopping' % Attack.target_wait)
             time.sleep(1)
             targets = airodump.get_targets()
             continue
