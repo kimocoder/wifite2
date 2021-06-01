@@ -88,16 +88,19 @@ class AttackWPA(Attack):
         '''Returns captured or stored handshake, otherwise None.'''
         handshake = None
 
-        # First, start Airodump process
-        with Airodump(channel=self.target.channel,
-                      target_bssid=self.target.bssid,
-                      skip_wps=True,
-                      output_file_prefix='wpa') as airodump:
+        # BIG try-catch to capture ctrl+c
+        try:
 
-            Color.clear_entire_line()
-            Color.pattack('WPA', self.target, 'Handshake capture', 'Waiting for target to appear...')
+            # First, start Airodump process
+            with Airodump(channel=self.target.channel,
+                          target_bssid=self.target.bssid,
+                          skip_wps=True,
+                          output_file_prefix='wpa') as airodump:
 
-            try:
+                Color.clear_entire_line()
+                Color.pattack('WPA', self.target, 'Handshake capture', 'Waiting for target to appear...')
+
+
                 self.clients = []
                 airodump_target = self.wait_for_target(airodump)
 
@@ -186,8 +189,12 @@ class AttackWPA(Attack):
                     # Save copy of handshake to ./hs/
                     self.save_handshake(handshake)
                     return handshake
-            except Exception as e:
-                Color.pexception(e)
+
+        except KeyboardInterrupt:
+            Color.pl('\n{!} {O}Interrupted{W}')
+
+        except Exception as e:
+            Color.pexception(e)
 
     def load_handshake(self, bssid, essid):
         if not os.path.exists(Configuration.wpa_handshake_dir):
