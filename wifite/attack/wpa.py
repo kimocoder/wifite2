@@ -96,19 +96,22 @@ class AttackWPA(Attack):
 
             Color.clear_entire_line()
             Color.pattack('WPA', self.target, 'Handshake capture', 'Waiting for target to appear...')
-            airodump_target = self.wait_for_target(airodump)
+            try:
+                self.clients = []
+                airodump_target = self.wait_for_target(airodump)
 
-            self.clients = []
-
-            # Try to load existing handshake
-            if not Configuration.ignore_old_handshakes:
-                bssid = airodump_target.bssid
-                essid = airodump_target.essid if airodump_target.essid_known else None
-                handshake = self.load_handshake(bssid=bssid, essid=essid)
-                if handshake:
-                    Color.pattack('WPA', self.target, 'Handshake capture', 'found {G}existing handshake{W} for {C}%s{W}' % handshake.essid)
-                    Color.pl('\n{+} Using handshake from {C}%s{W}' % handshake.capfile)
-                    return handshake
+                # Try to load existing handshake
+                if not Configuration.ignore_old_handshakes:
+                    bssid = airodump_target.bssid
+                    essid = airodump_target.essid if airodump_target.essid_known else None
+                    handshake = self.load_handshake(bssid=bssid, essid=essid)
+                    if handshake:
+                        Color.pattack('WPA', self.target, 'Handshake capture',
+                                      'found {G}existing handshake{W} for {C}%s{W}' % handshake.essid)
+                        Color.pl('\n{+} Using handshake from {C}%s{W}' % handshake.capfile)
+                        return handshake
+            except Exception as e:
+                Color.pexception(e)
 
             timeout_timer = Timer(Configuration.wpa_attack_timeout)
             deauth_timer = Timer(Configuration.wpa_deauth_timeout)
