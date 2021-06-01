@@ -100,7 +100,6 @@ class AttackWPA(Attack):
                 Color.clear_entire_line()
                 Color.pattack('WPA', self.target, 'Handshake capture', 'Waiting for target to appear...')
 
-
                 self.clients = []
                 airodump_target = self.wait_for_target(airodump)
 
@@ -195,7 +194,7 @@ class AttackWPA(Attack):
                 return None
 
             except Exception as e:
-                Color.pexception(e)
+                Color.pl(e)
                 return None
 
     def load_handshake(self, bssid, essid):
