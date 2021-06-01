@@ -192,9 +192,11 @@ class AttackWPA(Attack):
 
         except KeyboardInterrupt:
             Color.pl('\n{!} {O}Interrupted{W}')
+            return None
 
         except Exception as e:
             Color.pexception(e)
+            return None
 
     def load_handshake(self, bssid, essid):
         if not os.path.exists(Configuration.wpa_handshake_dir):
