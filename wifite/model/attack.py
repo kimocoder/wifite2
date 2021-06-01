@@ -23,6 +23,7 @@ class Attack(object):
             # Wait for target to appear in airodump.
             if int(time.time() - start_time) > Attack.target_wait:
                 raise Exception('Target did not appear after %d seconds, stopping' % Attack.target_wait)
+
             time.sleep(1)
             targets = airodump.get_targets()
             continue
