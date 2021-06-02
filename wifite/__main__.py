@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+from exceptions.noInterfaceException import NoInterfaceException
 
 try:
     from .config import Configuration
@@ -104,6 +105,9 @@ def entry_point():
 
     except KeyboardInterrupt:
         Color.pl('\n{!} {O}Interrupted, Shutting down...{W}')
+
+    except NoInterfaceException as e:
+        Color.pl(e)
 
     Configuration.exit_gracefully(0)
 
