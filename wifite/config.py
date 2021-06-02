@@ -10,7 +10,7 @@ from .tools.macchanger import Macchanger
 
 class Configuration(object):
     ''' Stores configuration variables and functions for Wifite. '''
-    version = '3.0.1.005'
+    version = '3.0.1.006'
 
     initialized = False  # Flag indicating config has been initialized
     temp_dir = None  # Temporary directory
@@ -167,6 +167,7 @@ class Configuration(object):
             cls.interface = Airmon.ask()
             if cls.random_mac:
                 Macchanger.random()
+
 
     @classmethod
     def load_from_arguments(cls):
