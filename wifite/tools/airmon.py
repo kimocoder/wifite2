@@ -1,17 +1,16 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-
 from .dependency import Dependency
 from .ip import Ip
 from .iw import Iw
 from ..util.process import Process
 from ..util.color import Color
-from ..util.input import raw_input
 from ..config import Configuration
 
 import re
 import os
 import signal
+import exceptions.noInterfaceException
 
 
 class AirmonIface(object):
@@ -310,7 +309,7 @@ class Airmon(Dependency):
             Color.pl('\n{!} {O}airmon-ng did not find {R}any{O} wireless interfaces')
             Color.pl('{!} {O}Make sure your wireless device is connected')
             Color.pl('{!} {O}See {C}http://www.aircrack-ng.org/doku.php?id=airmon-ng{O} for more info{W}')
-            raise Exception('airmon-ng did not find any wireless interfaces')
+            raise exceptions.noInterfaceException('airmon-ng did not find any wireless interfaces')
 
         Color.clear_entire_line()
         a.print_menu()
