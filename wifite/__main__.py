@@ -99,15 +99,17 @@ def entry_point():
     try:
         wifite = Wifite()
         wifite.start()
-    except Exception as e:
-        Color.pexception(e)
-        Color.pl('\n{!} {R}Exiting{W}\n')
 
     except KeyboardInterrupt:
         Color.pl('\n{!} {O}Interrupted, Shutting down...{W}')
 
     except EnvironmentError as e:
         Color.pl(e)
+        Configuration.exit_gracefully(0)
+
+    except Exception as e:
+        Color.pexception(e)
+        Color.pl('\n{!} {R}Exiting{W}\n')
 
     Configuration.exit_gracefully(0)
 
