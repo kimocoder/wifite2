@@ -307,7 +307,7 @@ class Airmon(Dependency):
             Color.pl('\n{!} {O}airmon-ng did not find {R}any{O} wireless interfaces')
             Color.pl('{!} {O}Make sure your wireless device is connected')
             Color.pl('{!} {O}See {C}http://www.aircrack-ng.org/doku.php?id=airmon-ng{O} for more info{W}')
-            raise NoInterfaceException('airmon-ng did not find any wireless interfaces')
+            raise EnvironmentError('airmon-ng did not find any wireless interfaces')
 
         Color.clear_entire_line()
         a.print_menu()
