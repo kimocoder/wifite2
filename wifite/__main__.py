@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+from exceptions.noInterfaceException import NoInterfaceException
 
 try:
     from .config import Configuration
@@ -9,7 +10,6 @@ except (ValueError, ImportError) as e:
 from .util.color import Color
 
 import os
-import exceptions.noInterfaceException
 
 
 class Wifite(object):
@@ -106,7 +106,7 @@ def entry_point():
     except KeyboardInterrupt:
         Color.pl('\n{!} {O}Interrupted, Shutting down...{W}')
 
-    except exceptions.noInterfaceException as e:
+    except NoInterfaceException as e:
         Color.pl(e)
 
     Configuration.exit_gracefully(0)

@@ -10,8 +10,6 @@ from ..config import Configuration
 import re
 import os
 import signal
-import exceptions.noInterfaceException
-
 
 class AirmonIface(object):
     def __init__(self, phy, interface, driver, chipset):
@@ -309,7 +307,7 @@ class Airmon(Dependency):
             Color.pl('\n{!} {O}airmon-ng did not find {R}any{O} wireless interfaces')
             Color.pl('{!} {O}Make sure your wireless device is connected')
             Color.pl('{!} {O}See {C}http://www.aircrack-ng.org/doku.php?id=airmon-ng{O} for more info{W}')
-            raise exceptions.noInterfaceException('airmon-ng did not find any wireless interfaces')
+            raise NoInterfaceException('airmon-ng did not find any wireless interfaces')
 
         Color.clear_entire_line()
         a.print_menu()
