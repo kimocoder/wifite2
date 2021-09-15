@@ -4,7 +4,6 @@
 import time
 from ..config import Configuration
 
-
 class Attack(object):
     '''Contains functionality common to all attacks.'''
 
@@ -23,7 +22,8 @@ class Attack(object):
         while len(targets) == 0:
             # Wait for target to appear in airodump.
             if int(time.time() - start_time) > Attack.target_wait:
-                raise Exception('Target did not appear after %d seconds, stopping' % Attack.target_wait)
+                raise EnvironmentError('Target did not appear after %d seconds, stopping' % Attack.target_wait)
+
             time.sleep(1)
             targets = airodump.get_targets()
             continue
@@ -36,7 +36,6 @@ class Attack(object):
                 break
 
         if airodump_target is None:
-            raise Exception(
-                'Could not find target (%s) in airodump' % self.target.bssid)
+            raise Exception('Could not find target (%s) in airodump' % self.target.bssid)
 
         return airodump_target

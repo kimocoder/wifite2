@@ -54,6 +54,7 @@ class Wifite(object):
             Configuration.get_monitor_mode_interface()
             self.scan_and_attack()
 
+
     def print_banner(self):
         '''Displays ASCII art of the highest caliber.'''
         Color.pl(r' {G}  .     {GR}{D}     {W}{G}     .    {W}')
@@ -98,12 +99,17 @@ def entry_point():
     try:
         wifite = Wifite()
         wifite.start()
-    except Exception as e:
-        Color.pexception(e)
-        Color.pl('\n{!} {R}Exiting{W}\n')
 
     except KeyboardInterrupt:
         Color.pl('\n{!} {O}Interrupted, Shutting down...{W}')
+
+    except EnvironmentError as e:
+        Color.pl(e)
+        Configuration.exit_gracefully(0)
+
+    except Exception as e:
+        Color.pexception(e)
+        Color.pl('\n{!} {R}Exiting{W}\n')
 
     Configuration.exit_gracefully(0)
 
