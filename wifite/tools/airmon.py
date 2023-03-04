@@ -61,7 +61,7 @@ class Airmon(Dependency):
     isdeprecated = False
 
     # Drivers that need to be manually put into monitor mode
-    BAD_DRIVERS = ['rtl8821au', 'rtl8723cs']
+    BAD_DRIVERS = ['rtl8821au']
     DEPRECATED_DRIVERS = ['rtl8723cs']
     # see if_arp.h
     ARPHRD_ETHER = 1  # managed
