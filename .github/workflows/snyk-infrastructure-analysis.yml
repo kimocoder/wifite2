@@ -48,7 +48,7 @@ jobs:
           # or `main.tf` for a Terraform configuration file
           file: your-file-to-test.yaml
       - name: Upload result to GitHub Code Scanning
-        uses: github/codeql-action/upload-sarif@4355270be187e1b672a7a1c7c7bae5afdc1ab94a # v3.24.10
+        uses: github/codeql-action/upload-sarif@df5a14dc28094dc936e103b37d749c6628682b60 # v3.25.0
         with:
           file: .
           sarif: true
