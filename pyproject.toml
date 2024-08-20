@@ -7,7 +7,7 @@ readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "^3.11"
-setuptools = "^72.2.0"
+setuptools = "^73.0.0"
 chardet = "^5.2.0"
 
 
