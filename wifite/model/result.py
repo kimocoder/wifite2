@@ -64,28 +64,33 @@ class CrackResult(object):
         saved_results.append(self.to_dict())
         with open(name, 'w') as fid:
             fid.write(dumps(saved_results, indent=2))
-        Color.pl('{+} saved crack result to {C}%s{W} ({G}%d total{W})'
+        Color.pl('{+} saved result to {C}%s{W} ({G}%d total{W})'
                  % (name, len(saved_results)))
 
     @classmethod
-    def display(cls):
-        """ Show cracked targets from cracked file """
+    def display(cls, result_type):
+        """ Show targets from results file """
         name = cls.cracked_file
         if not os.path.exists(name):
             Color.pl('{!} {O}file {C}%s{O} not found{W}' % name)
             return
 
-        with open(name, 'r') as fid:
-            cracked_targets = loads(fid.read())
+        targets = cls.load_all()
+        only_cracked = result_type == 'cracked'
 
-        if len(cracked_targets) == 0:
+        if only_cracked:
+            targets = [item for item in targets if item.get('type') != 'IGN']
+        else:
+            targets = [item for item in targets if item.get('type') == 'IGN']
+
+        if len(targets) == 0:
             Color.pl('{!} {R}no results found in {O}%s{W}' % name)
             return
 
-        Color.pl('\n{+} Displaying {G}%d{W} cracked target(s) from {C}%s{W}\n' % (
-            len(cracked_targets), name))
+        Color.pl('\n{+} Displaying {G}%d{W} %s target(s) from {C}%s{W}\n' % (
+            len(targets), result_type, cls.cracked_file))
 
-        results = sorted([cls.load(item) for item in cracked_targets], key=lambda x: x.date, reverse=True)
+        results = sorted([cls.load(item) for item in targets], key=lambda x: x.date, reverse=True)
         longest_essid = max(len(result.essid or 'ESSID') for result in results)
 
         # Header
@@ -98,9 +103,10 @@ class CrackResult(object):
         Color.p('  ')
         Color.p('TYPE'.ljust(5))
         Color.p('  ')
-        Color.p('KEY')
-        Color.pl('{D}')
-        Color.p(' ' + '-' * (longest_essid + 17 + 19 + 5 + 11 + 12))
+        if only_cracked:
+            Color.p('KEY')
+            Color.pl('{D}')
+            Color.p(' ' + '-' * (longest_essid + 17 + 19 + 5 + 11 + 12))
         Color.pl('{W}')
         # Results
         for result in results:
@@ -117,6 +123,24 @@ class CrackResult(object):
             except ValueError:
                 return []
         return json
+
+    @classmethod
+    def load_ignored_bssids(cls, ignore_cracked = False):
+        json = cls.load_all()
+        ignored_bssids = [
+            item.get('bssid', '')
+            for item in json
+            if item.get('result_type') == 'IGN'
+        ]
+
+        if not ignore_cracked:
+            return ignored_bssids
+
+        return ignored_bssids + [
+            item.get('bssid', '')
+            for item in json
+            if item.get('result_type') != 'IGN'
+        ]
 
     @staticmethod
     def load(json):
@@ -149,10 +173,30 @@ class CrackResult(object):
                                       essid=json['essid'],
                                       pmkid_file=json['pmkid_file'],
                                       key=json['key'])
+            
+        else:
+            from .ignored_result import CrackResultIgnored
+            result = CrackResultIgnored(bssid=json['bssid'],
+                                        essid=json['essid'])
+
         result.date = json['date']
         result.readable_date = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(result.date))
         return result
 
+    @classmethod
+    def ignore_target(cls, target):
+        ignored_targets = cls.load_all()
+
+        for ignored_target in ignored_targets:
+            is_ignored = ignored_target == 'IGN'
+            bssid_match = target.bssid == ignored_target.get('bssid')
+            essid_match = target.essid == ignored_target.get('essid')
+            if is_ignored and bssid_match and essid_match:
+                return
+
+        from .ignored_result import CrackResultIgnored
+        ignored_target = CrackResultIgnored(target.bssid, target.essid)
+        ignored_target.save()
 
 if __name__ == '__main__':
     # Deserialize WPA object
@@ -176,5 +220,13 @@ if __name__ == '__main__':
     json = loads(
         '{"psk": "the psk", "bssid": "AA:BB:CC:DD:EE:FF", "pin": "01234567", "essid": "Test Router", '
         '"date": 1433403278, "type": "WPS"}')
+    obj = CrackResult.load(json)
+    obj.dump()
+
+    # Deserialize Ignored object
+    Color.pl('\nIgnored:')
+    json = loads(
+        '{"bssid": "AA:BB:CC:DD:EE:FF", "essid": "Test Router", '
+        '"date": 1433403278, "type": "IGN"}')
     obj = CrackResult.load(json)
     obj.dump()

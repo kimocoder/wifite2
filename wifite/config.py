@@ -45,6 +45,7 @@ class Configuration(object):
     scan_time = None
     show_bssids = None
     show_cracked = None
+    show_ignored = None
     show_manufacturers = None
     skip_crack = None
     target_bssid = None
@@ -209,6 +210,7 @@ class Configuration(object):
 
         # Commands
         cls.show_cracked = False
+        cls.show_ignored = False
         cls.check_handshake = None
         cls.crack_handshake = False
 
@@ -257,6 +259,8 @@ class Configuration(object):
         # Commands
         if args.cracked:
             cls.show_cracked = True
+        if args.ignored:
+            cls.show_ignored = True
         if args.check_handshake:
             cls.check_handshake = args.check_handshake
         if args.crack_handshake:
@@ -356,10 +360,11 @@ class Configuration(object):
             Color.pl('{+} {C}option: {O}ignoring ESSID(s): {R}%s{W}' %
                      ', '.join(args.ignore_essids))
 
+        from .model.result import CrackResult
+        cls.ignore_cracked = CrackResult.load_ignored_bssids(args.ignore_cracked)
+
         if args.ignore_cracked:
-            from .model.result import CrackResult
-            if cracked_targets := CrackResult.load_all():
-                cls.ignore_cracked = [item['bssid'] for item in cracked_targets]
+            if cls.ignore_cracked:
                 Color.pl('{+} {C}option: {O}ignoring {R}%s{O} previously-cracked targets' % len(cls.ignore_cracked))
 
             else:

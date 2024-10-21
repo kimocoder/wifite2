@@ -45,7 +45,10 @@ class Wifite(object):
         from .util.crack import CrackHelper
 
         if Configuration.show_cracked:
-            CrackResult.display()
+            CrackResult.display('cracked')
+
+        elif Configuration.show_ignored:
+            CrackResult.display('ignored')
 
         elif Configuration.check_handshake:
             Handshake.check()

@@ -476,6 +476,11 @@ class Arguments(object):
                               dest='cracked',
                               help=Color.s('Print previously-cracked access points'))
 
+        commands.add_argument('--ignored',
+                              action='store_true',
+                              dest='ignored',
+                              help=Color.s('Print ignored access points'))
+
         commands.add_argument('-cracked',
                               help=argparse.SUPPRESS,
                               action='store_true',

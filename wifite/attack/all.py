@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+from enum import Enum
 from .pmkid import AttackPMKID
 from .wep import AttackWEP
 from .wpa import AttackWPA
@@ -9,6 +10,11 @@ from ..config import Configuration
 from ..model.target import WPSState
 from ..util.color import Color
 
+class Answer(Enum):
+    Skip = 1
+    ExitOrReturn = 2
+    Continue = 3
+    Ignore = 4
 
 class AttackAll(object):
     @classmethod
@@ -109,10 +115,14 @@ class AttackAll(object):
             except KeyboardInterrupt:
                 Color.pl('\n{!} {O}Interrupted{W}\n')
                 answer = cls.user_wants_to_continue(targets_remaining, len(attacks))
-                if answer is True:
+                if answer == Answer.Continue:
                     continue  # Keep attacking the same target (continue)
-                elif answer is None:
+                elif answer == Answer.Skip:
                     return True  # Keep attacking other targets (skip)
+                elif answer == Answer.Ignore:
+                    from ..model.result import CrackResult
+                    CrackResult.ignore_target(target)
+                    return True  # Ignore current target and keep attacking other targets (ignore)
                 else:
                     return False  # Stop all attacks (exit)
 
@@ -126,9 +136,10 @@ class AttackAll(object):
         """
         Asks user if attacks should continue onto other targets
         Returns:
-            None if the user wants to skip the current target
-            True if the user wants to continue to the next attack on the current target
-            False if the user wants to stop the remaining attacks
+            Answer.Skip if the user wants to skip the current target
+            Answer.Ignore if the user wants to ignore the current target
+            Answer.Continue if the user wants to continue to the next attack on the current target
+            Answer.ExitOrReturn if the user wants to stop the remaining attacks
         """
         if attacks_remaining == 0 and targets_remaining == 0:
             return  # No targets or attacksleft, drop out
@@ -152,6 +163,9 @@ class AttackAll(object):
             prompt += ' {O}skip{W} to the next target,'
             options += '{O}s{W}{D}, {W}'
 
+        prompt += ' skip and {P}ignore{W} current target,'
+        options += '{P}i{W}{D}, {W}'
+
         if Configuration.infinite_mode:
             options += '{R}r{W})'
             prompt += ' or {R}return{W} to scanning %s? {C}' % options
@@ -163,8 +177,10 @@ class AttackAll(object):
         answer = input().lower()
 
         if answer.startswith('s'):
-            return None  # Skip
+            return Answer.Skip
         elif answer.startswith('e') or answer.startswith('r'):
-            return False  # Exit/Return
+            return Answer.ExitOrReturn  # Exit/Return
+        elif answer.startswith('i'):
+            return Answer.Ignore  # Ignore
         else:
-            return True  # Continue
+            return Answer.Continue  # Continue
