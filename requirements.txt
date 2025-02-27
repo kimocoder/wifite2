@@ -2,4 +2,4 @@ chardet==5.2.0
 pytest==8.3.4
 scapy==2.6.1
 argparse==1.4.0
-setuptools==75.8.0
+setuptools==75.8.2
