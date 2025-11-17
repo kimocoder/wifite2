@@ -138,6 +138,22 @@ sudo python3 setup.py install
 sudo wifite
 ```
 
+### Install with Astral uv
+```bash
+# Install uv
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Clone the repository
+git clone https://github.com/kimocoder/wifite2.git
+cd wifite2
+
+# Install all dependencies
+uv tool install .
+
+# Run wifite
+sudo wifite
+```
+
 ### Development Install with Poetry (Recommended for Developers)
 
 Poetry provides better dependency management and reproducible builds:
