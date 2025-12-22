@@ -241,9 +241,9 @@ class AttackPMKID(Attack):
             self.view.add_log(f"Channel: {channel_display}")
 
         if self.do_airCRACK:
-            self.run_aircrack()
+            return self.run_aircrack()
         else:
-            self.run_hashcat()
+            return self.run_hashcat()
 
     def run_aircrack(self):
         with Airodump(channel=self.target.channel,
