@@ -297,7 +297,12 @@ against the real AP and captures valid passwords.
                           '--random-mac',
                           action='store_true',
                           dest='random_mac',
-                          help=Color.s('Randomize wireless card MAC address (default: {G}off{W})'))
+                          help=Color.s('Randomize wireless card MAC address completely (better privacy) (default: {G}off{W})'))
+
+        glob.add_argument('--random-mac-vendor',
+                          action='store_true',
+                          dest='random_mac_vendor',
+                          help=Color.s('Randomize wireless card MAC address but keep vendor bytes (better compatibility) (default: {G}off{W})'))
 
         glob.add_argument('-p',
                           action='store',

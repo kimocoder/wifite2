@@ -61,7 +61,7 @@ class Macchanger(Dependency):
             Color.pl('\r{+} {C}macchanger{W}: reset mac address back to {C}%s{W} on {C}%s{W}' % (new_mac, iface))
 
     @classmethod
-    def random(cls):
+    def random(cls, full_random=True):
         from ..util.process import Process
         if not Process.exists('macchanger'):
             Color.pl('{!} {R}macchanger: {O}not installed')
@@ -72,7 +72,9 @@ class Macchanger(Dependency):
 
         # -r to use random MAC address
         # -e to keep vendor bytes the same
-        if cls.down_macch_up(iface, ['-e']):
+        option = "-r" if full_random else "-e"
+
+        if cls.down_macch_up(iface, [option]):
             cls.is_changed = True
             new_mac = Ip.get_mac(iface)
 

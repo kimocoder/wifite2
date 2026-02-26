@@ -41,6 +41,7 @@ class Configuration(object):
     pmkid_timeout = None
     print_stack_traces = None
     random_mac = None
+    random_mac_vendor = None
     require_fakeauth = None
     scan_time = None
     show_bssids = None
@@ -326,8 +327,8 @@ class Configuration(object):
             # Interface wasn't defined, select it!
             from .tools.airmon import Airmon
             cls.interface = Airmon.ask()
-            if cls.random_mac:
-                Macchanger.random()
+            if cls.random_mac or cls.random_mac_vendor:
+                Macchanger.random(full_random=not cls.random_mac_vendor)
 
     @classmethod
     def load_from_arguments(cls):
@@ -578,9 +579,22 @@ class Configuration(object):
     def parse_settings_args(cls, args):
         """Parses basic settings/configurations from arguments."""
 
-        if args.random_mac:
-            cls.random_mac = True
-            Color.pl('{+} {C}option:{W} using {G}random mac address{W} when scanning & attacking')
+        if args.random_mac or args.random_mac_vendor:
+            if args.random_mac and args.random_mac_vendor:
+                Color.pl('{!} {O}Warning: Cannot use both --random-mac and --random-mac-vendor')
+                Color.pl('{+} {W}Falling back to {C}--random-mac{W} (full random) for better privacy')
+                args.random_mac_vendor = False
+
+            if args.random_mac:
+                cls.random_mac = True
+                cls.random_mac_vendor = False
+                mode_str = "full random (maximum privacy)"
+            else:
+                cls.random_mac_vendor = True
+                cls.random_mac = False
+                mode_str = "vendor-preserved (better compatibility)"
+
+            Color.pl('{+} {C}option:{W} using {G}random MAC address{W} ({C}%s{W}) when scanning & attacking' % mode_str)
 
         if args.channel:
             chn_arg_re = re.compile(r"^\d+((,\d+)|(-\d+,\d+))*(-\d+)?$")
