@@ -93,10 +93,70 @@ class Logger:
         return cls._enabled and level >= cls._log_level
     
     @classmethod
+    def _sanitize_message(cls, message: str) -> str:
+        """
+        Best-effort sanitization to avoid logging sensitive data in clear text.
+
+        Currently masks:
+          - Known wpa-sec API key from Configuration.wpasec_api_key
+          - Command-line API key arguments like "-k <value>" and "--key <value>"
+          - MAC addresses in standard hex notation (aa:bb:cc:dd:ee:ff)
+        """
+        try:
+            # Import lazily to avoid circular imports during module initialization
+            from ..config import Configuration  # type: ignore
+        except Exception:
+            Configuration = None  # type: ignore
+
+        sanitized = message
+
+        # Mask configured wpa-sec API key if present in message
+        try:
+            if Configuration is not None and getattr(Configuration, "wpasec_api_key", None):
+                api_key = Configuration.wpasec_api_key
+                if isinstance(api_key, str) and api_key:
+                    masked_key = api_key[:4] + "*" * (len(api_key) - 4) if len(api_key) > 4 else "****"
+                    sanitized = sanitized.replace(api_key, masked_key)
+        except Exception:
+            # Never let sanitization break logging
+            pass
+
+        # Mask common CLI key patterns: "-k <value>" and "--key <value>"
+        try:
+            import re
+
+            def _mask_cli_key(match):
+                flag = match.group(1)
+                return f"{flag} ****"
+
+            sanitized = re.sub(r"(-k)\s+\S+", _mask_cli_key, sanitized)
+            sanitized = re.sub(r"(--key)\s+\S+", _mask_cli_key, sanitized)
+        except Exception:
+            pass
+
+        # Mask MAC addresses: aa:bb:cc:dd:ee:ff -> aa:bb:cc:**:**:**
+        try:
+            import re
+
+            def _mask_mac(match):
+                full = match.group(0)
+                parts = full.split(":")
+                if len(parts) == 6:
+                    return ":".join(parts[:3] + ["**", "**", "**"])
+                return full
+
+            sanitized = re.sub(r"\b([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}\b", _mask_mac, sanitized)
+        except Exception:
+            pass
+
+        return sanitized
+
+    @classmethod
     def _format_message(cls, level: str, module: str, message: str) -> str:
         """Format log message with timestamp and level."""
         timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        return f"[{timestamp}] [{level:8s}] [{module:20s}] {message}"
+        safe_message = cls._sanitize_message(message)
+        return f"[{timestamp}] [{level:8s}] [{module:20s}] {safe_message}"
     
     @classmethod
     def _write_to_file(cls, formatted_message: str):

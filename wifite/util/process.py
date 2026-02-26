@@ -151,7 +151,17 @@ class Process(object):
         self._devnull_handles = []
 
         cmd_str = " ".join(command) if isinstance(command, list) else str(command)
-        log_debug('Process', f'Creating process: {cmd_str}')
+        # Avoid logging sensitive arguments (e.g. API keys) in clear text
+        try:
+            import re
+            def _mask_cli_key(match):
+                flag = match.group(1)
+                return f"{flag} ****"
+            safe_cmd_str = re.sub(r"(-k)\s+\S+", _mask_cli_key, cmd_str)
+            safe_cmd_str = re.sub(r"(--key)\s+\S+", _mask_cli_key, safe_cmd_str)
+        except Exception:
+            safe_cmd_str = cmd_str
+        log_debug('Process', f'Creating process: {safe_cmd_str}')
         
         if Configuration.verbose > 1:
             Color.pe(f'\n {{C}}[?] {{W}} Executing: {{B}}{" ".join(command)}{{W}}')

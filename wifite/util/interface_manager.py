@@ -1707,10 +1707,19 @@ class InterfaceManager:
                         # Task 11.1: Log interface capabilities
                         log_info('InterfaceManager', 
                                 f'  {interface_name}: {interface_info.get_capability_summary()}')
+                        # Mask MAC address to avoid logging full hardware identifier
+                        masked_mac = interface_info.mac_address
+                        try:
+                            if isinstance(interface_info.mac_address, str) and interface_info.mac_address:
+                                parts = interface_info.mac_address.split(':')
+                                if len(parts) == 6:
+                                    masked_mac = ':'.join(parts[:3] + ['**', '**', '**'])
+                        except Exception:
+                            pass
                         log_debug('InterfaceManager', 
                                  f'  {interface_name} details: driver={interface_info.driver}, '
                                  f'chipset={interface_info.chipset}, phy={interface_info.phy}, '
-                                 f'mac={interface_info.mac_address}')
+                                 f'mac={masked_mac}')
                         log_debug('InterfaceManager', 
                                  f'  {interface_name} state: mode={interface_info.current_mode}, '
                                  f'up={interface_info.is_up}, connected={interface_info.is_connected}')
