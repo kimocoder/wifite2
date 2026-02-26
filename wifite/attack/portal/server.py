@@ -211,11 +211,13 @@ class PortalRequestHandler(BaseHTTPRequestHandler):
             
             # Fallback to file system if not cached
             portal_dir = os.path.dirname(os.path.abspath(__file__))
-            static_dir = os.path.join(portal_dir, 'static')
-            full_path = os.path.join(static_dir, file_path)
+            # Normalize static directory path
+            static_dir = os.path.realpath(os.path.join(portal_dir, 'static'))
+            # Build and normalize full path to requested file
+            full_path = os.path.realpath(os.path.join(static_dir, file_path))
             
             # Security check: ensure file is within static directory
-            if not os.path.abspath(full_path).startswith(static_dir):
+            if os.path.commonpath([static_dir, full_path]) != static_dir:
                 self._send_error_response(403, 'Forbidden')
                 return
             
