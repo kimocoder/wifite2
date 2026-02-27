@@ -115,6 +115,8 @@ class Configuration(object):
     monitor_log_file = None
     monitor_channel = None
     monitor_hop = None
+    # System check mode
+    syscheck = None
 
     @classmethod
     def initialize(cls, load_interface=True):
@@ -312,6 +314,9 @@ class Configuration(object):
         cls.monitor_channel = None  # Specific channel to monitor (None = current)
         cls.monitor_hop = False  # Enable channel hopping during monitoring
 
+        # System check mode
+        cls.syscheck = False
+
         # A list to cache all checked commands (e.g. `which hashcat` will execute only once)
         cls.existing_commands = {}
 
@@ -362,6 +367,8 @@ class Configuration(object):
             cls.crack_handshake = True
         if args.update_db:
             cls.update_db = True
+        if hasattr(args, 'syscheck') and args.syscheck:
+            cls.syscheck = True
 
         # Session resume
         if args.resume:

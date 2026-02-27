@@ -12,6 +12,7 @@ from ..config import Configuration
 from ..model.target import WPSState
 from ..util.color import Color
 from ..util.wpa3_tools import WPA3ToolChecker
+from ..util.memory import MemoryMonitor, get_infinite_monitor
 
 class Answer(Enum):
     Skip = 1
@@ -35,6 +36,12 @@ class AttackAll(object):
             # Warn that WPS attacks are not available.
             Color.pl('{!} {O}Note: WPS attacks are not possible because you do not have {C}reaver{O} nor {C}bully{W}')
 
+        # Initialize infinite mode monitor if in infinite mode
+        infinite_monitor = None
+        if Configuration.infinite_mode:
+            infinite_monitor = get_infinite_monitor()
+            infinite_monitor.on_cycle_start()
+
         attacked_targets = 0
         targets_remaining = len(targets)
         for index, target in enumerate(targets, start=1):
@@ -44,10 +51,17 @@ class AttackAll(object):
             attacked_targets += 1
             targets_remaining -= 1
 
-            # Periodic cleanup to prevent file descriptor leaks
+            # Periodic cleanup to prevent file descriptor leaks and memory bloat
             if index % 5 == 0:  # Every 5 targets
                 from ..util.process import Process
                 Process.check_fd_limit()
+                
+                # Memory monitoring - especially important for infinite mode
+                MemoryMonitor.periodic_check(index)
+            
+            # Infinite mode specific cleanup
+            if infinite_monitor and index % 10 == 0:
+                infinite_monitor.on_target_complete()
 
             bssid = target.bssid
             essid = target.essid if target.essid_known else '{O}ESSID unknown{W}'

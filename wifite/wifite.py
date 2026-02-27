@@ -38,6 +38,13 @@ class Wifite(object):
             # Default to classic mode (use_tui is False or None)
             OutputManager.initialize('classic')
 
+        # If --syscheck, run the comprehensive check and exit
+        if Configuration.syscheck:
+            from .util.system_check import run_system_check
+            smoke_test = Configuration.verbose > 0
+            run_system_check(verbose=Configuration.verbose, smoke_test=smoke_test)
+            raise SystemExit(0)
+
         if os.name == 'nt':
             Color.pl('{!} {R}error: {O}wifite{R} must be run under a {O}*NIX{W}{R} like OS')
             Configuration.exit_gracefully()

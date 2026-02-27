@@ -95,9 +95,9 @@ class HcxDumpTool(Dependency):
             '--rds=1'  # Enable real-time display: 1 = show APs on current channel, show CLIENTs
         ]
 
-        # Add interface (hcxdumptool 7.x uses single -i, not multiple)
-        # Use the first interface from the list
-        command.extend(['-i', self.interfaces[0]])
+        # Add all interfaces with separate -i flags for multi-interface capture
+        for iface in self.interfaces:
+            command.extend(['-i', iface])
 
         # Add channel if specified (must include band suffix for v7.x: 1a, 6a, 11a, etc.)
         if self.channel:

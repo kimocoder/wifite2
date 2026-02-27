@@ -15,6 +15,10 @@ import unittest
 import sys
 from unittest.mock import Mock, patch, MagicMock
 
+import pytest
+
+pytestmark = pytest.mark.timeout(30)
+
 # Mock sys.argv to prevent argparse from reading test arguments
 original_argv = sys.argv
 sys.argv = ['wifite']

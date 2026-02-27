@@ -5,10 +5,14 @@ import sys
 import unittest
 from unittest.mock import patch, MagicMock
 
+import pytest
+
 sys.path.insert(0, '..')
 
 from wifite.tools.hcxdumptool import HcxDumpTool, HcxDumpToolPassive
 from wifite.config import Configuration
+
+pytestmark = pytest.mark.timeout(30)
 
 
 class TestHcxDumpToolMultiInterface(unittest.TestCase):
@@ -86,7 +90,9 @@ class TestHcxDumpToolMultiInterface(unittest.TestCase):
 
     @patch('wifite.tools.hcxdumptool.Configuration.initialize')
     @patch('wifite.tools.hcxdumptool.Process')
-    def test_command_building_single_interface(self, mock_process, mock_config_init):
+    @patch('wifite.tools.hcxdumptool.time.sleep')
+    @patch('wifite.tools.hcxdumptool.os.kill')
+    def test_command_building_single_interface(self, mock_kill, mock_sleep, mock_process, mock_config_init):
         """Test command building with single interface"""
         mock_proc_instance = MagicMock()
         mock_proc_instance.pid.pid = 12345
@@ -104,19 +110,21 @@ class TestHcxDumpToolMultiInterface(unittest.TestCase):
             i_index = call_args.index('-i')
             self.assertEqual(call_args[i_index + 1], 'wlan0')
             
-            # Should have output file
-            self.assertIn('-o', call_args)
-            o_index = call_args.index('-o')
-            self.assertEqual(call_args[o_index + 1], '/tmp/test.pcapng')
+            # Should have output file (-w flag for hcxdumptool 7.x)
+            self.assertIn('-w', call_args)
+            w_index = call_args.index('-w')
+            self.assertEqual(call_args[w_index + 1], '/tmp/test.pcapng')
             
-            # Should have channel
+            # Should have channel (with band suffix for hcxdumptool 7.x: '6a' for 2.4GHz)
             self.assertIn('-c', call_args)
             c_index = call_args.index('-c')
-            self.assertEqual(call_args[c_index + 1], '6')
+            self.assertEqual(call_args[c_index + 1], '6a')
 
     @patch('wifite.tools.hcxdumptool.Configuration.initialize')
     @patch('wifite.tools.hcxdumptool.Process')
-    def test_command_building_dual_interface(self, mock_process, mock_config_init):
+    @patch('wifite.tools.hcxdumptool.time.sleep')
+    @patch('wifite.tools.hcxdumptool.os.kill')
+    def test_command_building_dual_interface(self, mock_kill, mock_sleep, mock_process, mock_config_init):
         """Test command building with dual interfaces"""
         mock_proc_instance = MagicMock()
         mock_proc_instance.pid.pid = 12345
@@ -129,20 +137,23 @@ class TestHcxDumpToolMultiInterface(unittest.TestCase):
             # Get the command that was passed to Process
             call_args = mock_process.call_args[0][0]
             
-            # Should have two -i flags
+            # Should have -i flags for both interfaces
+            self.assertIn('-i', call_args)
             i_indices = [i for i, x in enumerate(call_args) if x == '-i']
-            self.assertEqual(len(i_indices), 2)
+            self.assertEqual(len(i_indices), 2, f'Expected 2 -i flags, got {len(i_indices)} in {call_args}')
             
-            # Should have both interfaces
+            # Both interfaces should be present
             self.assertEqual(call_args[i_indices[0] + 1], 'wlan0')
             self.assertEqual(call_args[i_indices[1] + 1], 'wlan1')
             
-            # Should have output file
-            self.assertIn('-o', call_args)
+            # Should have output file (-w flag for hcxdumptool 7.x)
+            self.assertIn('-w', call_args)
 
     @patch('wifite.tools.hcxdumptool.Configuration.initialize')
     @patch('wifite.tools.hcxdumptool.Process')
-    def test_command_building_triple_interface(self, mock_process, mock_config_init):
+    @patch('wifite.tools.hcxdumptool.time.sleep')
+    @patch('wifite.tools.hcxdumptool.os.kill')
+    def test_command_building_triple_interface(self, mock_kill, mock_sleep, mock_process, mock_config_init):
         """Test command building with triple interfaces"""
         mock_proc_instance = MagicMock()
         mock_proc_instance.pid.pid = 12345
@@ -155,11 +166,11 @@ class TestHcxDumpToolMultiInterface(unittest.TestCase):
             # Get the command that was passed to Process
             call_args = mock_process.call_args[0][0]
             
-            # Should have three -i flags
+            # Should have -i flags for all three interfaces
             i_indices = [i for i, x in enumerate(call_args) if x == '-i']
-            self.assertEqual(len(i_indices), 3)
+            self.assertEqual(len(i_indices), 3, f'Expected 3 -i flags, got {len(i_indices)} in {call_args}')
             
-            # Should have all three interfaces
+            # All interfaces should be present in order
             self.assertEqual(call_args[i_indices[0] + 1], 'wlan0')
             self.assertEqual(call_args[i_indices[1] + 1], 'wlan1')
             self.assertEqual(call_args[i_indices[2] + 1], 'wlan2')

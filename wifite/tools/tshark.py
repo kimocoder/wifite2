@@ -1,6 +1,13 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+"""
+Tshark wrapper with native Scapy fallback.
+
+Uses native Python/Scapy implementation when tshark is unavailable,
+providing handshake verification and WPS detection without external tools.
+"""
+
 from .dependency import Dependency
 from ..model.target import WPSState
 from ..util.process import Process
@@ -8,104 +15,137 @@ import re
 
 
 class Tshark(Dependency):
-    """ Wrapper for Tshark program. """
+    """Wrapper for Tshark program with Scapy fallback."""
+    
     dependency_required = False
     dependency_name = 'tshark'
     dependency_url = 'apt install tshark'
+    dependency_packages = {
+        'apt': 'tshark', 'pacman': 'wireshark-cli',
+        'dnf': 'wireshark-cli', 'brew': 'wireshark',
+    }
+    dependency_category = Dependency.CATEGORY_INSPECT
+
+    # Track if native (Scapy) is available
+    _native_available = None
 
     def __init__(self):
         pass
 
+    @classmethod
+    def _can_use_native(cls) -> bool:
+        """Check if native Scapy implementation is available."""
+        if cls._native_available is None:
+            try:
+                from ..native.handshake import ScapyHandshake
+                from ..native.wps import ScapyWPS
+                cls._native_available = ScapyHandshake.is_available() and ScapyWPS.is_available()
+            except ImportError:
+                cls._native_available = False
+        return cls._native_available
+
     @staticmethod
     def _extract_src_dst_index_total(line):
-        # Extract BSSIDs, handshake # (1-4) and handshake 'total' (4)
+        """Extract BSSIDs, handshake # (1-4) and handshake 'total' (4)"""
         mac_regex = ('[a-zA-Z0-9]{2}:' * 6)[:-1]
         match = re.search(r'(%s)\s*.*\s*(%s).*Message.*(\d).*of.*(\d)' % (mac_regex, mac_regex), line)
         if match is None:
-            # Line doesn't contain src, dst, Message numbers
             return None, None, None, None
         (src, dst, index, total) = match.groups()
         return src, dst, index, total
 
     @staticmethod
     def _build_target_client_handshake_map(output, bssid=None):
-        # Map of target_ssid,client_ssid -> handshake #s
-        # E.g. 12:34:56,21:43:65 -> 3
+        """Build map of target_ssid,client_ssid -> handshake #s"""
         target_client_msg_nums = {}
 
         for line in output.split('\n'):
             src, dst, index, total = Tshark._extract_src_dst_index_total(line)
             if src is None:
-                continue  # Skip
+                continue
 
             index = int(index)
             total = int(total)
 
             if total != 4:
-                continue  # Handshake X of 5? X of 3? Skip it.
+                continue
 
-            # Identify the client and target MAC addresses
             if index % 2 == 1:
-                # First and Third messages
                 target = src
                 client = dst
             else:
-                # Second and Fourth messages
                 client = src
                 target = dst
 
             if bssid is not None and bssid.lower() != target.lower():
-                # We know the BSSID and this msg was not for the target
                 continue
 
             target_client_key = f'{target},{client}'
 
-            # Ensure all 4 messages are:
-            # Between the same client and target (not different clients connecting).
-            # In numeric & chronological order (Message 1, then 2, then 3, then 4)
             if index == 1:
-                target_client_msg_nums[target_client_key] = 1  # First message
-
+                target_client_msg_nums[target_client_key] = 1
             elif target_client_key not in target_client_msg_nums \
                     or index - 1 != target_client_msg_nums[target_client_key]:
-                continue  # Not first message. We haven't gotten the first message yet. Skip.
-
+                continue
             else:
-                # Happy case: Message is > 1 and is received in-order
                 target_client_msg_nums[target_client_key] = index
 
         return target_client_msg_nums
 
-    @staticmethod
-    def bssids_with_handshakes(capfile, bssid=None):
-        if not Tshark.exists():
+    @classmethod
+    def bssids_with_handshakes(cls, capfile, bssid=None):
+        """
+        Get list of BSSIDs with valid handshakes in capture file.
+        
+        Uses native Scapy implementation if tshark is unavailable.
+        """
+        # Try native implementation first if tshark is not available
+        if not cls.exists():
+            if cls._can_use_native():
+                try:
+                    from ..native.handshake import ScapyHandshake
+                    return ScapyHandshake.bssids_with_handshakes(capfile, bssid)
+                except Exception:
+                    pass
             return []
-
-        # Returns list of BSSIDs for which we have valid handshakes in the capfile.
+        
+        # Use tshark
         command = [
             'tshark',
             '-r', capfile,
-            '-n',  # Don't resolve addresses
-            '-Y', 'eapol'  # Filter for only handshakes
+            '-n',
+            '-Y', 'eapol'
         ]
         tshark = Process(command, devnull=False)
 
         target_client_msg_nums = Tshark._build_target_client_handshake_map(tshark.stdout(), bssid=bssid)
 
         bssids = set()
-        # Check if we have all 4 messages for the handshake between the same MACs
         for (target_client, num) in list(target_client_msg_nums.items()):
             if num == 4:
-                # We got a handshake!
                 this_bssid = target_client.split(',')[0]
                 bssids.add(this_bssid)
 
         return list(bssids)
 
+    @classmethod
+    def bssids_with_handshakes_native(cls, capfile, bssid=None):
+        """
+        Get list of BSSIDs with valid handshakes using native Scapy.
+        
+        This method always uses Scapy, regardless of tshark availability.
+        """
+        if cls._can_use_native():
+            try:
+                from ..native.handshake import ScapyHandshake
+                return ScapyHandshake.bssids_with_handshakes(capfile, bssid)
+            except Exception:
+                pass
+        return []
+
     @staticmethod
     def bssid_essid_pairs(capfile, bssid):
-        # Finds all BSSIDs (with corresponding ESSIDs) from cap file.
-        # Returns list of tuples(BSSID, ESSID)
+        """Find all BSSIDs with corresponding ESSIDs from cap file."""
         if not Tshark.exists():
             return []
 
@@ -113,56 +153,57 @@ class Tshark(Dependency):
 
         command = [
             'tshark',
-            '-r', capfile,  # Path to cap file
-            '-n',  # Don't resolve addresses
-            # Extract beacon frames
+            '-r', capfile,
+            '-n',
             '-Y', '"wlan.fc.type_subtype == 0x08 || wlan.fc.type_subtype == 0x05"',
         ]
 
         tshark = Process(command, devnull=False)
 
         for line in tshark.stdout().split('\n'):
-            # Extract src, dst, and essid
             mac_regex = ('[a-zA-Z0-9]{2}:' * 6)[:-1]
             match = re.search(f'({mac_regex}) [^ ]* ({mac_regex}).*.*SSID=(.*)$', line)
             if match is None:
-                continue  # Line doesn't contain src, dst, ssid
+                continue
 
             (src, dst, essid) = match.groups()
 
             if dst.lower() == 'ff:ff:ff:ff:ff:ff':
-                continue  # Skip broadcast packets
+                continue
 
             if (bssid is not None and bssid.lower() == src.lower()) or bssid is None:
-                ssid_pairs.add((src, essid))  # This is our BSSID, add it
+                ssid_pairs.add((src, essid))
 
         return list(ssid_pairs)
 
-    @staticmethod
-    def check_for_wps_and_update_targets(capfile, targets):
+    @classmethod
+    def check_for_wps_and_update_targets(cls, capfile, targets):
         """
-            Given a cap file and list of targets, use TShark to
-            find which BSSIDs in the cap file use WPS.
-            Then update the 'wps' flag for those BSSIDs in the targets.
-
-            Args:
-                capfile - .cap file from airodump containing packets
-                targets - list of Targets from scan, to be updated
+        Update targets with WPS status from capture file.
+        
+        Uses native Scapy implementation if tshark is unavailable.
         """
-
-        if not Tshark.exists():
-            raise ValueError('Cannot detect WPS networks: Tshark does not exist')
-
+        # Try native implementation first if tshark is not available
+        if not cls.exists():
+            if cls._can_use_native():
+                try:
+                    from ..native.wps import ScapyWPS
+                    ScapyWPS.update_targets(capfile, targets)
+                    return
+                except Exception:
+                    pass
+            raise ValueError('Cannot detect WPS networks: Tshark does not exist and native fallback failed')
+        
+        # Use tshark
         command = [
             'tshark',
-            '-r', capfile,  # Path to cap file
-            '-n',  # Don't resolve addresses
-            # Filter WPS broadcast packets
+            '-r', capfile,
+            '-n',
             '-Y', 'wps.wifi_protected_setup_state && wlan.da == ff:ff:ff:ff:ff:ff',
-            '-T', 'fields',  # Only output certain fields
-            '-e', 'wlan.ta',  # BSSID
-            '-e', 'wps.ap_setup_locked',  # Locked status
-            '-E', 'separator=,'  # CSV
+            '-T', 'fields',
+            '-e', 'wlan.ta',
+            '-e', 'wps.ap_setup_locked',
+            '-E', 'separator=,'
         ]
         p = Process(command)
 
@@ -194,7 +235,6 @@ class Tshark(Dependency):
             if not line:
                 continue
             
-            # Split on first comma only to handle trailing commas
             parts = line.split(',', maxsplit=1)
             
             if len(parts) < 1:
@@ -203,13 +243,9 @@ class Tshark(Dependency):
             bssid = parts[0].strip()
             locked = parts[1].strip() if len(parts) > 1 else ''
             
-            # Validate BSSID format (basic check: should be 17 chars with colons)
             if len(bssid) != 17 or bssid.count(':') != 5:
                 continue
             
-            # Check locked status - be specific!
-            # 0x01, 0x1, or 1 = locked
-            # Empty, 0x00, 0, or any other value = unlocked
             if locked.lower() in ('0x01', '0x1', '1'):
                 locked_bssids.add(bssid.upper())
             else:
@@ -223,6 +259,49 @@ class Tshark(Dependency):
                 t.wps = WPSState.LOCKED
             else:
                 t.wps = WPSState.NONE
+
+    @classmethod
+    def check_for_wps_native(cls, capfile, targets):
+        """
+        Update targets with WPS status using native Scapy.
+        
+        This method always uses Scapy, regardless of tshark availability.
+        """
+        if cls._can_use_native():
+            try:
+                from ..native.wps import ScapyWPS
+                ScapyWPS.update_targets(capfile, targets)
+                return True
+            except Exception:
+                pass
+        return False
+    
+    @classmethod
+    def exists(cls):
+        """Check if tshark binary exists."""
+        return Process.exists(cls.dependency_name)
+    
+    @classmethod
+    def can_verify_handshakes(cls) -> bool:
+        """
+        Check if handshake verification is available.
+        
+        Returns True if either tshark or native Scapy is available.
+        """
+        if cls.exists():
+            return True
+        return cls._can_use_native()
+    
+    @classmethod
+    def can_detect_wps(cls) -> bool:
+        """
+        Check if WPS detection is available.
+        
+        Returns True if either tshark or native Scapy is available.
+        """
+        if cls.exists():
+            return True
+        return cls._can_use_native()
 
 
 class TsharkMonitor:
@@ -246,25 +325,18 @@ class TsharkMonitor:
     def start(self):
         """
         Start tshark with filters for deauth/disassoc frames.
-
-        Filter: wlan.fc.type_subtype == 0x0c || wlan.fc.type_subtype == 0x0a
-        - 0x0c = Deauthentication
-        - 0x0a = Disassociation
-
-        Returns:
-            Process object for the tshark process
         """
         import subprocess
 
         command = [
             'tshark',
             '-i', self.interface,
-            '-l',  # Line buffered output
+            '-l',
             '-T', 'fields',
             '-e', 'frame.time_epoch',
             '-e', 'wlan.fc.type_subtype',
-            '-e', 'wlan.sa',  # Source address
-            '-e', 'wlan.da',  # Destination address
+            '-e', 'wlan.sa',
+            '-e', 'wlan.da',
             '-e', 'wlan.bssid',
             '-e', 'wlan_radio.channel',
             '-Y', '(wlan.fc.type_subtype == 0x0c) || (wlan.fc.type_subtype == 0x0a)'
@@ -276,17 +348,6 @@ class TsharkMonitor:
     def read_frame(self):
         """
         Read and parse next frame from tshark output.
-
-        Returns:
-            Dictionary with frame data or None if no frame available:
-            {
-                'timestamp': float,
-                'frame_type': str,
-                'source_mac': str,
-                'dest_mac': str,
-                'bssid': str,
-                'channel': str
-            }
         """
         if not self.proc or not self.proc.pid or not self.proc.pid.stdout:
             return None
@@ -296,7 +357,6 @@ class TsharkMonitor:
             if not line:
                 return None
 
-            # Decode if bytes
             if isinstance(line, bytes):
                 line = line.decode('utf-8', errors='ignore')
 
@@ -332,18 +392,17 @@ if __name__ == '__main__':
     target_bssid = 'A4:2B:8C:16:6B:3A'
     from ..model.target import Target
     fields = [
-        'A4:2B:8C:16:6B:3A',  # BSSID
-        '2015-05-27 19:28:44', '2015-05-27 19:28:46',  # Dates
-        '11',  # Channel
-        '54',  # throughput
-        'WPA2', 'CCMP TKIP', 'PSK',  # AUTH
-        '-58', '2', '0', '0.0.0.0', '9',  # ???
-        'Test Router Please Ignore',  # SSID
+        'A4:2B:8C:16:6B:3A',
+        '2015-05-27 19:28:44', '2015-05-27 19:28:46',
+        '11',
+        '54',
+        'WPA2', 'CCMP TKIP', 'PSK',
+        '-58', '2', '0', '0.0.0.0', '9',
+        'Test Router Please Ignore',
     ]
     t = Target(fields)
     targets = [t]
 
-    # Should update 'wps' field of a target
     Tshark.check_for_wps_and_update_targets(test_file, targets)
 
     print(f'Target(BSSID={targets[0].bssid}).wps = {targets[0].wps} (Expected: 1)')

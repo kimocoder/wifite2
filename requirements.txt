@@ -9,5 +9,5 @@ setuptools>=78.1.1
 
 # Development dependencies (optional)
 # For development, install with: pip install -e ".[dev]"
-# Or install from pyproject.toml: pip install pytest>=8.0.0 pytest-cov>=4.1.0
+# Or install from pyproject.toml: pip install pytest>=8.0.0 pytest-cov>=4.1.0 pytest-timeout>=2.3.0
 urllib3>=2.6.0 # not directly required, pinned by Snyk to avoid a vulnerability

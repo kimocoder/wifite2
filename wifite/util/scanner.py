@@ -9,6 +9,13 @@ from ..util.color import Color
 from ..util.output import OutputManager
 from shlex import quote as shlex_quote
 
+# Check for native scanner availability
+try:
+    from ..native.scanner import NativeScanner, AccessPoint as NativeAP, is_available as native_scanner_available
+    NATIVE_SCANNER_AVAILABLE = native_scanner_available()
+except ImportError:
+    NATIVE_SCANNER_AVAILABLE = False
+
 
 class Scanner(object):
     """ Scans wifi networks & provides menu for selecting targets """
@@ -38,6 +45,25 @@ class Scanner(object):
 
         max_scan_time = Configuration.scan_time
 
+        # Check if airodump-ng is available, fallback to native if needed
+        from ..util.process import Process
+        use_native_scanner = False
+        
+        if not Process.exists('airodump-ng'):
+            if NATIVE_SCANNER_AVAILABLE:
+                from ..util.logger import log_info
+                log_info('Scanner', 'airodump-ng not found, using native scanner (Scapy)')
+                Color.pl('{+} {O}airodump-ng not found, using native scanner (Scapy){W}')
+                use_native_scanner = True
+            else:
+                Color.pl('{!} {R}Error: airodump-ng not found and native scanner not available{W}')
+                self.err_msg = '{!} {R}Scanner not available: install aircrack-ng or Scapy{W}'
+                return False
+        
+        # Route to appropriate scanner
+        if use_native_scanner:
+            return self._find_targets_native(max_scan_time)
+        
         # Loads airodump with interface/channel/etc from Configuration
         try:
             with Airodump() as airodump:
@@ -94,13 +120,17 @@ class Scanner(object):
                         target_count = len(self.targets)
                         client_count = sum(len(t2.clients) for t2 in self.targets)
 
-                        outline = '\r{+} Scanning'
+                        elapsed = int(time() - scan_start_time)
+                        mins = elapsed // 60
+                        secs = elapsed % 60
+
+                        outline = '\r{+} {C}Scanning'
                         if airodump.decloaking:
-                            outline += ' & decloaking'
-                        outline += '. Found'
-                        outline += ' {G}%d{W} target(s),' % target_count
-                        outline += ' {G}%d{W} client(s).' % client_count
-                        outline += ' {O}Ctrl+C{W} when ready '
+                            outline += ' + decloaking'
+                        outline += '{W} [{D}%02d:%02d{W}]' % (mins, secs)
+                        outline += '  Targets: {G}%d{W}' % target_count
+                        outline += '  Clients: {G}%d{W}' % client_count
+                        outline += '  {D}\u2502{W} {O}Ctrl+C{W} to stop '
                         Color.clear_entire_line()
                         Color.p(outline)
 
@@ -205,35 +235,53 @@ class Scanner(object):
 
         self.previous_target_count = len(self.targets)
 
-        # Overwrite the current line
-        Color.p('\r{W}{D}')
+        # Get terminal width for adaptive layout
+        try:
+            term_width = self.get_terminal_width()
+        except Exception:
+            term_width = 120
 
-        # First row: columns
-        Color.p('   NUM')
-        Color.p('                      ESSID')
+        # Column widths
+        col_num = 5
+        col_essid = 26
+        col_bssid = 19 if Configuration.show_bssids else 0
+        col_mfg = 23 if Configuration.show_manufacturers else 0
+        col_ch = 4
+        col_enc = 9
+        col_pwr = 7
+        col_wps = 5
+        col_cli = 7
+
+        # Build header
+        Color.p('\r')
+        hdr = ''
+        hdr += '{W}{D} ' + 'NUM'.rjust(col_num)
+        hdr += '  ' + 'ESSID'.ljust(col_essid)
         if Configuration.show_bssids:
-            Color.p('              BSSID')
-
+            hdr += '  ' + 'BSSID'.ljust(col_bssid)
         if Configuration.show_manufacturers:
-            Color.p('           MANUFACTURER')
+            hdr += '  ' + 'MANUFACTURER'.ljust(col_mfg)
+        hdr += '  ' + 'CH'.rjust(col_ch)
+        hdr += '  ' + 'ENCR'.ljust(col_enc)
+        hdr += '  ' + 'PWR'.rjust(col_pwr)
+        hdr += '  ' + 'WPS'.center(col_wps)
+        hdr += '  ' + 'CLI'.rjust(col_cli)
+        hdr += '{W}'
+        Color.pl(hdr)
 
-        Color.pl('   CH  ENCR     PWR   WPS  CLIENT')
-
-        # Second row: separator
-        Color.p('   ---')
-        Color.p('  -------------------------')
+        # Separator
+        sep_len = col_num + col_essid + col_ch + col_enc + col_pwr + col_wps + col_cli + 16
         if Configuration.show_bssids:
-            Color.p('  -----------------')
-
+            sep_len += col_bssid + 2
         if Configuration.show_manufacturers:
-            Color.p('  ---------------------')
-
-        Color.pl('  ---  -----    ----  ---  ------{W}')
+            sep_len += col_mfg + 2
+        sep_len = min(sep_len, term_width - 2)
+        Color.pl('{W}{D} ' + '\u2500' * sep_len + '{W}')
 
         # Remaining rows: targets
         for idx, target in enumerate(self.targets, start=1):
             Color.clear_entire_line()
-            Color.p('   {G}%s  ' % str(idx).rjust(3))
+            Color.p(' {G}%s{W}  ' % str(idx).rjust(col_num))
             Color.pl(target.to_str(
                 Configuration.show_bssids,
                 Configuration.show_manufacturers
@@ -291,6 +339,210 @@ class Scanner(object):
         """
         return self.targets
 
+    def _find_targets_native(self, max_scan_time):
+        """
+        Scan for targets using native Scapy-based scanner.
+        
+        This is a fallback method when airodump-ng is not available.
+        Uses NativeScanner from the native module.
+        
+        Args:
+            max_scan_time: Maximum scan duration in seconds (0 = until interrupted)
+            
+        Returns:
+            True if scan completed successfully
+        """
+        from ..util.logger import log_info, log_debug, log_warning
+        from ..model.target import Target
+        
+        log_info('Scanner', 'Starting native scanner')
+        
+        # Determine scan band
+        if Configuration.five_ghz:
+            band = '5'
+        elif Configuration.all_bands:
+            band = 'all'
+        else:
+            band = '2.4'
+        
+        # Determine channels
+        channels = None
+        if Configuration.target_channel:
+            try:
+                # Parse channel specification (supports ranges like "1,6,11" or "1-11")
+                channels = []
+                for part in Configuration.target_channel.split(','):
+                    if '-' in part:
+                        start, end = map(int, part.split('-'))
+                        channels.extend(range(start, end + 1))
+                    else:
+                        channels.append(int(part))
+            except ValueError:
+                log_warning('Scanner', f'Invalid channel spec: {Configuration.target_channel}')
+        
+        Color.pl('{+} {C}Starting native scanner (Scapy){W}')
+        Color.pl('{+} {C}Band: {G}%s{C}, Channels: {G}%s{W}' % (
+            band, channels if channels else 'auto'
+        ))
+        
+        # Initialize TUI view if available
+        if self.use_tui:
+            try:
+                self.view = OutputManager.get_scanner_view()
+                controller = OutputManager.get_controller()
+                if controller:
+                    controller.start()
+            except Exception as e:
+                Color.pl('{!} {O}TUI failed to start: %s{W}' % str(e))
+                self.use_tui = False
+                self.view = None
+        
+        # Create and start native scanner
+        scanner = NativeScanner(
+            interface=Configuration.interface,
+            channels=channels,
+            band=band,
+            hop_interval=0.5
+        )
+        
+        try:
+            scanner.start()
+            scan_start_time = time()
+            
+            while True:
+                # Convert native APs to Target objects
+                native_aps = scanner.get_targets()
+                self.targets = self._convert_native_targets(native_aps)
+                
+                # Periodic memory cleanup
+                self._cleanup_counter += 1
+                if self._cleanup_counter % 10 == 0:
+                    self._cleanup_memory()
+                
+                # Memory monitoring
+                if self._cleanup_counter % 50 == 0:
+                    from ..util.memory import MemoryMonitor
+                    MemoryMonitor.periodic_check(self._cleanup_counter)
+                
+                # Check for specific target
+                if self.found_target():
+                    scanner.stop()
+                    return True
+                
+                # Update display
+                if self.use_tui and self.view:
+                    self.view.update_targets(self.targets, False)
+                else:
+                    self.print_targets()
+                    
+                    target_count = len(self.targets)
+                    client_count = sum(len(t.clients) for t in self.targets if hasattr(t, 'clients'))
+                    stats = scanner.get_stats()
+                    
+                    outline = '\r{+} Scanning (native).'
+                    outline += ' Found {G}%d{W} target(s),' % target_count
+                    outline += ' {G}%d{W} client(s).' % client_count
+                    outline += ' Ch:{C}%s{W}' % stats.get('current_channel', '?')
+                    outline += ' {O}Ctrl+C{W} when ready '
+                    Color.clear_entire_line()
+                    Color.p(outline)
+                
+                # Check timeout
+                if max_scan_time > 0 and time() > scan_start_time + max_scan_time:
+                    scanner.stop()
+                    return True
+                
+                sleep(1)
+                
+        except KeyboardInterrupt:
+            scanner.stop()
+            return self._extracted_from_find_targets_50()
+        finally:
+            scanner.stop()
+            if self.use_tui and self.view:
+                self.view.stop()
+                controller = OutputManager.get_controller()
+                if controller:
+                    controller.stop()
+    
+    def _convert_native_targets(self, native_aps):
+        """
+        Convert native AccessPoint objects to Target objects.
+        
+        Args:
+            native_aps: List of NativeAP objects from NativeScanner
+            
+        Returns:
+            List of Target objects compatible with wifite's attack system
+        """
+        from ..model.target import Target, WPSState
+        from ..model.client import Client
+        
+        targets = []
+        
+        for ap in native_aps:
+            try:
+                # Build CSV-like fields that Target expects
+                # Format: BSSID, First time seen, Last time seen, channel, Speed, Privacy, Cipher, Authentication, Power, # beacons, # IV, LAN IP, ID-length, ESSID, Key
+                
+                # Map encryption to airodump format
+                privacy = ap.encryption
+                if privacy == 'OPEN':
+                    privacy = 'OPN'
+                elif privacy == 'WPA3':
+                    privacy = 'WPA3'
+                elif privacy == 'WPA2':
+                    privacy = 'WPA2'
+                elif privacy == 'WPA':
+                    privacy = 'WPA'
+                elif privacy == 'WEP':
+                    privacy = 'WEP'
+                
+                # Build fields string
+                fields = [
+                    ap.bssid,                    # BSSID
+                    '',                          # First time seen
+                    '',                          # Last time seen
+                    str(ap.channel),            # Channel
+                    '54',                        # Speed
+                    privacy,                     # Privacy
+                    ap.cipher or '',             # Cipher
+                    ap.auth or '',               # Authentication
+                    str(ap.power),               # Power
+                    str(ap.beacons),            # Beacons
+                    '0',                         # IV
+                    '0.0.0.0',                  # LAN IP
+                    str(len(ap.essid)),         # ID-length
+                    ap.essid or '',             # ESSID
+                    ''                           # Key
+                ]
+                
+                # Create Target from fields
+                target = Target(fields)
+                
+                # Set WPS state
+                if ap.wps:
+                    target.wps = WPSState.LOCKED if ap.wps_locked else WPSState.UNLOCKED
+                else:
+                    target.wps = WPSState.NONE
+                
+                # Add clients
+                for client_mac in ap.clients:
+                    client = Client(['', client_mac, ap.bssid, str(ap.power), '', '', ''])
+                    target.clients.append(client)
+                
+                # Store last_seen for cleanup
+                target.last_seen = ap.last_seen
+                
+                targets.append(target)
+                
+            except Exception as e:
+                from ..util.logger import log_debug
+                log_debug('Scanner', f'Error converting native AP {ap.bssid}: {e}')
+                continue
+        
+        return targets
+    
     def _cleanup_memory(self):
         """Enhanced memory cleanup with time-based expiration to prevent bloat during long scans"""
         from time import time
@@ -400,7 +652,7 @@ class Scanner(object):
         input_str = '{+} Select target(s)'
         input_str += ' ({G}1-%d{W})' % len(self.targets)
         input_str += ' separated by commas, dashes'
-        input_str += ' or {G}all{W}: '
+        input_str += ' or {G}all{W}: {C}'
 
         chosen_targets = []
 

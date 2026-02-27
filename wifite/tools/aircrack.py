@@ -13,6 +13,11 @@ class Aircrack(Dependency):
     dependency_required = True
     dependency_name = 'aircrack-ng'
     dependency_url = 'https://www.aircrack-ng.org/install.html'
+    dependency_packages = {
+        'apt': 'aircrack-ng', 'pacman': 'aircrack-ng',
+        'dnf': 'aircrack-ng', 'brew': 'aircrack-ng',
+    }
+    dependency_category = Dependency.CATEGORY_CORE
 
     def __init__(self, ivs_file2=None):
 

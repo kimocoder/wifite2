@@ -232,7 +232,8 @@ class Airmon(Dependency):
                     try:
                         # Ensure interface is down before changing mode
                         Ip.down(iface_name)
-                        subprocess.run(['echo', '4', '>', con_mode_path], shell=True, check=True, capture_output=True)
+                        with open(con_mode_path, 'w') as f:
+                            f.write('4')
                         # Bring interface up
                         Ip.up(iface_name)
                         # Verify it's in monitor mode

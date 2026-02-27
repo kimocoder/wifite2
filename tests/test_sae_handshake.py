@@ -13,11 +13,15 @@ import sys
 import os
 import tempfile
 
+import pytest
+
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from wifite.model.sae_handshake import SAEHandshake
 from wifite.util.process import Process
+
+pytestmark = pytest.mark.timeout(30)
 
 
 class TestSAEHandshake(unittest.TestCase):

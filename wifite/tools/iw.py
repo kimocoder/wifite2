@@ -8,6 +8,11 @@ class Iw(Dependency):
     dependency_required = True
     dependency_name = 'iw'
     dependency_url = 'apt install iw'
+    dependency_packages = {
+        'apt': 'iw', 'pacman': 'iw', 'dnf': 'iw',
+        'apk': 'iw', 'brew': 'iw',
+    }
+    dependency_category = Dependency.CATEGORY_CORE
 
     @classmethod
     def mode(cls, iface, mode_name):

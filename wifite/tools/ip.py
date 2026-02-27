@@ -10,6 +10,11 @@ class Ip(Dependency):
     dependency_required = True
     dependency_name = 'ip'
     dependency_url = 'apt install iproute2'
+    dependency_packages = {
+        'apt': 'iproute2', 'pacman': 'iproute2', 'dnf': 'iproute',
+        'apk': 'iproute2',
+    }
+    dependency_category = Dependency.CATEGORY_CORE
 
     @classmethod
     def up(cls, interface):

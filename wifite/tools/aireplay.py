@@ -60,6 +60,20 @@ class Aireplay(Thread, Dependency):
     dependency_required = True
     dependency_name = 'aireplay-ng'
     dependency_url = 'https://www.aircrack-ng.org/install.html'
+    
+    # Track if native Scapy deauth is available
+    _native_deauth_available = None
+    
+    @classmethod
+    def _can_use_native_deauth(cls) -> bool:
+        """Check if native Scapy deauth is available."""
+        if cls._native_deauth_available is None:
+            try:
+                from ..native.deauth import ScapyDeauth
+                cls._native_deauth_available = ScapyDeauth.is_available()
+            except ImportError:
+                cls._native_deauth_available = False
+        return cls._native_deauth_available
 
     def __init__(self, target, attack_type, client_mac=None, replay_file=None):
         """
@@ -361,8 +375,7 @@ class Aireplay(Thread, Dependency):
             Configuration.interface
         ]
 
-        cmd = f""""{'" "'.join(cmd)}\""""
-        (out, err) = Process.call(cmd, cwd=Configuration.temp(), shell=True)
+        (out, err) = Process.call(cmd, cwd=Configuration.temp())
         if out.strip() == f'Wrote packet to: {forged_file}':
             return forged_file
         from ..util.color import Color
@@ -370,10 +383,12 @@ class Aireplay(Thread, Dependency):
         Color.pl('output:\n"%s"' % out)
         return None
 
-    @staticmethod
-    def deauth(target_bssid, essid=None, client_mac=None, num_deauths=None, timeout=2, interface=None):
+    @classmethod
+    def deauth(cls, target_bssid, essid=None, client_mac=None, num_deauths=None, timeout=2, interface=None, prefer_native=True):
         """
         Send deauthentication packets to a target.
+        
+        Uses native Scapy implementation when available, falls back to aireplay-ng.
         
         Args:
             target_bssid: BSSID of the target AP
@@ -382,10 +397,37 @@ class Aireplay(Thread, Dependency):
             num_deauths: Number of deauth packets to send
             timeout: Timeout in seconds
             interface: Wireless interface to use (None = use Configuration.interface)
+            prefer_native: If True, prefer Scapy over aireplay-ng (default: True)
+        
+        Returns:
+            Tuple of (success: bool, packets_sent: int) when using native,
+            or None when using aireplay-ng (for backwards compatibility)
         """
         num_deauths = num_deauths or Configuration.num_deauths
         interface = interface or Configuration.interface
         
+        # Try native Scapy deauth first
+        if prefer_native and cls._can_use_native_deauth():
+            try:
+                from ..native.deauth import ScapyDeauth
+                success, sent = ScapyDeauth.deauth(
+                    interface=interface,
+                    bssid=target_bssid,
+                    client_mac=client_mac,
+                    count=num_deauths,
+                    verbose=Configuration.verbose > 1
+                )
+                if success:
+                    if Configuration.verbose > 1:
+                        from ..util.color import Color
+                        Color.pl('{+} {C}Scapy{W}: sent {G}%d{W} deauth packets to {C}%s{W}' % (sent, target_bssid))
+                    return success, sent
+            except Exception as e:
+                if Configuration.verbose > 1:
+                    from ..util.color import Color
+                    Color.pl('{!} {O}Native deauth failed, falling back to aireplay-ng: %s{W}' % str(e))
+        
+        # Fallback to aireplay-ng
         deauth_cmd = [
             'aireplay-ng',
             '-0',  # Deauthentication
@@ -405,6 +447,39 @@ class Aireplay(Thread, Dependency):
             if proc.running_time() >= timeout:
                 proc.interrupt()
             time.sleep(0.2)
+        
+        return None  # aireplay-ng doesn't return packet count
+    
+    @classmethod
+    def deauth_native(cls, target_bssid, client_mac=None, num_deauths=None, interface=None):
+        """
+        Send deauth using native Scapy implementation only.
+        
+        Args:
+            target_bssid: BSSID of the target AP
+            client_mac: Specific client to deauth (None = broadcast)
+            num_deauths: Number of deauth packets to send
+            interface: Wireless interface to use
+            
+        Returns:
+            Tuple of (success: bool, packets_sent: int)
+        """
+        num_deauths = num_deauths or Configuration.num_deauths
+        interface = interface or Configuration.interface
+        
+        if not cls._can_use_native_deauth():
+            return False, 0
+        
+        try:
+            from ..native.deauth import ScapyDeauth
+            return ScapyDeauth.deauth(
+                interface=interface,
+                bssid=target_bssid,
+                client_mac=client_mac,
+                count=num_deauths
+            )
+        except Exception:
+            return False, 0
 
 
 class ContinuousDeauth(Thread):
@@ -414,10 +489,15 @@ class ContinuousDeauth(Thread):
     Sends deauth packets at configurable intervals to force clients
     to disconnect from the legitimate AP. Can pause when clients
     connect to the rogue AP.
+    
+    Uses native Scapy implementation when available for better performance.
     """
+    
+    # Track if native Scapy deauth is available
+    _native_available = None
 
     def __init__(self, target_bssid, interface, essid=None, client_mac=None,
-                 interval=5, num_deauths=5, broadcast=True):
+                 interval=5, num_deauths=5, broadcast=True, prefer_native=True):
         """
         Initialize continuous deauth.
 
@@ -429,6 +509,7 @@ class ContinuousDeauth(Thread):
             interval: Seconds between deauth bursts
             num_deauths: Number of deauth packets per burst
             broadcast: If True, deauth all clients; if False, only target client_mac
+            prefer_native: If True, prefer Scapy over aireplay-ng
         """
         super().__init__()
         self.daemon = True
@@ -439,6 +520,7 @@ class ContinuousDeauth(Thread):
         self.interval = interval
         self.num_deauths = num_deauths
         self.broadcast = broadcast
+        self.prefer_native = prefer_native
         self.running = False
         self.paused = False
         self.process = None
@@ -448,6 +530,20 @@ class ContinuousDeauth(Thread):
         # Statistics
         self.start_time = None
         self.deauth_count = 0
+        
+        # Check native availability
+        self._check_native()
+    
+    @classmethod
+    def _check_native(cls):
+        """Check if native Scapy deauth is available."""
+        if cls._native_available is None:
+            try:
+                from ..native.deauth import ScapyDeauth
+                cls._native_available = ScapyDeauth.is_available()
+            except ImportError:
+                cls._native_available = False
+        return cls._native_available
 
     def run(self):
         """Main deauth loop."""
@@ -476,9 +572,28 @@ class ContinuousDeauth(Thread):
                 time.sleep(1)
 
     def _send_deauth_burst(self):
-        """Send a burst of deauth packets."""
+        """Send a burst of deauth packets using native or aireplay-ng."""
+        client = self.client_mac if not self.broadcast else None
+        
+        # Try native Scapy first
+        if self.prefer_native and self._native_available:
+            try:
+                from ..native.deauth import ScapyDeauth
+                success, sent = ScapyDeauth.deauth(
+                    interface=self.interface,
+                    bssid=self.target_bssid,
+                    client_mac=client,
+                    count=self.num_deauths,
+                    verbose=False
+                )
+                if success:
+                    self.total_deauths_sent += sent
+                    return
+            except Exception:
+                pass  # Fall back to aireplay-ng
+        
+        # Fallback to aireplay-ng
         try:
-            # Build deauth command
             deauth_cmd = [
                 'aireplay-ng',
                 '-0',  # Deauthentication
@@ -489,8 +604,8 @@ class ContinuousDeauth(Thread):
             ]
 
             # Add client-specific or broadcast deauth
-            if not self.broadcast and self.client_mac:
-                deauth_cmd.extend(['-c', self.client_mac])
+            if client:
+                deauth_cmd.extend(['-c', client])
 
             # Add ESSID if provided
             if self.essid:

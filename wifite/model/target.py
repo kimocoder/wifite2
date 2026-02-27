@@ -46,6 +46,7 @@ class Target(object):
     """
         Holds details for a 'Target' aka Access Point (e.g. router).
     """
+    _ansi_re = re.compile(r'\033\[[0-9;]*m')
 
     def __init__(self, fields):
         """
@@ -236,117 +237,111 @@ class Target(object):
         if len(essid) > max_essid_len:
             essid = f'{essid[:max_essid_len - 3]}...'
         else:
-            essid = essid.rjust(max_essid_len)
+            essid = essid.ljust(max_essid_len)
 
         if self.essid_known:
-            # Known ESSID
             essid = Color.s('{C}%s' % essid)
         else:
-            # Unknown ESSID
-            essid = Color.s('{O}%s' % essid)
-
-        # if self.power < self.max_power:
-        #     var = self.max_power
+            essid = Color.s('{D}%s' % essid)
 
         # Add a '*' if we decloaked the ESSID
-        decloaked_char = '*' if self.decloaked else ' '
-        essid += Color.s('{P}%s' % decloaked_char)
+        decloaked_char = Color.s('{P}*') if self.decloaked else ' '
+        essid += decloaked_char
 
-        bssid = Color.s('{O}%s  ' % self.bssid) if show_bssid else ''
+        bssid = Color.s('{D}%s{W}  ' % self.bssid) if show_bssid else ''
         if show_manufacturer:
             oui = ''.join(self.bssid.split(':')[:3])
             self.manufacturer = Configuration.manufacturers.get(oui, "")
 
-            max_oui_len = 27
-            manufacturer = Color.s('{W}%s  ' % self.manufacturer)
-            # Trim manufacturer name if needed
-            if len(manufacturer) > max_oui_len:
-                manufacturer = f'{manufacturer[:max_oui_len - 3]}...'
+            max_oui_len = 21
+            mfg_name = self.manufacturer
+            if len(mfg_name) > max_oui_len:
+                mfg_name = f'{mfg_name[:max_oui_len - 3]}...'
             else:
-                manufacturer = manufacturer.rjust(max_oui_len)
+                mfg_name = mfg_name.ljust(max_oui_len)
+            manufacturer = Color.s('{W}%s  ' % mfg_name)
         else:
             manufacturer = ''
 
-        channel_color = '{C}' if int(self.channel) > 14 else '{G}'
-        channel = Color.s(f'{channel_color}{str(self.channel).rjust(3)}')
+        channel_color = '{C}' if int(self.channel) > 14 else '{W}'
+        channel = Color.s(f'{channel_color}{str(self.channel).rjust(4)}{{W}}')
 
-        # Use primary_encryption and primary_authentication for display
-        # Check for WPA3 transition mode
+        # Build encryption display
         if self.is_transition:
-            # Show "W23" for transition mode (WPA2/WPA3)
-            display_encryption = Color.s('{P}W23') # Purple for WPA3 transition
+            display_encryption = Color.s('{P}W2/W3')
             auth_suffix = ''
-            # Add PMF indicator for transition mode
             if self.pmf_status == 'required':
-                auth_suffix = Color.s('{P}+') # PMF required
+                auth_suffix = Color.s('{G}+')
             elif self.pmf_status == 'optional':
-                auth_suffix = Color.s('{O}~') # PMF optional
+                auth_suffix = Color.s('{O}~')
         else:
-            display_encryption = self.primary_encryption.rjust(4) # Adjusted rjust for WPA3
+            enc = self.primary_encryption
             auth_suffix = ''
-            if self.primary_encryption == 'WPA3':
-                display_encryption = Color.s('{P}%s' % display_encryption) # Purple for WPA3
-                # Don't add -S suffix since WPA3 already implies SAE
-                # Just add PMF indicator if present
+            if enc == 'WPA3':
+                display_encryption = Color.s('{P}WPA3 ')
                 if self.pmf_status == 'required':
-                    auth_suffix = Color.s('{P}+') # PMF required
+                    auth_suffix = Color.s('{G}+')
                 elif self.pmf_status == 'optional':
-                    auth_suffix = Color.s('{O}~') # PMF optional
-                # Only show -E for enterprise WPA3
+                    auth_suffix = Color.s('{O}~')
                 if self.primary_authentication == 'MGT':
-                    auth_suffix = Color.s('{R}-E') + auth_suffix # Red for Enterprise
-            elif self.primary_encryption == 'WPA2':
-                display_encryption = Color.s('{O}%s' % display_encryption) # Orange for WPA2
+                    auth_suffix = Color.s('{R}-E') + auth_suffix
+            elif enc == 'WPA2':
+                display_encryption = Color.s('{O}WPA2 ')
                 if self.primary_authentication == 'PSK':
                     auth_suffix = Color.s('{O}-P')
                 elif self.primary_authentication == 'MGT':
                     auth_suffix = Color.s('{R}-E')
-            elif self.primary_encryption == 'WPA':
-                display_encryption = Color.s('{O}%s' % display_encryption) # Orange for WPA
+            elif enc == 'WPA':
+                display_encryption = Color.s('{O}WPA  ')
                 if self.primary_authentication == 'PSK':
                     auth_suffix = Color.s('{O}-P')
                 elif self.primary_authentication == 'MGT':
                     auth_suffix = Color.s('{R}-E')
-            elif self.primary_encryption == 'WEP':
-                display_encryption = Color.s('{G}%s' % display_encryption) # Green for WEP
-            elif self.primary_encryption == 'OWE':
-                display_encryption = Color.s('{B}%s' % display_encryption) # Blue for OWE
+            elif enc == 'WEP':
+                display_encryption = Color.s('{G}WEP  ')
+            elif enc == 'OWE':
+                display_encryption = Color.s('{B}OWE  ')
             else:
-                display_encryption = Color.s('{W}%s' % display_encryption) # White for others
+                display_encryption = Color.s('{W}%-5s' % enc)
 
-        # Calculate padding for ENCR column based on its content length
-        # Max length of ENCR (e.g. WPA2-P or W23+) is now variable
-        # Pad with spaces to ensure alignment
-        base_len = 3 if self.is_transition else len(self.primary_encryption)
-        suffix_len = len(auth_suffix.replace(Color.s('{P}'), '').replace(Color.s('{O}'), '').replace(Color.s('{R}'), '').replace(Color.s('{W}'), ''))
-        encryption_padding = " " * max(0, 7 - base_len - suffix_len)
-        encryption_display_string = f"{display_encryption}{auth_suffix}{encryption_padding}"
+        # Pad encryption column to fixed visible width (9 chars)
+        # Strip ANSI to measure visible length
+        vis_enc = self._ansi_re.sub('', f'{Color.s(str(display_encryption))}{Color.s(str(auth_suffix))}')
+        enc_pad = ' ' * max(0, 9 - len(vis_enc))
+        encryption_display_string = f'{display_encryption}{auth_suffix}{enc_pad}'
 
-        power = f'{str(self.power).rjust(3)}db'
-        if self.power > 50:
-            color = 'G'
-        elif self.power > 35:
-            color = 'O'
+        # Signal strength bar + dBm value
+        pwr_dbm = self.power
+        if pwr_dbm > 50:
+            pwr_bar = Color.s('{G}\u2588\u2588\u2588')
+            pwr_color = 'G'
+        elif pwr_dbm > 35:
+            pwr_bar = Color.s('{O}\u2588\u2588{D}\u2591')
+            pwr_color = 'O'
+        elif pwr_dbm > 20:
+            pwr_bar = Color.s('{R}\u2588{D}\u2591\u2591')
+            pwr_color = 'R'
         else:
-            color = 'R'
-        power = Color.s('{%s}%s' % (color, power))
+            pwr_bar = Color.s('{R}\u2591{D}\u2591\u2591')
+            pwr_color = 'R'
+        power = f'{pwr_bar} {Color.s("{%s}%s" % (pwr_color, str(pwr_dbm).rjust(2)))}'
 
         if self.wps == WPSState.UNLOCKED:
-            wps = Color.s('{G} yes')
+            wps = Color.s(' {G}yes')
         elif self.wps == WPSState.NONE:
-            wps = Color.s('{O}  no')
+            wps = Color.s(' {D} - ')
         elif self.wps == WPSState.LOCKED:
-            wps = Color.s('{R}lock')
+            wps = Color.s(' {R}lck')
         elif self.wps == WPSState.UNKNOWN:
-            wps = Color.s('{O} n/a')
+            wps = Color.s(' {O} ? ')
         else:
-            wps = ' ERR'
+            wps = '  - '
 
-        clients = '       '
+        clients = Color.s('{D}     - ')
         if len(self.clients) > 0:
-            clients = Color.s('{G}  ' + str(len(self.clients)))
+            clients = Color.s('{G}     %s' % str(len(self.clients)))
 
-        result = f'{essid}  {bssid}{manufacturer}{channel}  {encryption_display_string}   {power}  {wps}  {clients}'
+        result = f'{essid} {bssid}{manufacturer}{channel}  {encryption_display_string} {power}  {wps} {clients}'
 
         result += Color.s('{W}')
         return result

@@ -38,3 +38,6 @@ Module.symvers
 *.pcap
 *.cap
 *.log
+
+# kimocoder
+.claude/

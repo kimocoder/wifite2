@@ -13,11 +13,15 @@ from unittest.mock import Mock, patch, MagicMock, call
 import sys
 import os
 
+import pytest
+
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from wifite.util.wpa3 import WPA3Detector, WPA3Info
 from wifite.attack.wpa3_strategy import WPA3AttackStrategy
+
+pytestmark = pytest.mark.timeout(30)
 
 
 class TestWPA3DowngradeFlow(unittest.TestCase):

@@ -17,9 +17,15 @@ import time
 import os
 import re
 from shutil import copy
+from contextlib import contextmanager
 
 
 class AttackWPA(Attack):
+    
+    # Maximum retry attempts for recoverable errors
+    MAX_RETRY_ATTEMPTS = 3
+    RETRY_DELAY_SECONDS = 2
+    
     def __init__(self, target):
         super(AttackWPA, self).__init__(target)
         self.clients = []
@@ -31,6 +37,11 @@ class AttackWPA(Attack):
         self.capture_interface = None  # Dedicated interface for handshake capture
         self.deauth_interface = None   # Dedicated interface for deauthentication
         
+        # Error recovery tracking
+        self._retry_count = 0
+        self._last_error = None
+        self._recovered_from_error = False
+        
         # Initialize TUI view if in TUI mode
         self.view = None
         if OutputManager.is_tui_mode():
@@ -40,6 +51,170 @@ class AttackWPA(Attack):
             except Exception:
                 # If TUI initialization fails, continue without it
                 self.view = None
+    
+    @contextmanager
+    def _error_recovery_context(self, operation_name: str):
+        """
+        Context manager for automatic error recovery during WPA attacks.
+        
+        Handles common recoverable errors:
+        - Interface going down
+        - Channel switching failures
+        - Resource exhaustion
+        - Process crashes
+        
+        Args:
+            operation_name: Name of operation for logging
+            
+        Yields:
+            None - use 'with' statement to wrap operations
+        """
+        from ..util.logger import log_error, log_info, log_warning
+        from ..util.process import ProcessManager, Process
+        from ..util.memory import MemoryMonitor
+        
+        try:
+            yield
+        except OSError as e:
+            self._last_error = e
+            log_error('AttackWPA', f'{operation_name} OS error: {e}', e)
+            
+            # Check for specific recoverable errors
+            if e.errno == 24:  # Too many open files
+                log_warning('AttackWPA', 'Too many open files, triggering cleanup')
+                ProcessManager().cleanup_all()
+                Process.cleanup_zombies()
+                MemoryMonitor.force_cleanup()
+                self._recovered_from_error = True
+                raise  # Let caller retry
+            elif e.errno in (19, 100):  # No such device, Network down
+                log_warning('AttackWPA', 'Interface error, attempting recovery')
+                self._attempt_interface_recovery()
+                raise
+            else:
+                raise
+                
+        except subprocess.CalledProcessError as e:
+            self._last_error = e
+            log_error('AttackWPA', f'{operation_name} subprocess error: {e}', e)
+            # Clean up and let caller decide whether to retry
+            ProcessManager().cleanup_all()
+            raise
+            
+        except MemoryError as e:
+            self._last_error = e
+            log_error('AttackWPA', f'{operation_name} memory error: {e}', e)
+            # Aggressive cleanup
+            MemoryMonitor.force_cleanup()
+            import gc
+            gc.collect()
+            self._recovered_from_error = True
+            raise
+    
+    def _attempt_interface_recovery(self):
+        """
+        Attempt to recover a failed interface.
+        
+        Tries to bring the interface back to a working state.
+        """
+        from ..tools.airmon import Airmon
+        from ..util.logger import log_info, log_warning, log_error
+        
+        log_info('AttackWPA', 'Attempting interface recovery')
+        Color.pl('{!} {O}Attempting interface recovery...{W}')
+        
+        if self.view:
+            self.view.add_log('Attempting interface recovery...')
+        
+        try:
+            # Get current interface
+            iface = Configuration.interface
+            
+            # Try to restart monitor mode
+            log_info('AttackWPA', f'Restarting monitor mode on {iface}')
+            
+            # Stop and restart
+            try:
+                Airmon.stop(iface)
+                time.sleep(1)
+            except Exception:
+                pass
+            
+            # Get base interface name (remove 'mon' suffix if present)
+            base_iface = iface.replace('mon', '') if iface.endswith('mon') else iface
+            
+            # Start fresh monitor mode
+            new_iface = Airmon.start(base_iface)
+            if new_iface:
+                Configuration.interface = new_iface
+                log_info('AttackWPA', f'Interface recovered: {new_iface}')
+                Color.pl('{+} {G}Interface recovered: %s{W}' % new_iface)
+                if self.view:
+                    self.view.add_log(f'Interface recovered: {new_iface}')
+                self._recovered_from_error = True
+                return True
+            else:
+                log_error('AttackWPA', 'Failed to recover interface')
+                Color.pl('{!} {R}Failed to recover interface{W}')
+                return False
+                
+        except Exception as e:
+            log_error('AttackWPA', f'Interface recovery failed: {e}', e)
+            Color.pl('{!} {R}Interface recovery failed: %s{W}' % str(e))
+            return False
+    
+    def _run_with_retry(self, operation, operation_name: str, max_retries: int = None):
+        """
+        Run an operation with automatic retry on recoverable errors.
+        
+        Args:
+            operation: Callable to execute
+            operation_name: Name for logging
+            max_retries: Maximum retry attempts (default: MAX_RETRY_ATTEMPTS)
+            
+        Returns:
+            Result of operation, or None if all retries failed
+        """
+        from ..util.logger import log_info, log_warning, log_error
+        
+        if max_retries is None:
+            max_retries = self.MAX_RETRY_ATTEMPTS
+        
+        self._retry_count = 0
+        last_exception = None
+        
+        while self._retry_count < max_retries:
+            try:
+                with self._error_recovery_context(operation_name):
+                    result = operation()
+                    
+                    # Log if we recovered from an error
+                    if self._recovered_from_error and self._retry_count > 0:
+                        log_info('AttackWPA', f'{operation_name} succeeded after {self._retry_count} retry(s)')
+                        if self.view:
+                            self.view.add_log(f'Operation succeeded after recovery')
+                    
+                    return result
+                    
+            except (OSError, subprocess.CalledProcessError, MemoryError) as e:
+                last_exception = e
+                self._retry_count += 1
+                
+                if self._retry_count < max_retries:
+                    log_warning('AttackWPA', f'{operation_name} failed (attempt {self._retry_count}/{max_retries}): {e}')
+                    Color.pl('{!} {O}%s failed, retrying (%d/%d)...{W}' % (
+                        operation_name, self._retry_count, max_retries))
+                    
+                    if self.view:
+                        self.view.add_log(f'Retrying after error ({self._retry_count}/{max_retries})')
+                    
+                    # Delay before retry
+                    time.sleep(self.RETRY_DELAY_SECONDS * self._retry_count)  # Exponential backoff
+                else:
+                    log_error('AttackWPA', f'{operation_name} failed after {max_retries} attempts: {e}', e)
+                    Color.pl('{!} {R}%s failed after %d attempts{W}' % (operation_name, max_retries))
+        
+        return None
 
     def _get_interface_assignment(self):
         """

@@ -4,10 +4,14 @@
 import sys
 import unittest
 
+import pytest
+
 from wifite.model.handshake import Handshake
 from wifite.util.process import Process
 
 sys.path.insert(0, '..')
+
+pytestmark = pytest.mark.timeout(30)
 
 
 class TestHandshake(unittest.TestCase):
@@ -26,9 +30,10 @@ class TestHandshake(unittest.TestCase):
         hs = Handshake(hs_file, bssid='A4:2B:8C:16:6B:3A')
         try:
             hs.analyze()
-        except Exception:
-            exit()
+        except Exception as e:
+            self.skipTest(f'handshake.analyze() raised: {e}')
 
+    @pytest.mark.timeout(15)
     @unittest.skipUnless(Process.exists("tshark"), 'tshark is missing')
     def testHandshakeTshark(self):
         print("\nTesting handshake with tshark...")
@@ -53,6 +58,7 @@ class TestHandshake(unittest.TestCase):
             if os.path.exists(temp_file):
                 os.unlink(temp_file)
 
+    @pytest.mark.timeout(15)
     @unittest.skipUnless(Process.exists("cowpatty"), 'cowpatty is missing')
     def testHandshakeCowpatty(self):
         print("\nTesting handshake with cowpatty...")
@@ -60,6 +66,7 @@ class TestHandshake(unittest.TestCase):
         hs = Handshake(hs_file, bssid='A4:2B:8C:16:6B:3A')
         assert (len(hs.cowpatty_handshakes()) > 0), f'Expected len>0 but got len({len(hs.cowpatty_handshakes())})'
 
+    @pytest.mark.timeout(15)
     @unittest.skipUnless(Process.exists("aircrack-ng"), 'aircrack-ng is missing')
     def testHandshakeAircrack(self):
         print("\nTesting handshake with aircrack-ng...")

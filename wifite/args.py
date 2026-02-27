@@ -1039,6 +1039,13 @@ against the real AP and captures valid passwords.
                               dest='crack_handshake',
                               help=Color.s('Show commands to crack a captured handshake'))
 
+        commands.add_argument('--syscheck',
+                              action='store_true',
+                              dest='syscheck',
+                              help=Color.s('Comprehensive system readiness check: tools, interfaces, '
+                                         'driver compatibility, attack readiness matrix. '
+                                         'Use with {C}-v{W} to include monitor mode smoke test.'))
+
         commands.add_argument('--update-db',
                               action='store_true',
                               dest='update_db',

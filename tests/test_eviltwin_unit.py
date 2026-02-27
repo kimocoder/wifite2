@@ -12,10 +12,14 @@ import os
 import tempfile
 from unittest.mock import Mock, patch, MagicMock
 
+import pytest
+
 from wifite.tools.hostapd import Hostapd
 from wifite.tools.dnsmasq import Dnsmasq
 from wifite.attack.portal.templates import TemplateRenderer, get_available_templates
 from wifite.util.credential_validator import CredentialValidator
+
+pytestmark = pytest.mark.timeout(30)
 
 
 class TestHostapdConfiguration(unittest.TestCase):
