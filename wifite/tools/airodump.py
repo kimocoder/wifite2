@@ -224,11 +224,14 @@ class Airodump(Dependency):
     def get_targets_from_csv(csv_filename):
         """Returns list of Target objects parsed from CSV file."""
         targets2 = []
-        import chardet
         import csv
 
-        with open(csv_filename, "rb") as rawdata:
-            encoding = chardet.detect(rawdata.read())['encoding'] or 'utf-8'
+        try:
+            import chardet
+            with open(csv_filename, "rb") as rawdata:
+                encoding = chardet.detect(rawdata.read())['encoding'] or 'utf-8'
+        except ImportError:
+            encoding = 'utf-8'
 
         with open(csv_filename, 'r', encoding=encoding, errors='ignore') as csvopen:
             lines = []

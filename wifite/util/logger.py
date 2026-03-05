@@ -78,8 +78,10 @@ class Logger:
                 if log_dir and not os.path.exists(log_dir):
                     os.makedirs(log_dir, mode=0o700)
                 
-                # Write header
-                with open(log_file, 'a') as f:
+                # Write header — open with explicit 0o600 so the log file
+                # is owner-readable only, regardless of the process umask.
+                fd = os.open(log_file, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+                with os.fdopen(fd, 'a') as f:
                     f.write(f"\n{'='*80}\n")
                     f.write(f"Wifite2 Log - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
                     f.write(f"{'='*80}\n")
