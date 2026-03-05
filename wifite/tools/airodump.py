@@ -143,14 +143,15 @@ class Airodump(Dependency):
             os.remove(fil)
 
         # Remove .cap and .xor files from pwd
-        for fil in os.listdir('.'):
-            if fil.startswith('replay_') and fil.endswith('.cap') or fil.endswith('.xor'):
-                os.remove(fil)
+        cwd = os.getcwd()
+        for fil in os.listdir(cwd):
+            if fil.startswith('replay_') and (fil.endswith('.cap') or fil.endswith('.xor')):
+                os.remove(os.path.join(cwd, fil))
 
         # Remove replay/cap/xor files from temp
         temp_dir = Configuration.temp()
         for fil in os.listdir(temp_dir):
-            if fil.startswith('replay_') and fil.endswith('.cap') or fil.endswith('.xor'):
+            if fil.startswith('replay_') and (fil.endswith('.cap') or fil.endswith('.xor')):
                 os.remove(os.path.join(temp_dir, fil))
 
     def get_targets(self, old_targets=None, apply_filter=True, target_archives=None):
@@ -227,7 +228,7 @@ class Airodump(Dependency):
         import csv
 
         with open(csv_filename, "rb") as rawdata:
-            encoding = chardet.detect(rawdata.read())['encoding']
+            encoding = chardet.detect(rawdata.read())['encoding'] or 'utf-8'
 
         with open(csv_filename, 'r', encoding=encoding, errors='ignore') as csvopen:
             lines = []
