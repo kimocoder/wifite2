@@ -218,10 +218,10 @@ class Scanner(object):
     @staticmethod
     def clr_scr():
         import platform
-        import os
+        import subprocess
 
         cmdtorun = 'cls' if platform.system().lower() == "windows" else 'clear'
-        os.system(shlex_quote(cmdtorun))
+        subprocess.run([cmdtorun], check=False)
 
     def print_targets(self):
         """Prints targets selection menu (1 target per row)."""
@@ -290,15 +290,13 @@ class Scanner(object):
 
     @staticmethod
     def get_terminal_height():
-        import os
-        (rows, columns) = os.popen('stty size', 'r').read().split()
-        return int(rows)
+        import shutil
+        return shutil.get_terminal_size(fallback=(24, 80)).lines
 
     @staticmethod
     def get_terminal_width():
-        import os
-        (rows, columns) = os.popen('stty size', 'r').read().split()
-        return int(columns)
+        import shutil
+        return shutil.get_terminal_size(fallback=(24, 80)).columns
 
     def select_targets(self):
         """

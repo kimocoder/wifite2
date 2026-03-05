@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import os
+import shlex
 import shutil
 import subprocess
 
@@ -79,7 +80,7 @@ class PackageManager:
             return False, 'No supported package manager found'
         try:
             result = subprocess.run(
-                cmd, shell=True, capture_output=True, text=True, timeout=300
+                shlex.split(cmd), shell=False, capture_output=True, text=True, timeout=300
             )
             output = (result.stdout + '\n' + result.stderr).strip()
             return result.returncode == 0, output
