@@ -78,9 +78,9 @@ class Color(object):
 
     @staticmethod
     def clear_entire_line():
-        import os
-        (rows, columns) = os.popen('stty size', 'r').read().split()
-        Color.p('\r' + (' ' * int(columns)) + '\r')
+        import shutil
+        columns = shutil.get_terminal_size(fallback=(80, 24)).columns
+        Color.p('\r' + (' ' * columns) + '\r')
 
     @staticmethod
     def pattack(attack_type, target, attack_name, progress):

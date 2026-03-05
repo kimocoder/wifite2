@@ -101,6 +101,10 @@ class Logger:
           - Known wpa-sec API key from Configuration.wpasec_api_key
           - Command-line API key arguments like "-k <value>" and "--key <value>"
           - MAC addresses in standard hex notation (aa:bb:cc:dd:ee:ff)
+          - WPA/WEP keys from aircrack "KEY FOUND! [ <key> ]" output
+          - Live passphrase progress "Current passphrase: <value>"
+          - Hashcat cracked output "hash*bssid*station*essid:<password>"
+          - Generic PSK/passphrase/password keyword-value pairs
         """
         try:
             # Import lazily to avoid circular imports during module initialization
@@ -121,10 +125,10 @@ class Logger:
             # Never let sanitization break logging
             pass
 
+        import re
+
         # Mask common CLI key patterns: "-k <value>" and "--key <value>"
         try:
-            import re
-
             def _mask_cli_key(match):
                 flag = match.group(1)
                 return f"{flag} ****"
@@ -136,8 +140,6 @@ class Logger:
 
         # Mask MAC addresses: aa:bb:cc:dd:ee:ff -> aa:bb:cc:**:**:**
         try:
-            import re
-
             def _mask_mac(match):
                 full = match.group(0)
                 parts = full.split(":")
@@ -146,6 +148,46 @@ class Logger:
                 return full
 
             sanitized = re.sub(r"\b([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}\b", _mask_mac, sanitized)
+        except Exception:
+            pass
+
+        # Mask aircrack "KEY FOUND! [ <key> ]" output
+        try:
+            sanitized = re.sub(r"(KEY FOUND!\s*\[)\s*\S.*?\s*(\])", r"\1 **** \2", sanitized)
+        except Exception:
+            pass
+
+        # Mask aircrack live progress "Current passphrase: <value>"
+        try:
+            sanitized = re.sub(
+                r"(Current\s+passphrase\s*:)\s*\S.*",
+                r"\1 ****",
+                sanitized,
+                flags=re.IGNORECASE,
+            )
+        except Exception:
+            pass
+
+        # Mask hashcat cracked output: trailing :<password> after PMKID/hash lines
+        # Format: hash*bssid*station*essid:password  or  hash:password
+        try:
+            sanitized = re.sub(
+                r"([0-9a-fA-F\*]{20,}:[^:\n]{0,64}):[^\n]+$",
+                r"\1:****",
+                sanitized,
+                flags=re.MULTILINE,
+            )
+        except Exception:
+            pass
+
+        # Mask generic keyword-value pairs: password/passphrase/psk followed by
+        # a delimiter (=, :, space) and a value
+        try:
+            sanitized = re.sub(
+                r"(?i)(password|passphrase|psk|wpa_psk|wpa_passphrase)\s*[=:]\s*\S+",
+                r"\1=****",
+                sanitized,
+            )
         except Exception:
             pass
 
