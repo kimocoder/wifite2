@@ -66,7 +66,7 @@ class HcxDumpTool(Dependency):
 
         # Generate output file if not provided
         if output_file is None:
-            self.output_file = Configuration.temp() + 'hcxdumptool_capture.pcapng'
+            self.output_file = os.path.join(Configuration.temp(), 'hcxdumptool_capture.pcapng')
         else:
             self.output_file = output_file
 
@@ -122,7 +122,11 @@ class HcxDumpTool(Dependency):
 
         # Start the process
         self.proc = Process(command, devnull=False)
-        self.pid = self.proc.pid.pid  # Get the actual PID from the Popen object
+        # Get the actual PID safely from the Popen object
+        if self.proc and hasattr(self.proc, 'pid') and self.proc.pid and hasattr(self.proc.pid, 'pid'):
+            self.pid = self.proc.pid.pid
+        else:
+            self.pid = None
 
         # Give it a moment to start
         time.sleep(1)
@@ -141,8 +145,11 @@ class HcxDumpTool(Dependency):
                 time.sleep(0.5)
 
                 # Force kill if still running
-                if self.proc.poll() is None:
-                    os.kill(self.pid, signal.SIGKILL)
+                if self.proc.poll() is None and self.pid is not None:
+                    try:
+                        os.kill(self.pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass  # Process already exited
             except Exception as e:
                 from ..util.logger import log_debug
                 log_debug('HcxDumpTool', f'Kill process error: {e}')
@@ -239,7 +246,7 @@ class HcxDumpToolPassive:
 
         # Generate output file if not provided
         if output_file is None:
-            self.output_file = Configuration.temp() + 'passive_pmkid.pcapng'
+            self.output_file = os.path.join(Configuration.temp(), 'passive_pmkid.pcapng')
         else:
             self.output_file = output_file
 
@@ -262,7 +269,11 @@ class HcxDumpToolPassive:
 
         # Start the process
         self.proc = Process(command, devnull=False)
-        self.pid = self.proc.pid.pid  # Get the actual PID from the Popen object
+        # Get the actual PID safely from the Popen object
+        if self.proc and hasattr(self.proc, 'pid') and self.proc.pid and hasattr(self.proc.pid, 'pid'):
+            self.pid = self.proc.pid.pid
+        else:
+            self.pid = None
 
         # Give it a moment to start
         time.sleep(1)
@@ -281,8 +292,11 @@ class HcxDumpToolPassive:
                 time.sleep(0.5)
 
                 # Force kill if still running
-                if self.proc.poll() is None:
-                    os.kill(self.pid, signal.SIGKILL)
+                if self.proc.poll() is None and self.pid is not None:
+                    try:
+                        os.kill(self.pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass  # Process already exited
             except Exception as e:
                 from ..util.logger import log_debug
                 log_debug('HcxDumpToolPassive', f'Kill process error: {e}')

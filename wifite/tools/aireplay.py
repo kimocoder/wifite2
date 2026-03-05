@@ -97,8 +97,9 @@ class Aireplay(Thread, Dependency):
                                                  attack_type,
                                                  client_mac=client_mac,
                                                  replay_file=replay_file)
+        self.output_fh = open(self.output_file, 'a')
         self.pid = Process(self.cmd,
-                           stdout=open(self.output_file, 'a'),
+                           stdout=self.output_fh,
                            stderr=Process.devnull(),
                            cwd=Configuration.temp())
         self.start()
@@ -110,6 +111,8 @@ class Aireplay(Thread, Dependency):
         """ Stops aireplay process """
         if hasattr(self, 'pid') and self.pid and self.pid.poll() is None:
             self.pid.interrupt()
+        if hasattr(self, 'output_fh') and self.output_fh and not self.output_fh.closed:
+            self.output_fh.close()
 
     def get_output(self):
         """ Returns stdout from aireplay process """

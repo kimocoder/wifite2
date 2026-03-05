@@ -46,6 +46,7 @@ class Reaver(Attack, Dependency):
             os.remove(self.output_filename)
 
         self.output_write = open(self.output_filename, 'a')
+        self._output_write_closed = False
 
         self.reaver_cmd = [
             'reaver',
@@ -63,6 +64,11 @@ class Reaver(Attack, Dependency):
             self.reaver_cmd.extend(['-p', ''])  # NULL PIN attack parameter
 
         self.reaver_proc = None
+
+    def __del__(self):
+        """Ensure file handle is closed on garbage collection."""
+        if hasattr(self, 'output_write') and self.output_write and not self.output_write.closed:
+            self.output_write.close()
 
     @staticmethod
     def is_pixiedust_supported():
@@ -96,7 +102,7 @@ class Reaver(Attack, Dependency):
                     pass  # Ignore errors during cleanup
 
             # Clean up open file handle
-            if self.output_write:
+            if self.output_write and not self.output_write.closed:
                 try:
                     self.output_write.close()
                 except Exception:
