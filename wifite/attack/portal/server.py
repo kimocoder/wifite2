@@ -189,8 +189,8 @@ class PortalRequestHandler(BaseHTTPRequestHandler):
     def _serve_static_file(self, path):
         """Serve static files (CSS, images, etc.) with caching optimization."""
         try:
-            # Remove /static/ prefix
-            file_path = path[8:]  # Remove '/static/'
+            # Remove /static/ prefix and ensure a relative path
+            file_path = path[8:].lstrip('/\\')  # Remove '/static/' and any leading separators
             filename = os.path.basename(file_path)
             
             # Try to get cached static file from server instance
