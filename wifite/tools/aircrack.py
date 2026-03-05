@@ -77,7 +77,7 @@ class Aircrack(Dependency):
         return hex_key, ascii_key
 
     def __del__(self):
-        if os.path.exists(self.cracked_file):
+        if hasattr(self, 'cracked_file') and os.path.exists(self.cracked_file):
             os.remove(self.cracked_file)
 
     @staticmethod
@@ -107,14 +107,18 @@ class Aircrack(Dependency):
         eta_str = 'unknown'
         current_key = ''
         while crack_proc.poll() is None:
+            if not crack_proc.pid or not crack_proc.pid.stdout:
+                break
             line = crack_proc.pid.stdout.readline().decode('utf-8')
             match_nums = aircrack_nums_re.search(line)
             match_keys = aircrack_key_re.search(line)
             if match_nums:
                 num_tried, num_total, num_kps = int(match_nums[1]), int(match_nums[2]), float(match_nums[3])
-                eta_seconds = (num_total - num_tried) / num_kps
-                eta_str = Timer.secs_to_str(eta_seconds)
-                percent = 100.0 * num_tried / num_total
+                if num_kps > 0:
+                    eta_seconds = (num_total - num_tried) / num_kps
+                    eta_str = Timer.secs_to_str(eta_seconds)
+                if num_total > 0:
+                    percent = 100.0 * num_tried / num_total
             elif match_keys:
                 current_key = match_keys[1]
             else:

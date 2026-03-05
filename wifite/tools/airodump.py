@@ -140,19 +140,28 @@ class Airodump(Dependency):
         """
         # Remove all temp files
         for fil in cls.find_files_by_output_prefix(output_file_prefix):
-            os.remove(fil)
+            try:
+                os.remove(fil)
+            except FileNotFoundError:
+                pass  # File already removed
 
         # Remove .cap and .xor files from pwd
         cwd = os.getcwd()
         for fil in os.listdir(cwd):
             if fil.startswith('replay_') and (fil.endswith('.cap') or fil.endswith('.xor')):
-                os.remove(os.path.join(cwd, fil))
+                try:
+                    os.remove(os.path.join(cwd, fil))
+                except FileNotFoundError:
+                    pass  # File already removed
 
         # Remove replay/cap/xor files from temp
         temp_dir = Configuration.temp()
         for fil in os.listdir(temp_dir):
             if fil.startswith('replay_') and (fil.endswith('.cap') or fil.endswith('.xor')):
-                os.remove(os.path.join(temp_dir, fil))
+                try:
+                    os.remove(os.path.join(temp_dir, fil))
+                except FileNotFoundError:
+                    pass  # File already removed
 
     def get_targets(self, old_targets=None, apply_filter=True, target_archives=None):
         """ Parses airodump's CSV file, returns list of Targets """

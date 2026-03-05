@@ -151,6 +151,7 @@ class Handshake(object):
         import tempfile
         
         # Create a temporary hash file to test if hcxpcapngtool can extract data
+        hash_file = None
         try:
             with tempfile.NamedTemporaryFile(mode='w', suffix='.22000', delete=False) as tmp:
                 hash_file = tmp.name
