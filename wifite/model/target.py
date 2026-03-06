@@ -268,7 +268,8 @@ class Target:
         bssid = Color.s('{D}%s{W}' % self.bssid) if show_bssid else ''
         if show_manufacturer:
             oui = ''.join(self.bssid.split(':')[:3])
-            self.manufacturer = Configuration.manufacturers.get(oui, "")
+            Configuration.load_manufacturers()
+            self.manufacturer = Configuration.manufacturers.get(oui, "") if Configuration.manufacturers else ""
 
             max_oui_len = 21
             mfg_name = self.manufacturer

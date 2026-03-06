@@ -412,6 +412,7 @@ class SelectorView:
         
         # Get OUI (first 3 octets of BSSID)
         oui = ''.join(target.bssid.split(':')[:3])
+        Configuration.load_manufacturers()
         manufacturer = Configuration.manufacturers.get(oui, "Unknown") if Configuration.manufacturers else "Unknown"
         
         # Truncate if too long
