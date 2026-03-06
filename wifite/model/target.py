@@ -124,6 +124,7 @@ class Target:
         self.essid = fields[13]
         if self.essid == '\\x00' * self.essid_len or \
                 self.essid == 'x00' * self.essid_len or \
+                self.essid == '\x00' * self.essid_len or \
                 self.essid.strip() == '':
             # Don't display '\x00...' for hidden ESSIDs
             self.essid = None  # '(%s)' % self.bssid

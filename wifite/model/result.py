@@ -20,13 +20,13 @@ class CrackResult:
         self.readable_date = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(self.date))
 
     def dump(self):
-        raise Exception('Unimplemented method: dump()')
+        raise NotImplementedError('Subclasses must implement dump()')
 
     def to_dict(self):
-        raise Exception('Unimplemented method: to_dict()')
+        raise NotImplementedError('Subclasses must implement to_dict()')
 
     def print_single_line(self, longest_essid):
-        raise Exception('Unimplemented method: print_single_line()')
+        raise NotImplementedError('Subclasses must implement print_single_line()')
 
     def print_single_line_prefix(self, longest_essid):
         essid = self.essid or 'N/A'
@@ -129,12 +129,12 @@ class CrackResult:
         return json
 
     @classmethod
-    def load_ignored_bssids(cls, ignore_cracked = False):
+    def load_ignored_bssids(cls, ignore_cracked=False):
         json = cls.load_all()
         ignored_bssids = [
             item.get('bssid', '')
             for item in json
-            if item.get('result_type') == 'IGN'
+            if item.get('type') == 'IGN'
         ]
 
         if not ignore_cracked:
@@ -143,13 +143,13 @@ class CrackResult:
         return ignored_bssids + [
             item.get('bssid', '')
             for item in json
-            if item.get('result_type') != 'IGN'
+            if item.get('type') != 'IGN'
         ]
 
     @staticmethod
     def load(json):
         """ Returns an instance of the appropriate object given a json instance """
-        global result
+        result = None
         if json['type'] == 'WPA':
             from .wpa_result import CrackResultWPA
             result = CrackResultWPA(bssid=json['bssid'],
@@ -201,7 +201,7 @@ class CrackResult:
         ignored_targets = cls.load_all()
 
         for ignored_target in ignored_targets:
-            is_ignored = ignored_target == 'IGN'
+            is_ignored = ignored_target.get('type') == 'IGN'
             bssid_match = target.bssid == ignored_target.get('bssid')
             essid_match = target.essid == ignored_target.get('essid')
             if is_ignored and bssid_match and essid_match:
