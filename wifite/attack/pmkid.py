@@ -242,12 +242,12 @@ class AttackPMKID(Attack):
             Color.pl('\n {O}[{R}!{O}] Note: PMKID attacks are not possible because you do not have {C}%s{O}.{W}'
                      % Hashcat.dependency_name)
 
-        return True  # Even if we don't crack it, capturing a PMKID is 'successful'
+        return self.success  # Only consider attack successful if cracking succeeded
 
     def _handle_hashcat_failure(self, message):
         Color.pl(message)
         self.success = False
-        return True
+        return False
 
     def run(self):
         # Start TUI view if available
