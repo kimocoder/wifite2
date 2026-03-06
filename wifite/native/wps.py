@@ -36,7 +36,7 @@ try:
         conf as scapy_conf
     )
     SCAPY_AVAILABLE = True
-except ImportError:
+except BaseException:
     SCAPY_AVAILABLE = False
 
 

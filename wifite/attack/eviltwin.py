@@ -974,11 +974,18 @@ class EvilTwin(Attack):
             True if all dependencies are available, False otherwise
         """
         try:
-            # TODO: Implement dependency checking
-            # This will be implemented in task 6.2
-            log_info('EvilTwin', 'Dependency check passed (placeholder)')
+            from ..util.process import Process
+            missing = []
+            for tool in ['hostapd', 'dnsmasq']:
+                if not Process.exists(tool):
+                    missing.append(tool)
+            if missing:
+                log_error('EvilTwin', f'Missing required tools: {", ".join(missing)}')
+                self.error_message = f'Missing required tools: {", ".join(missing)}'
+                return False
+            log_info('EvilTwin', 'All required dependencies found')
             return True
-            
+
         except Exception as e:
             log_error('EvilTwin', f'Dependency check failed: {e}', e)
             self.error_message = f'Dependency check failed: {e}'

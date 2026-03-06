@@ -22,7 +22,7 @@ from shutil import copy
 try:
     from ..native.pmkid import ScapyPMKID, PMKIDResult as NativePMKIDResult
     NATIVE_PMKID_AVAILABLE = ScapyPMKID.is_available()
-except ImportError:
+except BaseException:
     NATIVE_PMKID_AVAILABLE = False
 
 
