@@ -344,7 +344,8 @@ class ScannerView:
         
         # Get OUI (first 3 octets of BSSID)
         oui = ''.join(target.bssid.split(':')[:3])
-        manufacturer = Configuration.manufacturers.get(oui, "Unknown")
+        Configuration.load_manufacturers()
+        manufacturer = Configuration.manufacturers.get(oui, "Unknown") if Configuration.manufacturers else "Unknown"
         
         # Truncate if too long
         max_len = 20

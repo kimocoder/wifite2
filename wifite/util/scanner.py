@@ -108,9 +108,6 @@ class Scanner:
                     if self.found_target():
                         return True  # We found the target we want
 
-                    if airodump.pid.poll() is not None:
-                        return True  # Airodump process died
-
                     # Update display based on mode
                     if self.use_tui and self.view:
                         self.view.update_targets(self.targets, airodump.decloaking)
@@ -561,13 +558,13 @@ class Scanner:
         
         # 2. Limit target list size (keep strongest signals)
         if len(self.targets) > self._max_targets:
-            # Sort by power (strongest first)
-            self.targets.sort(key=lambda x: x.power, reverse=True)
+            import heapq
             removed_count = len(self.targets) - self._max_targets
-            self.targets = self.targets[:self._max_targets]
-            
+            # Use heapq.nlargest: O(n log k) vs O(n log n) for full sort
+            self.targets = heapq.nlargest(self._max_targets, self.targets, key=lambda x: x.power)
+
             if Configuration.verbose > 1:
-                Color.pl('{!} {O}Trimmed %d weak targets (limit: %d){W}' % 
+                Color.pl('{!} {O}Trimmed %d weak targets (limit: %d){W}' %
                         (removed_count, self._max_targets))
         
         # 3. Clean up old archived targets with time-based expiration

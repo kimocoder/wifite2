@@ -184,23 +184,17 @@ class Airodump(Dependency):
         new_targets = Airodump.get_targets_from_csv(csv_filename)
 
         # Check if one of the targets is also contained in the old_targets
+        # Use dict lookup (O(1)) instead of nested loop (O(n*m))
+        old_by_bssid = {t.bssid: t for t in old_targets}
         for new_target in new_targets:
-            just_found = True
-            for old_target in old_targets:
-                # If the new_target is found in old_target copy attributes from old target
-                if old_target == new_target:
-                    # Identify decloaked targets
-                    if new_target.essid_known and not old_target.essid_known:
-                        # We decloaked a target!
-                        new_target.decloaked = True
-
-                    old_target.transfer_info(new_target)
-                    just_found = False
-                    break
-
-            # If the new_target is not in old_targets, check target_archives
-            # and copy attributes from there
-            if just_found and new_target.bssid in target_archives:
+            old_target = old_by_bssid.get(new_target.bssid)
+            if old_target is not None:
+                # Identify decloaked targets
+                if new_target.essid_known and not old_target.essid_known:
+                    new_target.decloaked = True
+                old_target.transfer_info(new_target)
+            elif new_target.bssid in target_archives:
+                # If the new_target is not in old_targets, check target_archives
                 target_archives[new_target.bssid].transfer_info(new_target)
 
         # Check targets for WPS
@@ -237,18 +231,22 @@ class Airodump(Dependency):
         targets2 = []
         import csv
 
+        # Detect encoding from first 4KB sample to avoid reading entire file twice
         try:
             import chardet
-            with open(csv_filename, "rb") as rawdata:
-                encoding = chardet.detect(rawdata.read())['encoding'] or 'utf-8'
+            with open(csv_filename, 'rb') as rawdata:
+                encoding = chardet.detect(rawdata.read(4096))['encoding'] or 'utf-8'
         except ImportError:
             encoding = 'utf-8'
 
         with open(csv_filename, 'r', encoding=encoding, errors='ignore') as csvopen:
             lines = []
+            has_null = False
             for line in csvopen:
                 if '\0' in line:
-                    log_warning('Airodump', 'Null bytes found in CSV data, stripping them')
+                    if not has_null:
+                        log_warning('Airodump', 'Null bytes found in CSV data, stripping them')
+                        has_null = True
                     line = line.replace('\0', '')
                 lines.append(line)
 
@@ -272,6 +270,12 @@ class Airodump(Dependency):
                 elif row[0].strip() == 'Station MAC':
                     # This is the 'header' for the list of Clients
                     hit_clients = True
+                    # Build BSSID lookup dict for O(1) client-to-target matching
+                    # Use first occurrence per BSSID to match original behavior
+                    targets_by_bssid = {}
+                    for t in targets2:
+                        if t.bssid not in targets_by_bssid:
+                            targets_by_bssid[t.bssid] = t
                     continue
 
                 if hit_clients:
@@ -286,11 +290,10 @@ class Airodump(Dependency):
                         # Ignore unassociated clients
                         continue
 
-                    # Add this client to the appropriate Target
-                    for t in targets2:
-                        if t.bssid == client.bssid:
-                            t.clients.append(client)
-                            break
+                    # Add this client to the appropriate Target (O(1) dict lookup)
+                    target = targets_by_bssid.get(client.bssid)
+                    if target:
+                        target.clients.append(client)
 
                 else:
                     # The current row corresponds to a 'Target' (router)

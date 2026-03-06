@@ -176,7 +176,7 @@ class Process:
             log_warning('Process', 'Delaying process creation due to high FD usage')
             if Configuration.verbose > 0:
                 Color.pl('{!} {O}Delaying process creation due to high FD usage{W}')
-            time.sleep(0.5)  # Brief delay to allow cleanup to complete
+            time.sleep(0.1)  # Brief delay to allow cleanup to complete
 
         self.out = None
         self.err = None
@@ -447,15 +447,27 @@ class Process:
         except Exception:
             pass
 
+    # Cache for FD count to avoid filesystem scan on every process creation
+    _fd_cache_time = 0
+    _fd_cache_value = -1
+    _FD_CACHE_TTL = 2.0  # seconds
+
     @staticmethod
     def get_open_fd_count():
-        """Get current open file descriptor count from /proc/{pid}/fd"""
+        """Get current open file descriptor count from /proc/{pid}/fd (cached with TTL)"""
+        now = time.time()
+        if now - Process._fd_cache_time < Process._FD_CACHE_TTL:
+            return Process._fd_cache_value
         try:
             proc_fd_dir = f'/proc/{os.getpid()}/fd'
             if os.path.exists(proc_fd_dir):
-                return len(os.listdir(proc_fd_dir))
+                Process._fd_cache_value = len(os.listdir(proc_fd_dir))
+                Process._fd_cache_time = now
+                return Process._fd_cache_value
         except Exception:
             pass
+        Process._fd_cache_value = -1
+        Process._fd_cache_time = now
         return -1
 
     @staticmethod
