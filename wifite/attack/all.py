@@ -20,7 +20,7 @@ class Answer(Enum):
     Continue = 3
     Ignore = 4
 
-class AttackAll(object):
+class AttackAll:
     @classmethod
     def attack_multiple(cls, targets, session=None, session_mgr=None):
         """

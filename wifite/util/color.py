@@ -4,7 +4,7 @@
 import sys
 
 
-class Color(object):
+class Color:
     """ Helper object for easily printing colored text to the terminal. """
 
     # Basic console colors

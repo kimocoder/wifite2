@@ -19,8 +19,11 @@ setup(
     packages=[
         'wifite',
         'wifite/attack',
+        'wifite/attack/portal',
         'wifite/model',
+        'wifite/native',
         'wifite/tools',
+        'wifite/ui',
         'wifite/util',
     ],
     data_files=[

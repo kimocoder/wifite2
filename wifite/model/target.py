@@ -9,7 +9,7 @@ class WPSState:
     NONE, UNLOCKED, LOCKED, UNKNOWN = list(range(4))
 
 
-class ArchivedTarget(object):
+class ArchivedTarget:
     """
         Holds information between scans from a previously found target
     """
@@ -42,7 +42,7 @@ class ArchivedTarget(object):
         # Check if the other class type is either ArchivedTarget or Target
         return isinstance(other, (self.__class__, Target)) and self.bssid == other.bssid
 
-class Target(object):
+class Target:
     """
         Holds details for a 'Target' aka Access Point (e.g. router).
     """
@@ -124,6 +124,7 @@ class Target(object):
         self.essid = fields[13]
         if self.essid == '\\x00' * self.essid_len or \
                 self.essid == 'x00' * self.essid_len or \
+                self.essid == '\x00' * self.essid_len or \
                 self.essid.strip() == '':
             # Don't display '\x00...' for hidden ESSIDs
             self.essid = None  # '(%s)' % self.bssid

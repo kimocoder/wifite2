@@ -10,6 +10,7 @@ from ..util.timer import Timer
 from ..util.process import Process
 from ..config import Configuration
 
+import subprocess
 import time
 import re
 from threading import Thread
@@ -357,11 +358,11 @@ class Bully(Attack, Dependency):
             # group(1)=NoAssoc, group(2)=PIN
             pin = last_state[2]
             if pin != self.last_pin:
-                self._extracted_from_parse_state_12(pin)
+                self._update_pin_attempt(pin)
             state = 'Trying PIN'
 
         if mx_result_pin := re.search(r".*[RT]x\(\s*(.*)\s*\) = '(.*)'\s*Next pin '(.*)'", line):
-            state = self._extracted_from_parse_state_20(mx_result_pin)
+            state = self._format_pin_result(mx_result_pin)
         if re_tested := re.search(r'Run time ([\d:]+), pins tested (\d)+', line):
             # group(1)=01:23:45, group(2)=1234
             self.total_attempts = int(re_tested[2])
@@ -411,15 +412,14 @@ class Bully(Attack, Dependency):
 
         return state
 
-    # TODO Rename this here and in `parse_state`
-    def _extracted_from_parse_state_20(self, mx_result_pin):
+    def _format_pin_result(self, mx_result_pin):
         # group(1)=M1,M2,..,M7, group(2)=result, group(3)=Next PIN
         self.locked = False
         m_state = mx_result_pin[1]
         result = mx_result_pin[2]
         pin = mx_result_pin[3]
         if pin != self.last_pin:
-            self._extracted_from_parse_state_12(pin)
+            self._update_pin_attempt(pin)
         if result in ['Pin1Bad', 'Pin2Bad']:
             result = '{G}%s{W}' % result
         elif result == 'Timeout':
@@ -438,8 +438,7 @@ class Bully(Attack, Dependency):
 
         return result
 
-    # TODO Rename this here and in `parse_state`
-    def _extracted_from_parse_state_12(self, pin):
+    def _update_pin_attempt(self, pin):
         self.last_pin = pin
         self.total_attempts += 1
         if self.pins_remaining > 0:

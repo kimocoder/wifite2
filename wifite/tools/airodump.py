@@ -9,7 +9,9 @@ from ..util.wpa3 import WPA3Detector, WPA3Info
 from ..config import Configuration
 from ..model.target import Target, WPSState
 from ..model.client import Client
+from ..util.logger import log_debug, log_warning
 
+import csv
 import os
 import time
 
@@ -245,7 +247,9 @@ class Airodump(Dependency):
         with open(csv_filename, 'r', encoding=encoding, errors='ignore') as csvopen:
             lines = []
             for line in csvopen:
-                line = line.replace('\0', '')
+                if '\0' in line:
+                    log_warning('Airodump', 'Null bytes found in CSV data, stripping them')
+                    line = line.replace('\0', '')
                 lines.append(line)
 
             csv_reader = csv.reader(lines,
@@ -294,11 +298,11 @@ class Airodump(Dependency):
                         target4 = Target(row)
                         targets2.append(target4)
                     except (ValueError, IndexError) as e:
-                        print(f"Invalid target data format: {e}")
+                        log_debug('Airodump', f'Invalid target data format: {e}')
                     except (AttributeError, TypeError) as e:
-                        print(f"Target data structure error: {e}")
+                        log_debug('Airodump', f'Target data structure error: {e}')
                     except Exception as e:
-                        print(f"Unexpected target parsing error: {e}")
+                        log_warning('Airodump', f'Unexpected target parsing error: {e}')
                 continue
 
         return targets2

@@ -51,7 +51,7 @@ class AttackWPS(Attack):
             return False
 
         if not Configuration.wps_pixie and self.pixie_dust:
-            return self._extracted_from_run_14(
+            return self._handle_wps_skip(
                 '\r{!} {O}--no-pixie{R} was given, ignoring WPS Pixie-Dust Attack on {O}%s{W}'
             )
         if not Configuration.wps_no_nullpin and self.null_pin:
@@ -60,7 +60,7 @@ class AttackWPS(Attack):
             return False
 
         if not Configuration.wps_pin and not self.pixie_dust:
-            return self._extracted_from_run_14(
+            return self._handle_wps_skip(
                 '\r{!} {O}--pixie{R} was given, ignoring WPS PIN Attack on {O}%s{W}'
             )
         
@@ -90,9 +90,8 @@ class AttackWPS(Attack):
         else:
             return self.run_reaver()
 
-    # TODO Rename this here and in `run`
-    def _extracted_from_run_14(self, arg0):
-        Color.pl(arg0 % self.target.essid)
+    def _handle_wps_skip(self, message):
+        Color.pl(message % self.target.essid)
         self.success = False
         return False
 

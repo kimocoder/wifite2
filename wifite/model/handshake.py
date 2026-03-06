@@ -9,7 +9,7 @@ import re
 import os
 
 
-class Handshake(object):
+class Handshake:
 
     def __init__(self, capfile, bssid=None, essid=None):
         self.capfile = capfile

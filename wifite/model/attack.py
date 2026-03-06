@@ -5,7 +5,7 @@ import time
 from ..config import Configuration
 
 
-class Attack(object):
+class Attack:
     """Contains functionality common to all attacks."""
 
     target_wait = min(60, Configuration.wpa_attack_timeout)

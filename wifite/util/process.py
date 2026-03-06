@@ -2,13 +2,14 @@
 # -*- coding: utf-8 -*-
 
 import contextlib
+import re
 import time
 import signal
 import os
 import atexit
 import threading
 import subprocess
-from subprocess import Popen, PIPE
+from subprocess import Popen, PIPE, DEVNULL
 from ..util.color import Color
 from ..config import Configuration
 from ..util.logger import log_debug, log_info, log_warning, log_error
@@ -27,7 +28,7 @@ class ProcessManager:
             with cls._lock:
                 if cls._instance is None:
                     cls._instance = super().__new__(cls)
-                    cls._instance._processes = set()
+                    cls._instance._processes = []
                     cls._instance._registered_cleanup = False
         return cls._instance
 
@@ -41,16 +42,17 @@ class ProcessManager:
                     Color.pl(f'\n{{!}} {{O}}Warning: Process limit reached ({len(self._processes)}/{self.MAX_PROCESSES}), triggering cleanup{{W}}')
 
                 # Identify and remove finished processes
-                finished = {p for p in self._processes if hasattr(p, 'is_running') and not p.is_running()}
+                finished = [p for p in self._processes if hasattr(p, 'is_running') and not p.is_running()]
                 if finished:
                     log_info('ProcessManager', f'Removing {len(finished)} finished process(es) from registry')
                     if Configuration.verbose > 1:
                         Color.pl(f'{{+}} {{C}}Removing {len(finished)} finished process(es){{W}}')
-                    self._processes -= finished
+                    for p in finished:
+                        self._processes.remove(p)
 
                 # Force-kill oldest processes if still over limit
                 if len(self._processes) >= self.MAX_PROCESSES:
-                    oldest = list(self._processes)[:10]
+                    oldest = self._processes[:10]
                     log_warning('ProcessManager', f'Force-killing {len(oldest)} oldest process(es) to stay under limit')
                     if Configuration.verbose > 0:
                         Color.pl(f'{{!}} {{O}}Force-killing {len(oldest)} oldest process(es){{W}}')
@@ -59,9 +61,9 @@ class ProcessManager:
                             p.force_kill()
                         except Exception:
                             pass
-                    self._processes -= set(oldest)
+                    self._processes = self._processes[10:]
 
-            self._processes.add(process)
+            self._processes.append(process)
             log_debug('ProcessManager', f'Registered process (total: {len(self._processes)}/{self.MAX_PROCESSES})')
             if not self._registered_cleanup:
                 atexit.register(self.cleanup_all)
@@ -70,7 +72,10 @@ class ProcessManager:
 
     def unregister_process(self, process):
         with self._lock:
-            self._processes.discard(process)
+            try:
+                self._processes.remove(process)
+            except ValueError:
+                pass
             log_debug('ProcessManager', f'Unregistered process (remaining: {len(self._processes)})')
 
     def cleanup_all(self):
@@ -91,23 +96,25 @@ class ProcessManager:
                 log_info('ProcessManager', 'Process cleanup complete')
 
 
-class Process(object):
+class Process:
     """ Represents a running/ran process with enhanced cleanup """
 
     @staticmethod
     def devnull():
-        """ Helper method for opening devnull """
-        return open('/dev/null', 'w')
+        """ Helper method returning subprocess.DEVNULL constant (no file handle to leak) """
+        return DEVNULL
 
     @staticmethod
     def call(command, cwd=None, shell=False):
         """ Calls a command (either string or list of args). Returns (stdout, stderr) """
-        if type(command) is not str or ' ' in command or shell:
-            shell = True
+        if isinstance(command, str) and not shell:
+            # Only enable shell mode if explicitly requested
+            if Configuration.verbose > 1:
+                Color.pe(f'\n {{C}}[?]{{W}} Executing: {{B}}{command}{{W}}')
+        elif shell:
             if Configuration.verbose > 1:
                 Color.pe(f'\n {{C}}[?] {{W}} Executing (Shell): {{B}}{command}{{W}}')
         else:
-            shell = False
             if Configuration.verbose > 1:
                 Color.pe(f'\n {{C}}[?]{{W}} Executing: {{B}}{command}{{W}}')
 
@@ -153,12 +160,8 @@ class Process(object):
         cmd_str = " ".join(command) if isinstance(command, list) else str(command)
         # Avoid logging sensitive arguments (e.g. API keys) in clear text
         try:
-            import re
-            def _mask_cli_key(match):
-                flag = match.group(1)
-                return f"{flag} ****"
-            safe_cmd_str = re.sub(r"(-k)\s+\S+", _mask_cli_key, cmd_str)
-            safe_cmd_str = re.sub(r"(--key)\s+\S+", _mask_cli_key, safe_cmd_str)
+            safe_cmd_str = re.sub(r"(-k)\s+\S+", r"\1 ****", cmd_str)
+            safe_cmd_str = re.sub(r"(--key)\s+\S+", r"\1 ****", safe_cmd_str)
         except Exception:
             safe_cmd_str = cmd_str
         log_debug('Process', f'Creating process: {safe_cmd_str}')
@@ -176,10 +179,9 @@ class Process(object):
         self.out = None
         self.err = None
         if devnull:
-            log_debug('Process', 'Opening devnull handles for stdout/stderr redirection')
-            sout = Process.devnull()
-            serr = Process.devnull()
-            self._devnull_handles.extend([sout, serr])
+            log_debug('Process', 'Redirecting stdout/stderr to devnull')
+            sout = DEVNULL
+            serr = DEVNULL
         else:
             sout = stdout
             serr = stderr

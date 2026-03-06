@@ -7,7 +7,7 @@ from .util.color import Color
 from .tools.macchanger import Macchanger
 
 
-class Configuration(object):
+class Configuration:
     """ Stores configuration variables and functions for Wifite. """
 
     initialized = False  # Flag indicating config has been initialized

@@ -224,7 +224,7 @@ class AttackPMKID(Attack):
         if Configuration.skip_crack:
             if self.view:
                 self.view.add_log("Skipping crack phase (--skip-crack flag)")
-            return self._extracted_from_run_hashcat_44(
+            return self._handle_hashcat_failure(
                 '{+} Not cracking pmkid because {C}skip-crack{W} was used{W}')
 
         # Crack it.
@@ -232,7 +232,7 @@ class AttackPMKID(Attack):
             try:
                 self.success = self.crack_pmkid_file(pmkid_file)
             except KeyboardInterrupt:
-                return self._extracted_from_run_hashcat_44(
+                return self._handle_hashcat_failure(
                     '\n{!} {R}Failed to crack PMKID: {O}Cracking interrupted by user{W}'
                 )
         else:
@@ -244,9 +244,8 @@ class AttackPMKID(Attack):
 
         return True  # Even if we don't crack it, capturing a PMKID is 'successful'
 
-    # TODO Rename this here and in `run_hashcat`
-    def _extracted_from_run_hashcat_44(self, arg0):
-        Color.pl(arg0)
+    def _handle_hashcat_failure(self, message):
+        Color.pl(message)
         self.success = False
         return True
 
@@ -481,7 +480,7 @@ class AttackPMKID(Attack):
 
         if key is not None:
             log_info('AttackPMKID', f'PMKID cracked successfully! Password: {key}')
-            return self._extracted_from_crack_pmkid_file_31(key, pmkid_file)
+            return self._handle_pmkid_crack_success(key, pmkid_file)
         # Failed to crack.
         if Configuration.wordlist is not None:
             log_warning('AttackPMKID', 'PMKID crack failed: passphrase not found in wordlist')
@@ -492,8 +491,7 @@ class AttackPMKID(Attack):
                           '{R}Failed {O}Passphrase not found in dictionary.\n')
         return False
 
-    # TODO Rename this here and in `crack_pmkid_file`
-    def _extracted_from_crack_pmkid_file_31(self, key, pmkid_file):
+    def _handle_pmkid_crack_success(self, key, pmkid_file):
         # Successfully cracked.
         if self.view:
             self.view.add_log(f"Successfully cracked PMKID!")
@@ -615,31 +613,29 @@ class AttackPMKID(Attack):
         """Saves a copy of the pmkid (handshake) to hs/ directory."""
         # Create handshake dir
         if self.do_airCRACK:
-            return self._extracted_from_save_pmkid_6(pmkid_hash)
+            return self._copy_pmkid_to_file(pmkid_hash)
         if not os.path.exists(Configuration.wpa_handshake_dir):
             os.makedirs(Configuration.wpa_handshake_dir)
 
-        pmkid_file = self._extracted_from_save_pmkid_21('.22000')
+        pmkid_file = self._generate_pmkid_filepath('.22000')
         with open(pmkid_file, 'w') as pmkid_handle:
             pmkid_handle.write(pmkid_hash)
             pmkid_handle.write('\n')
 
         return pmkid_file
 
-    # TODO Rename this here and in `save_pmkid`
-    def _extracted_from_save_pmkid_21(self, arg0):
+    def _generate_pmkid_filepath(self, extension):
         # Generate filesystem-safe filename from bssid, essid and date
         essid_safe = re.sub('[^a-zA-Z0-9]', '', self.target.essid)
         bssid_safe = self.target.bssid.replace(':', '-')
         date = time.strftime('%Y-%m-%dT%H-%M-%S')
-        result = f'pmkid_{essid_safe}_{bssid_safe}_{date}{arg0}'
+        result = f'pmkid_{essid_safe}_{bssid_safe}_{date}{extension}'
         result = os.path.join(Configuration.wpa_handshake_dir, result)
 
         Color.p('\n{+} Saving copy of {C}PMKID Hash{W} to {C}%s{W} ' % result)
         return result
 
-    # TODO Rename this here and in `save_pmkid`
-    def _extracted_from_save_pmkid_6(self, pmkid_hash):
-        pmkid_file = self._extracted_from_save_pmkid_21('.cap')
+    def _copy_pmkid_to_file(self, pmkid_hash):
+        pmkid_file = self._generate_pmkid_filepath('.cap')
         copy(pmkid_hash, pmkid_file)
         return pmkid_file
