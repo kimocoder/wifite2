@@ -968,7 +968,7 @@ Documentation
 
 ### Comprehensive Guides
 
-***[Evil Twin Attack Guide](docs/EVILTWIN_GUIDE.md)** - Complete guide to Evil Twin attacks
+* **[Evil Twin Attack Guide](docs/EVILTWIN_GUIDE.md)** - Complete guide to Evil Twin attacks
   * Hardware and software requirements
   * Usage examples and advanced options
   * Captive portal templates
@@ -987,6 +987,8 @@ Documentation
 * **[WPA3 Troubleshooting](docs/WPA3_TROUBLESHOOTING.md)** - WPA3-specific issues and solutions
 
 * **[WPA3 Detection Optimization](docs/WPA3_DETECTION_OPTIMIZATION.md)** - WPA3 detection and optimization details
+
+* **[Dual Interface Examples](docs/DUAL_INTERFACE_EXAMPLES.md)** - Dual wireless interface usage examples
 
 ### Quick Reference
 
