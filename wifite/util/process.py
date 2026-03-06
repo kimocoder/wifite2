@@ -212,8 +212,33 @@ class Process(object):
         self.cleanup()
 
     def __del__(self):
+        # During interpreter shutdown, module globals (including threading)
+        # may already be torn down.  Acquiring a threading.Lock in that state
+        # can trigger an infinite-restart loop, so we only do lightweight
+        # cleanup here and skip ProcessManager.unregister_process entirely
+        # (the atexit handler already handles bulk cleanup).
         try:
-            self.cleanup()
+            if getattr(self, '_cleaned_up', True):
+                return
+            # Best-effort: kill still-running subprocesses and close FDs
+            if hasattr(self, 'pid') and self.pid:
+                try:
+                    if self.pid.poll() is None:
+                        self.pid.kill()
+                        self.pid.wait()
+                except Exception:
+                    pass
+                for stream in (self.pid.stdin, self.pid.stdout, self.pid.stderr):
+                    if stream:
+                        try:
+                            stream.close()
+                        except Exception:
+                            pass
+            for fh in getattr(self, '_devnull_handles', []):
+                try:
+                    fh.close()
+                except Exception:
+                    pass
         except Exception:
             pass
 
