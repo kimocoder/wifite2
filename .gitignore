@@ -12,7 +12,6 @@ MANIFEST
 .idea/
 
 # Wifite
-py/hs/
 hs/
 cracked.json
 *.wpc
