@@ -66,7 +66,7 @@ class AttackPMKID(Attack):
         pmkid_pattern = os.path.join(Configuration.wpa_handshake_dir, 'pmkid_*.22000')
         files_found = glob.glob(pmkid_pattern)
         log_debug('AttackPMKID', f'Found {len(files_found)} PMKID file(s) to check')
-        
+
         for pmkid_filename in files_found:
             if not os.path.isfile(pmkid_filename):
                 continue
@@ -141,7 +141,7 @@ class AttackPMKID(Attack):
             return False
 
         from ..util.process import Process
-        
+
         # Check tool availability - prioritize hcxdumptool, fallback to native
         use_native_pmkid = False
         dependencies = [
@@ -149,7 +149,7 @@ class AttackPMKID(Attack):
             HcxPcapngTool.dependency_name
         ]
         missing_deps = [dep for dep in dependencies if not Process.exists(dep)]
-        
+
         if missing_deps:
             # Check if native PMKID capture is available as fallback
             if NATIVE_PMKID_AVAILABLE:
@@ -528,22 +528,22 @@ class AttackPMKID(Attack):
     def capture_pmkid_native(self):
         """
         Capture PMKID using native Scapy implementation.
-        
+
         This is a fallback method when hcxdumptool is not available.
         Uses ScapyPMKID to capture PMKID by sending auth frames and
         listening for EAPOL Message 1 responses.
-        
+
         Returns:
             Path to PMKID hash file (.22000) if captured, None otherwise
         """
         log_info('AttackPMKID', f'Starting native PMKID capture for {self.target.essid} ({self.target.bssid})')
-        
+
         if self.view:
             self.view.add_log("Starting native PMKID capture (Scapy)...")
             self.view.set_capture_tool("Native (Scapy)")
-        
+
         Color.pattack('PMKID', self.target, 'CAPTURE', 'Starting native capture...')
-        
+
         try:
             # Set interface to target channel
             from ..native.interface import NativeInterface
@@ -553,17 +553,17 @@ class AttackPMKID(Attack):
                     log_debug('AttackPMKID', f'Set channel to {self.target.channel}')
                 except Exception as e:
                     log_warning('AttackPMKID', f'Could not set channel: {e}')
-            
+
             # Capture PMKID with timeout
             timeout = Configuration.pmkid_timeout
             self.timer = Timer(timeout)
-            
+
             # Track progress for TUI
             def on_pmkid_captured(result):
                 log_info('AttackPMKID', f'Native capture found PMKID: {result.pmkid[:16]}...')
                 if self.view:
                     self.view.add_log(f'PMKID captured!')
-            
+
             # Use ScapyPMKID capture
             result = ScapyPMKID.capture(
                 interface=Configuration.interface,
@@ -574,7 +574,7 @@ class AttackPMKID(Attack):
                 channel=int(self.target.channel) if self.target.channel else None,
                 callback=on_pmkid_captured
             )
-            
+
             if result is None:
                 log_warning('AttackPMKID', 'Native PMKID capture failed: no PMKID received')
                 if self.view:
@@ -583,22 +583,22 @@ class AttackPMKID(Attack):
                 Color.pattack('PMKID', self.target, 'CAPTURE', '{R}Failed{O} to capture PMKID (native)\n')
                 Color.pl('')
                 return None
-            
+
             # Success - convert to hashcat format and save
             log_info('AttackPMKID', 'Native PMKID capture successful')
             if self.view:
                 self.view.update_pmkid_status(True, 1)
                 self.view.add_log("Successfully captured PMKID (native)!")
-            
+
             Color.clear_entire_line()
             Color.pattack('PMKID', self.target, 'CAPTURE', '{G}Captured PMKID{W} (native)')
-            
+
             # Generate hashcat 22000 format
             pmkid_hash = result.to_hashcat_22000()
-            
+
             # Save to file
             return self.save_pmkid(pmkid_hash)
-            
+
         except Exception as e:
             log_error('AttackPMKID', f'Native PMKID capture error: {e}', e)
             if self.view:

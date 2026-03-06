@@ -21,27 +21,27 @@ from contextlib import contextmanager
 
 
 class AttackWPA(Attack):
-    
+
     # Maximum retry attempts for recoverable errors
     MAX_RETRY_ATTEMPTS = 3
     RETRY_DELAY_SECONDS = 2
-    
+
     def __init__(self, target):
         super(AttackWPA, self).__init__(target)
         self.clients = []
         self.crack_result = None
         self.success = False
-        
+
         # Interface assignment for dual interface support
         self.interface_assignment = None
         self.capture_interface = None  # Dedicated interface for handshake capture
         self.deauth_interface = None   # Dedicated interface for deauthentication
-        
+
         # Error recovery tracking
         self._retry_count = 0
         self._last_error = None
         self._recovered_from_error = False
-        
+
         # Initialize TUI view if in TUI mode
         self.view = None
         if OutputManager.is_tui_mode():
@@ -51,18 +51,18 @@ class AttackWPA(Attack):
             except Exception:
                 # If TUI initialization fails, continue without it
                 self.view = None
-    
+
     @contextmanager
     def _error_recovery_context(self, operation_name: str):
         """
         Context manager for automatic error recovery during WPA attacks.
-        
+
         Handles common recoverable errors:
         - Interface going down
         - Channel switching failures
         - Resource exhaustion
         - Process crashes
-        
+
         Args:
             operation_name: Name of operation for logging
             

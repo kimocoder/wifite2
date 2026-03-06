@@ -55,10 +55,10 @@ class AttackAll:
             if index % 5 == 0:  # Every 5 targets
                 from ..util.process import Process
                 Process.check_fd_limit()
-                
+
                 # Memory monitoring - especially important for infinite mode
                 MemoryMonitor.periodic_check(index)
-            
+
             # Infinite mode specific cleanup
             if infinite_monitor and index % 10 == 0:
                 infinite_monitor.on_target_complete()
@@ -111,17 +111,17 @@ class AttackAll:
 
         elif target.primary_encryption.startswith('WPA'): # Covers WPA, WPA2, WPA3
             # WPA can have multiple attack vectors:
-            
+
             # Check if this is a WPA3 target
             is_wpa3 = target.primary_encryption == 'WPA3' or \
-                     (hasattr(target, 'wpa3_info') and target.wpa3_info and 
+                     (hasattr(target, 'wpa3_info') and target.wpa3_info and
                       (hasattr(target.wpa3_info, 'has_wpa3') and target.wpa3_info.has_wpa3))
-            
+
             # For WPA3 targets, use specialized WPA3 attack if tools are available
             if is_wpa3 and WPA3ToolChecker.can_attack_wpa3():
                 # Use WPA3-specific attack module
                 attacks.append(AttackWPA3SAE(target))
-                
+
                 # For transition mode, also try standard WPA2 attacks as fallback
                 if hasattr(target, 'wpa3_info') and target.wpa3_info and target.wpa3_info.get('is_transition'):
                     if not Configuration.wps_only and not Configuration.use_pmkid_only:
@@ -129,7 +129,7 @@ class AttackAll:
                         if not Configuration.dont_use_pmkid:
                             attacks.append(AttackPMKID(target))
                         attacks.append(AttackWPA(target))
-            
+
             # WPS attacks (not applicable to pure WPA3)
             elif not is_wpa3 and \
                not Configuration.use_pmkid_only and \

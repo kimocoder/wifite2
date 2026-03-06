@@ -67,33 +67,33 @@ class AttackWPA3SAE(Attack):
         4. Selects optimal attack strategy
         5. Executes the selected strategy
         6. Falls back to alternative strategies if needed
-        
+
         Returns:
             bool: True if attack succeeded, False otherwise
         """
         # Check for required WPA3 tools
         if not self._check_wpa3_tools():
             return False
-        
+
         # Start TUI view if available
         if self.view:
             self.view.start()
-        
+
         # Detect WPA3 capabilities
         self.wpa3_info = WPA3Detector.detect_wpa3_capability(self.target)
-        
+
         # Check for Dragonblood vulnerabilities
         self._check_dragonblood_vulnerability()
-        
+
         # Select attack strategy
         self.attack_strategy = WPA3AttackStrategy.select_strategy(
-            self.target, 
+            self.target,
             self.wpa3_info
         )
-        
+
         # Display strategy to user
         self._display_strategy()
-        
+
         # Execute strategy based on selection
         if self.attack_strategy == WPA3AttackStrategy.DOWNGRADE:
             return self._execute_downgrade_strategy()

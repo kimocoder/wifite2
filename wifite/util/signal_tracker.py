@@ -19,7 +19,7 @@ class SignalSample:
     """Single signal strength measurement."""
     timestamp: float
     power: int  # dBm (e.g., -65)
-    
+
     @property
     def age(self) -> float:
         """Seconds since this sample was taken."""
@@ -30,48 +30,48 @@ class SignalSample:
 class SignalHistory:
     """
     Tracks signal strength history for a single entity (AP or client).
-    
+
     Maintains a rolling window of signal samples for trend analysis
     and attack timing optimization.
     """
     bssid: str
     max_samples: int = 60  # Keep last 60 samples (1 per second = 1 minute)
     samples: deque = field(default_factory=lambda: deque(maxlen=60))
-    
+
     def __post_init__(self):
         # Ensure deque has correct maxlen
         self.samples = deque(maxlen=self.max_samples)
-    
+
     def add_sample(self, power: int) -> None:
         """Add a new signal strength sample."""
         self.samples.append(SignalSample(time.time(), power))
-    
+
     @property
     def current(self) -> Optional[int]:
         """Get most recent signal strength."""
         return self.samples[-1].power if self.samples else None
-    
+
     @property
     def average(self) -> Optional[float]:
         """Calculate average signal strength."""
         if not self.samples:
             return None
         return sum(s.power for s in self.samples) / len(self.samples)
-    
+
     @property
     def max_power(self) -> Optional[int]:
         """Get maximum signal strength seen."""
         if not self.samples:
             return None
         return max(s.power for s in self.samples)
-    
+
     @property
     def min_power(self) -> Optional[int]:
         """Get minimum signal strength seen."""
         if not self.samples:
             return None
         return min(s.power for s in self.samples)
-    
+
     @property
     def variance(self) -> Optional[float]:
         """Calculate signal variance (stability indicator)."""
@@ -79,33 +79,33 @@ class SignalHistory:
             return None
         avg = self.average
         return sum((s.power - avg) ** 2 for s in self.samples) / len(self.samples)
-    
+
     @property
     def trend(self) -> str:
         """
         Determine signal trend: 'improving', 'degrading', or 'stable'.
-        
+
         Uses simple linear regression on recent samples.
         """
         if len(self.samples) < 5:
             return 'unknown'
-        
+
         # Use last 10 samples for trend
         recent = list(self.samples)[-10:]
         n = len(recent)
-        
+
         # Calculate slope using simple linear regression
         x_sum = sum(range(n))
         y_sum = sum(s.power for s in recent)
         xy_sum = sum(i * recent[i].power for i in range(n))
         x2_sum = sum(i * i for i in range(n))
-        
+
         denominator = n * x2_sum - x_sum * x_sum
         if denominator == 0:
             return 'stable'
-        
+
         slope = (n * xy_sum - x_sum * y_sum) / denominator
-        
+
         # Threshold for trend detection (dB per sample)
         if slope > 0.5:
             return 'improving'
@@ -113,21 +113,21 @@ class SignalHistory:
             return 'degrading'
         else:
             return 'stable'
-    
+
     def is_stable(self, threshold: float = 5.0) -> bool:
         """Check if signal is stable (low variance)."""
         var = self.variance
         return var is not None and var < threshold
-    
+
     def get_optimal_window(self, window_seconds: int = 10) -> Optional[Tuple[float, float]]:
         """
         Find the time window with best average signal.
-        
+
         Useful for timing attacks when signal is strongest.
-        
+
         Args:
             window_seconds: Size of window to search
-            
+
         Returns:
             Tuple of (start_time, average_power) or None
         """

@@ -16,36 +16,36 @@ from typing import Callable, Optional, Tuple, Type, Union, Any
 
 class RetryExhausted(Exception):
     """Raised when all retry attempts are exhausted."""
-    
-    def __init__(self, message: str, last_exception: Optional[Exception] = None, 
+
+    def __init__(self, message: str, last_exception: Optional[Exception] = None,
                  attempts: int = 0):
         super().__init__(message)
         self.last_exception = last_exception
         self.attempts = attempts
 
 
-def exponential_backoff(attempt: int, 
+def exponential_backoff(attempt: int,
                         base_delay: float = 1.0,
                         max_delay: float = 60.0,
                         jitter: bool = True) -> float:
     """
     Calculate exponential backoff delay with optional jitter.
-    
+
     Args:
         attempt: Current attempt number (0-indexed)
         base_delay: Base delay in seconds
         max_delay: Maximum delay cap
         jitter: Add random jitter to prevent thundering herd
-        
+
     Returns:
         Delay in seconds
     """
     delay = min(base_delay * (2 ** attempt), max_delay)
-    
+
     if jitter:
         # Add up to 25% jitter
         delay *= (0.75 + random.random() * 0.5)
-    
+
     return delay
 
 
@@ -55,13 +55,13 @@ def linear_backoff(attempt: int,
                    max_delay: float = 30.0) -> float:
     """
     Calculate linear backoff delay.
-    
+
     Args:
         attempt: Current attempt number (0-indexed)
         base_delay: Base delay in seconds
         increment: Delay increment per attempt
         max_delay: Maximum delay cap
-        
+
     Returns:
         Delay in seconds
     """
@@ -71,11 +71,11 @@ def linear_backoff(attempt: int,
 def constant_delay(attempt: int, delay: float = 2.0) -> float:
     """
     Return constant delay (no backoff).
-    
+
     Args:
         attempt: Current attempt number (ignored)
         delay: Constant delay in seconds
-        
+
     Returns:
         Delay in seconds
     """
@@ -84,7 +84,7 @@ def constant_delay(attempt: int, delay: float = 2.0) -> float:
 
 class RetryConfig:
     """Configuration for retry behavior."""
-    
+
     def __init__(self,
                  max_attempts: int = 3,
                  backoff_func: Callable[[int], float] = None,
@@ -93,7 +93,7 @@ class RetryConfig:
                  on_failure: Optional[Callable[[int, Exception], None]] = None):
         """
         Initialize retry configuration.
-        
+
         Args:
             max_attempts: Maximum number of attempts
             backoff_func: Function to calculate delay (default: exponential)
@@ -114,14 +114,14 @@ def retry_with_backoff(config: Optional[RetryConfig] = None,
                        retry_exceptions: Tuple[Type[Exception], ...] = (Exception,)):
     """
     Decorator to retry a function with backoff on failure.
-    
+
     Can be used with or without a RetryConfig object.
-    
+
     Examples:
         @retry_with_backoff(max_attempts=5)
         def my_function():
             ...
-            
+
         config = RetryConfig(max_attempts=3, on_retry=log_retry)
         @retry_with_backoff(config=config)
         def another_function():
@@ -133,18 +133,18 @@ def retry_with_backoff(config: Optional[RetryConfig] = None,
             backoff_func=backoff_func or exponential_backoff,
             retry_exceptions=retry_exceptions
         )
-    
+
     def decorator(func: Callable) -> Callable:
         @wraps(func)
         def wrapper(*args, **kwargs):
             last_exception = None
-            
+
             for attempt in range(config.max_attempts):
                 try:
                     return func(*args, **kwargs)
                 except config.retry_exceptions as e:
                     last_exception = e
-                    
+
                     # Check if this was the last attempt
                     if attempt >= config.max_attempts - 1:
                         if config.on_failure:
@@ -154,22 +154,22 @@ def retry_with_backoff(config: Optional[RetryConfig] = None,
                             last_exception=e,
                             attempts=attempt + 1
                         ) from e
-                    
+
                     # Calculate delay and wait
                     delay = config.backoff_func(attempt)
-                    
+
                     if config.on_retry:
                         config.on_retry(attempt + 1, e)
-                    
+
                     time.sleep(delay)
-            
+
             # Should never reach here, but just in case
             raise RetryExhausted(
                 f"Unexpected retry exhaustion for {func.__name__}",
                 last_exception=last_exception,
                 attempts=config.max_attempts
             )
-        
+
         return wrapper
     return decorator
 
@@ -177,9 +177,9 @@ def retry_with_backoff(config: Optional[RetryConfig] = None,
 class RetryContext:
     """
     Context manager for retry logic with backoff.
-    
+
     Useful for retrying blocks of code rather than functions.
-    
+
     Example:
         with RetryContext(max_attempts=3) as retry:
             for attempt in retry:
@@ -189,7 +189,7 @@ class RetryContext:
                 except SomeException as e:
                     retry.record_failure(e)
     """
-    
+
     def __init__(self,
                  max_attempts: int = 3,
                  backoff_func: Callable[[int], float] = None,
@@ -197,47 +197,47 @@ class RetryContext:
         self.max_attempts = max_attempts
         self.backoff_func = backoff_func or exponential_backoff
         self.on_retry = on_retry
-        
+
         self.attempt = 0
         self.last_exception: Optional[Exception] = None
         self.succeeded = False
-    
+
     def __enter__(self):
         return self
-    
+
     def __exit__(self, exc_type, exc_val, exc_tb):
         # Don't suppress exceptions
         return False
-    
+
     def __iter__(self):
         return self
-    
+
     def __next__(self):
         if self.succeeded:
             raise StopIteration
-        
+
         if self.attempt >= self.max_attempts:
             raise RetryExhausted(
                 f"All {self.max_attempts} attempts failed",
                 last_exception=self.last_exception,
                 attempts=self.attempt
             )
-        
+
         # If not the first attempt, wait before retrying
         if self.attempt > 0 and self.last_exception:
             delay = self.backoff_func(self.attempt - 1)
             if self.on_retry:
                 self.on_retry(self.attempt, self.last_exception)
             time.sleep(delay)
-        
+
         current_attempt = self.attempt
         self.attempt += 1
         return current_attempt
-    
+
     def record_failure(self, exception: Exception) -> None:
         """Record a failure for the current attempt."""
         self.last_exception = exception
-    
+
     def mark_success(self) -> None:
         """Mark the operation as successful."""
         self.succeeded = True

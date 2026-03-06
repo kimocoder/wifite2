@@ -31,7 +31,7 @@ class Scanner:
         self.err_msg = None
         self._max_targets = 1000  # Limit target list size to prevent memory bloat
         self._cleanup_counter = 0  # Counter for periodic cleanup
-        
+
         # Initialize view based on output mode
         self.view = None
         self.use_tui = OutputManager.is_tui_mode()
@@ -48,7 +48,7 @@ class Scanner:
         # Check if airodump-ng is available, fallback to native if needed
         from ..util.process import Process
         use_native_scanner = False
-        
+
         if not Process.exists('airodump-ng'):
             if NATIVE_SCANNER_AVAILABLE:
                 from ..util.logger import log_info
@@ -59,11 +59,11 @@ class Scanner:
                 Color.pl('{!} {R}Error: airodump-ng not found and native scanner not available{W}')
                 self.err_msg = '{!} {R}Scanner not available: install aircrack-ng or Scapy{W}'
                 return False
-        
+
         # Route to appropriate scanner
         if use_native_scanner:
             return self._find_targets_native(max_scan_time)
-        
+
         # Loads airodump with interface/channel/etc from Configuration
         try:
             with Airodump() as airodump:
@@ -80,7 +80,7 @@ class Scanner:
                         Color.pl('{!} {O}Falling back to classic mode{W}')
                         self.use_tui = False
                         self.view = None
-                
+
                 # Loop until interrupted (Ctrl+C)
                 scan_start_time = time()
 
@@ -339,21 +339,21 @@ class Scanner:
     def _find_targets_native(self, max_scan_time):
         """
         Scan for targets using native Scapy-based scanner.
-        
+
         This is a fallback method when airodump-ng is not available.
         Uses NativeScanner from the native module.
-        
+
         Args:
             max_scan_time: Maximum scan duration in seconds (0 = until interrupted)
-            
+
         Returns:
             True if scan completed successfully
         """
         from ..util.logger import log_info, log_debug, log_warning
         from ..model.target import Target
-        
+
         log_info('Scanner', 'Starting native scanner')
-        
+
         # Determine scan band
         if Configuration.five_ghz:
             band = '5'
@@ -361,7 +361,7 @@ class Scanner:
             band = 'all'
         else:
             band = '2.4'
-        
+
         # Determine channels
         channels = None
         if Configuration.target_channel:
@@ -376,12 +376,12 @@ class Scanner:
                         channels.append(int(part))
             except ValueError:
                 log_warning('Scanner', f'Invalid channel spec: {Configuration.target_channel}')
-        
+
         Color.pl('{+} {C}Starting native scanner (Scapy){W}')
         Color.pl('{+} {C}Band: {G}%s{C}, Channels: {G}%s{W}' % (
             band, channels if channels else 'auto'
         ))
-        
+
         # Initialize TUI view if available
         if self.use_tui:
             try:
@@ -393,7 +393,7 @@ class Scanner:
                 Color.pl('{!} {O}TUI failed to start: %s{W}' % str(e))
                 self.use_tui = False
                 self.view = None
-        
+
         # Create and start native scanner
         scanner = NativeScanner(
             interface=Configuration.interface,
@@ -401,41 +401,41 @@ class Scanner:
             band=band,
             hop_interval=0.5
         )
-        
+
         try:
             scanner.start()
             scan_start_time = time()
-            
+
             while True:
                 # Convert native APs to Target objects
                 native_aps = scanner.get_targets()
                 self.targets = self._convert_native_targets(native_aps)
-                
+
                 # Periodic memory cleanup
                 self._cleanup_counter += 1
                 if self._cleanup_counter % 10 == 0:
                     self._cleanup_memory()
-                
+
                 # Memory monitoring
                 if self._cleanup_counter % 50 == 0:
                     from ..util.memory import MemoryMonitor
                     MemoryMonitor.periodic_check(self._cleanup_counter)
-                
+
                 # Check for specific target
                 if self.found_target():
                     scanner.stop()
                     return True
-                
+
                 # Update display
                 if self.use_tui and self.view:
                     self.view.update_targets(self.targets, False)
                 else:
                     self.print_targets()
-                    
+
                     target_count = len(self.targets)
                     client_count = sum(len(t.clients) for t in self.targets if hasattr(t, 'clients'))
                     stats = scanner.get_stats()
-                    
+
                     outline = '\r{+} Scanning (native).'
                     outline += ' Found {G}%d{W} target(s),' % target_count
                     outline += ' {G}%d{W} client(s).' % client_count
@@ -443,14 +443,14 @@ class Scanner:
                     outline += ' {O}Ctrl+C{W} when ready '
                     Color.clear_entire_line()
                     Color.p(outline)
-                
+
                 # Check timeout
                 if max_scan_time > 0 and time() > scan_start_time + max_scan_time:
                     scanner.stop()
                     return True
-                
+
                 sleep(1)
-                
+
         except KeyboardInterrupt:
             scanner.stop()
             return self._prompt_attack_or_exit()
@@ -461,14 +461,14 @@ class Scanner:
                 controller = OutputManager.get_controller()
                 if controller:
                     controller.stop()
-    
+
     def _convert_native_targets(self, native_aps):
         """
         Convert native AccessPoint objects to Target objects.
-        
+
         Args:
             native_aps: List of NativeAP objects from NativeScanner
-            
+
         Returns:
             List of Target objects compatible with wifite's attack system
         """
