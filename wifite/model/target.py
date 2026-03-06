@@ -9,7 +9,7 @@ class WPSState:
     NONE, UNLOCKED, LOCKED, UNKNOWN = list(range(4))
 
 
-class ArchivedTarget(object):
+class ArchivedTarget:
     """
         Holds information between scans from a previously found target
     """
@@ -42,7 +42,7 @@ class ArchivedTarget(object):
         # Check if the other class type is either ArchivedTarget or Target
         return isinstance(other, (self.__class__, Target)) and self.bssid == other.bssid
 
-class Target(object):
+class Target:
     """
         Holds details for a 'Target' aka Access Point (e.g. router).
     """

@@ -17,7 +17,7 @@ except ImportError:
     NATIVE_SCANNER_AVAILABLE = False
 
 
-class Scanner(object):
+class Scanner:
     """ Scans wifi networks & provides menu for selecting targets """
 
     # Console code for moving up one line

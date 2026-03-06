@@ -9,7 +9,7 @@ import time
 from json import loads, dumps
 
 
-class CrackResult(object):
+class CrackResult:
     """ Abstract class containing results from a crack session """
 
     # File to save cracks to, in PWD

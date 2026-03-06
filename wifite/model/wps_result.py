@@ -44,7 +44,6 @@ class CrackResultWPS(CrackResult):
 
     def to_dict(self):
         with suppress_stdout_stderr():
-            print('@@@ to dict', self.__dict__)
             return {
                 'type': self.result_type,
                 'date': self.date,

@@ -7,7 +7,7 @@ import argparse
 import sys
 
 
-class Arguments(object):
+class Arguments:
     """ Holds arguments used by the Wifite """
 
     def __init__(self, configuration):

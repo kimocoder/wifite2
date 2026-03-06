@@ -13,7 +13,7 @@ import os
 import subprocess
 
 
-class Wifite(object):
+class Wifite:
 
     def __init__(self):
         """
