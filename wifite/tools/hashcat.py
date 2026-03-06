@@ -23,11 +23,12 @@ class Hashcat(Dependency):
         return 'No devices found/left' in stderr or 'Unstable OpenCL driver detected!' in stderr
 
     @staticmethod
-    def crack_handshake(handshake_obj, target_is_wpa3_sae, show_command=False):
+    def crack_handshake(handshake_obj, target_is_wpa3_sae, show_command=False, wordlist=None):
         """
         Cracks a handshake.
         handshake_obj: A Handshake object (should have .capfile attribute)
         target_is_wpa3_sae: Boolean indicating if the target uses WPA3-SAE
+        wordlist: Path to wordlist file (uses Configuration.wordlist if None)
         """
         hash_file = HcxPcapngTool.generate_hash_file(handshake_obj, target_is_wpa3_sae, show_command=show_command)
 
@@ -35,8 +36,9 @@ class Hashcat(Dependency):
         if hash_file is None:
             Color.pl('{!} {O}Falling back to aircrack-ng for cracking{W}')
             from .aircrack import Aircrack
-            return Aircrack.crack_handshake(handshake_obj, show_command=show_command)
+            return Aircrack.crack_handshake(handshake_obj, show_command=show_command, wordlist=wordlist)
 
+        wordlist = wordlist or Configuration.wordlist
         key = None
         try:
             # Mode 22000 supports both WPA/WPA2 and WPA3-SAE (WPA-PBKDF2-PMKID+EAPOL)
@@ -52,7 +54,7 @@ class Hashcat(Dependency):
                     '--quiet',
                     '-m', hashcat_mode,
                     hash_file,
-                    Configuration.wordlist
+                    wordlist
                 ]
                 if Hashcat.should_use_force():
                     command.append('--force')
@@ -97,12 +99,13 @@ class Hashcat(Dependency):
                         Color.pl('{!} {O}Warning: Could not remove hash file: %s{W}' % str(e))
 
     @staticmethod
-    def crack_pmkid(pmkid_file, verbose=False):
+    def crack_pmkid(pmkid_file, verbose=False, wordlist=None):
         """
         Cracks a given pmkid_file using the PMKID/WPA2 attack (-m 22000)
         Returns:
             Key (str) if found; `None` if not found.
         """
+        wordlist = wordlist or Configuration.wordlist
 
         # Run hashcat once normally, then with --show if it failed
         # To catch cases where the password is already in the pot file.
@@ -113,7 +116,7 @@ class Hashcat(Dependency):
                 '-m', '22000',  # WPA-PMKID-PBKDF2
                 '-a', '0',      # Wordlist attack-mode
                 pmkid_file,
-                Configuration.wordlist,
+                wordlist,
                 '-w', '3'
             ]
             if Hashcat.should_use_force():

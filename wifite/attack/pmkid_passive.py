@@ -545,35 +545,43 @@ class AttackPassivePMKID:
         
         if not Configuration.wordlist:
             Color.pl('{!} {O}No wordlist specified, skipping crack{W}')
-            Color.pl('{!} {O}Use {C}--dict{O} to specify a wordlist{W}')
+            Color.pl('{!} {O}Use {C}--dict{O} to specify a wordlist or directory{W}')
             return
-        
+
+        wordlists_to_try = [wl for wl in Configuration.wordlists if os.path.exists(wl)]
+        if not wordlists_to_try:
+            wordlists_to_try = [Configuration.wordlist]
+
         cracked_count = 0
-        
+
         for bssid, pmkid_data in self.captured_pmkids.items():
             essid = pmkid_data['essid']
             pmkid_file = pmkid_data['file']
-            
+
             Color.pl('')
             Color.pl('{+} {C}Cracking PMKID for:{W} {G}%s{W} ({C}%s{W})' % (
                 essid if essid else '<hidden>',
                 bssid
             ))
-            
-            # Attempt to crack
-            key = Hashcat.crack_pmkid(pmkid_file, verbose=Configuration.verbose > 0)
-            
+
+            # Attempt to crack with each wordlist
+            key = None
+            for wordlist in wordlists_to_try:
+                key = Hashcat.crack_pmkid(pmkid_file, verbose=Configuration.verbose > 0, wordlist=wordlist)
+                if key:
+                    break
+
             if key:
                 cracked_count += 1
                 Color.pl('{+} {G}SUCCESS!{W} Password: {G}%s{W}' % key)
-                
+
                 # Save result
                 from ..model.pmkid_result import CrackResultPMKID
                 result = CrackResultPMKID(bssid, essid, pmkid_file, key)
                 result.save()
                 result.dump()
             else:
-                Color.pl('{!} {R}Failed to crack{W} (password not in wordlist)')
+                Color.pl('{!} {R}Failed to crack{W} (password not in any wordlist)')
         
         Color.pl('')
         Color.pl('{+} {C}Cracking complete:{W} {G}%d{W}/{G}%d{W} PMKIDs cracked' % (

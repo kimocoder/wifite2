@@ -104,13 +104,29 @@ class CrackHelper:
 
         # Get wordlist
         if not Configuration.wordlist:
-            Color.p('\n{+} Enter wordlist file to use for cracking: {G}')
-            Configuration.wordlist = input()
+            Color.p('\n{+} Enter wordlist file or directory to use for cracking: {G}')
+            user_input = input()
             Color.p('{W}')
 
-            if not os.path.exists(Configuration.wordlist):
-                Color.pl('{!} {R}Wordlist {O}%s{R} not found. Exiting.' % Configuration.wordlist)
+            if not os.path.exists(user_input):
+                Color.pl('{!} {R}Wordlist {O}%s{R} not found. Exiting.' % user_input)
                 return
+
+            if os.path.isdir(user_input):
+                files = sorted([
+                    os.path.join(user_input, f)
+                    for f in os.listdir(user_input)
+                    if os.path.isfile(os.path.join(user_input, f))
+                ])
+                if not files:
+                    Color.pl('{!} {R}Directory {O}%s{R} contains no files. Exiting.' % user_input)
+                    return
+                Configuration.wordlists = files
+                Configuration.wordlist = files[0]
+                Color.pl('{+} Using {G}%d{W} wordlist(s) from directory {G}%s{W}' % (len(files), user_input))
+            else:
+                Configuration.wordlist = user_input
+                Configuration.wordlists = [user_input]
             Color.pl('')
 
         # Get handshakes
@@ -363,31 +379,41 @@ class CrackHelper:
             Color.pl('{!} {R}Error: {O}%s{W}' % e)
             return None
 
-        if tool == 'aircrack':
-            key = Aircrack.crack_handshake(handshake, show_command=True)
-        elif tool == 'hashcat':
-            key = Hashcat.crack_handshake(handshake, target_is_wpa3_sae=False, show_command=True)
-        elif tool == 'john':
-            key = John.crack_handshake(handshake, show_command=True)
-        elif tool == 'cowpatty':
-            key = Cowpatty.crack_handshake(handshake, show_command=True)
+        wordlists_to_try = Configuration.wordlists if Configuration.wordlists else [Configuration.wordlist]
 
-        if key is not None:
-            return CrackResultWPA(hs['bssid'], hs['essid'], hs['filename'], key)
-        else:
-            return None
+        for wordlist in wordlists_to_try:
+            wordlist_name = os.path.basename(wordlist)
+            Color.pl('{+} Trying wordlist: {C}%s{W}' % wordlist_name)
+
+            if tool == 'aircrack':
+                key = Aircrack.crack_handshake(handshake, show_command=True, wordlist=wordlist)
+            elif tool == 'hashcat':
+                key = Hashcat.crack_handshake(handshake, target_is_wpa3_sae=False, show_command=True, wordlist=wordlist)
+            elif tool == 'john':
+                key = John.crack_handshake(handshake, show_command=True, wordlist=wordlist)
+            elif tool == 'cowpatty':
+                key = Cowpatty.crack_handshake(handshake, show_command=True, wordlist=wordlist)
+
+            if key is not None:
+                return CrackResultWPA(hs['bssid'], hs['essid'], hs['filename'], key)
+
+        return None
 
     @classmethod
     def crack_pmkid(cls, hs, tool):
         if tool != 'hashcat':
             Color.pl('{!} {O}Note: PMKID hashes can only be cracked using {C}hashcat{W}')
 
-        key2 = Hashcat.crack_pmkid(hs['filename'], verbose=True)
+        wordlists_to_try = Configuration.wordlists if Configuration.wordlists else [Configuration.wordlist]
 
-        if key2 is not None:
-            return CrackResultPMKID(hs['bssid'], hs['essid'], hs['filename'], key2)
-        else:
-            return None
+        for wordlist in wordlists_to_try:
+            wordlist_name = os.path.basename(wordlist)
+            Color.pl('{+} Trying wordlist: {C}%s{W}' % wordlist_name)
+            key2 = Hashcat.crack_pmkid(hs['filename'], verbose=True, wordlist=wordlist)
+            if key2 is not None:
+                return CrackResultPMKID(hs['bssid'], hs['essid'], hs['filename'], key2)
+
+        return None
 
     @classmethod
     def crack_sae(cls, hs, tool):
@@ -395,26 +421,29 @@ class CrackHelper:
         if tool != 'hashcat':
             Color.pl('{!} {O}Note: WPA3-SAE handshakes can only be cracked using {C}hashcat{W}')
             return None
-        
+
         # Create SAEHandshake object
         sae_handshake = SAEHandshake(
             capfile=hs['filename'],
             bssid=hs['bssid'],
             essid=hs['essid']
         )
-        
-        # Crack using SAECracker
-        key = SAECracker.crack_sae_handshake(
-            sae_handshake,
-            wordlist=Configuration.wordlist,
-            show_command=True,
-            verbose=True
-        )
-        
-        if key is not None:
-            return CrackResultSAE(hs['bssid'], hs['essid'], hs['filename'], key)
-        else:
-            return None
+
+        wordlists_to_try = Configuration.wordlists if Configuration.wordlists else [Configuration.wordlist]
+
+        for wordlist in wordlists_to_try:
+            wordlist_name = os.path.basename(wordlist)
+            Color.pl('{+} Trying wordlist: {C}%s{W}' % wordlist_name)
+            key = SAECracker.crack_sae_handshake(
+                sae_handshake,
+                wordlist=wordlist,
+                show_command=True,
+                verbose=True
+            )
+            if key is not None:
+                return CrackResultSAE(hs['bssid'], hs['essid'], hs['filename'], key)
+
+        return None
 
 
 if __name__ == '__main__':
