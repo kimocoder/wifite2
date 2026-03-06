@@ -365,3 +365,22 @@ def log_critical(module: str, message: str, exc: Optional[Exception] = None):
 def log_exception(module: str, message: str):
     """Log current exception."""
     Logger.exception(module, message)
+
+
+def mask_sensitive(value: str) -> str:
+    """Mask a sensitive value (e.g. password, key) for safe logging.
+
+    Shows the first 2 characters followed by asterisks.  Values of
+    2 characters or fewer are fully masked.
+
+    Args:
+        value: The sensitive string to mask.
+
+    Returns:
+        A masked version of *value* that is safe to include in logs.
+    """
+    if not value:
+        return '****'
+    if len(value) <= 2:
+        return '*' * len(value)
+    return value[:2] + '*' * (len(value) - 2)

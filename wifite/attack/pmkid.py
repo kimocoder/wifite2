@@ -10,7 +10,7 @@ from ..util.output import OutputManager
 from ..model.pmkid_result import CrackResultPMKID
 from ..tools.airodump import Airodump
 from ..util.wpasec_uploader import WpaSecUploader
-from ..util.logger import log_debug, log_info, log_warning, log_error
+from ..util.logger import log_debug, log_info, log_warning, log_error, mask_sensitive
 from threading import Thread, active_count
 import os
 import time
@@ -479,7 +479,7 @@ class AttackPMKID(Attack):
             key = Hashcat.crack_pmkid(pmkid_file)
 
         if key is not None:
-            log_info('AttackPMKID', f'PMKID cracked successfully! Password: {key}')
+            log_info('AttackPMKID', f'PMKID cracked successfully! Password: {mask_sensitive(key)}')
             return self._handle_pmkid_crack_success(key, pmkid_file)
         # Failed to crack.
         if Configuration.wordlist is not None:
@@ -495,7 +495,7 @@ class AttackPMKID(Attack):
         # Successfully cracked.
         if self.view:
             self.view.add_log(f"Successfully cracked PMKID!")
-            self.view.add_log(f"Password: {key}")
+            self.view.add_log(f"Password: {mask_sensitive(key)}")
             self.view.update_progress({
                 'progress': 1.0,
                 'status': 'PMKID cracked successfully!',

@@ -19,7 +19,7 @@ from ..model.eviltwin_result import CrackResultEvilTwin
 from ..config import Configuration
 from ..util.color import Color
 from ..util.timer import Timer
-from ..util.logger import log_info, log_error, log_warning, log_debug
+from ..util.logger import log_info, log_error, log_warning, log_debug, mask_sensitive
 from ..util.client_monitor import ClientMonitor, ClientConnection
 from ..util.cleanup import CleanupManager
 from ..util.adaptive_deauth import AdaptiveDeauthManager
@@ -1412,7 +1412,7 @@ class EvilTwin(Attack):
             
             # Log the attempt
             if success:
-                log_info('EvilTwin', f'Valid credentials from {mac_address}: {password}')
+                log_info('EvilTwin', f'Valid credentials from {mac_address}: {mask_sensitive(password)}')
                 Color.pl('\n{+} {G}SUCCESS! Valid credentials captured:{W}')
                 Color.pl('    {C}From:{W} {G}%s{W}' % mac_address)
                 Color.pl('    {C}Password:{W} {G}%s{W}' % password)
@@ -1457,7 +1457,7 @@ class EvilTwin(Attack):
             portal_template=getattr(Configuration, 'evil_twin_portal_template', 'generic')
         )
         
-        log_info('EvilTwin', f'Created result for {self.target.essid}: {password}')
+        log_info('EvilTwin', f'Created result for {self.target.essid}: {mask_sensitive(password)}')
         return result
     
     def _setup_client_monitor(self, hostapd_log: str, dnsmasq_log: str):
