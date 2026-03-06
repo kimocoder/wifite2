@@ -1152,7 +1152,8 @@ class EvilTwinAttackView(AttackView):
         if success:
             self.successful_attempts += 1
             # Use rich text formatting for success
-            self.add_log(f"[bold green]✓[/bold green] Valid credentials from {mac_address}: [bold]{password}[/bold]", timestamp=True)
+            from ..util.logger import mask_sensitive
+            self.add_log(f"[bold green]✓[/bold green] Valid credentials from {mac_address}: [bold]{mask_sensitive(password)}[/bold]", timestamp=True)
             # Update phase to show success
             self.set_attack_phase("Validating")
             

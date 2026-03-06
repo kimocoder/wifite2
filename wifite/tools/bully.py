@@ -326,7 +326,8 @@ class Bully(Attack, Dependency):
 
         if self.cracked_pin and self.cracked_key:
             if self.attack_view:
-                self.attack_view.add_log(f"SUCCESS! Cracked WPS Key: {self.cracked_key}")
+                from ..util.logger import mask_sensitive
+                self.attack_view.add_log(f"SUCCESS! Cracked WPS Key: {mask_sensitive(self.cracked_key)}")
                 self.attack_view.update_progress({
                     'progress': 1.0,
                     'status': 'WPS Cracked!',

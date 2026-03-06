@@ -288,7 +288,8 @@ class Reaver(Attack, Dependency):
                 # Reaver provided PSK
                 if self.attack_view:
                     self.attack_view.add_log(f"SUCCESS! Cracked WPS PIN: {pin}")
-                    self.attack_view.add_log(f"PSK (Password): {psk}")
+                    from ..util.logger import mask_sensitive
+                    self.attack_view.add_log(f"PSK (Password): {mask_sensitive(psk)}")
                     self.attack_view.update_progress({
                         'progress': 1.0,
                         'status': 'WPS Cracked!',
