@@ -199,11 +199,11 @@ class TestHcxDumpToolPassive(unittest.TestCase):
         """Test initialization with default output file"""
         mock_temp.return_value = '/tmp/wifite_'
         Configuration.interface = 'wlan0'
-        
+
         tool = HcxDumpToolPassive()
-        
+
         self.assertEqual(tool.interface, 'wlan0')
-        self.assertEqual(tool.output_file, '/tmp/wifite_passive_pmkid.pcapng')
+        self.assertEqual(tool.output_file, '/tmp/wifite_/passive_pmkid.pcapng')
 
     @patch('wifite.tools.hcxdumptool.Configuration.initialize')
     def test_initialization_no_interface_raises_error(self, mock_config_init):
