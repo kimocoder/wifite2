@@ -1,4 +1,4 @@
-[![GitHub version](https://img.shields.io/badge/version-2.9.9-informational.svg)](#)
+[![GitHub version](https://img.shields.io/badge/version-2.9.9--beta-informational.svg)](#)
 [![GitHub issues](https://img.shields.io/github/issues/kimocoder/wifite2.svg)](https://github.com/kimocoder/wifite2/issues)
 [![GitHub forks](https://img.shields.io/github/forks/kimocoder/wifite2.svg)](https://github.com/kimocoder/wifite2/network)
 [![GitHub stars](https://img.shields.io/github/stars/kimocoder/wifite2.svg)](https://github.com/kimocoder/wifite2/stargazers)
@@ -23,8 +23,6 @@ Wifite is designed to use all known methods for retrieving the password of a wir
 5. WPA3: Transition mode downgrade attacks (force WPA2 on mixed networks).
 6. WEP: Various known attacks against WEP, including *fragmentation*, *chop-chop*, *aireplay*, etc.
 7. **Evil Twin**: Rogue AP attack with captive portal for credential capture.
-8. WIFI Signal jammer, block specific accesspoints or multiple.
-   signal jamming only works for specific Atheros WiFi chipsets. 
 
 Run wifite, select your targets, and Wifite will automatically start trying to capture or crack the password.
 
@@ -58,7 +56,7 @@ Supported Operating Systems
 
 ### Mobile Support 📱
 * **Kali NetHunter (Android)** - Requires custom kernel with monitor mode support
-  * Tested on Android 10 to latest 16
+  * Tested on Android 10 and newer
   * Requires compatible wireless adapter and proper drivers
   * See [NetHunter Documentation](https://www.kali.org/docs/nethunter/) for setup
 
@@ -83,8 +81,7 @@ Second, only the latest versions of these programs are supported and must be ins
 
 **Required:**
 
-* Suggest using `python3` as `python2` was marked deprecated as of january 2020.
-* As we moved from older python and changed to fully support and run on `python3.14`
+* `python3` (Python 3.9+, tested up to Python 3.14)
 * [`Iw`](https://wireless.wiki.kernel.org/en/users/documentation/iw): For identifying wireless devices already in Monitor Mode.
 * [`Ip`](https://packages.debian.org/buster/net-tools): For starting/stopping wireless devices.
 * [`Aircrack-ng`](https://aircrack-ng.org/) suite, includes:
@@ -161,8 +158,6 @@ poetry shell
 sudo wifite
 ```
 
-**See [POETRY.md](POETRY.md) for detailed Poetry usage and commands.**
-
 ### Development Install with pip
 
 For development or if you want to modify wifite:
@@ -238,7 +233,7 @@ Features
   * **Manual Control** - Specify primary and secondary interfaces manually
   * **Backward Compatible** - Seamlessly falls back to single interface mode
   * **📖 Complete Guide:** [Dual Interface Guide](docs/DUAL_INTERFACE_GUIDE.md)
-  * **🔧 Troubleshooting:** [Dual Interface Troubleshooting](docs/DUAL_INTERFACE_TROUBLESHOOTING.md)
+
 * **Wireless Attack Monitoring** - Passive detection and analysis of wireless attacks (use with: `--monitor-attacks`)
   * **Real-time Detection** - Identifies deauthentication and disassociation attacks as they occur
   * **Attack Statistics** - Tracks attack counts, targeted networks, and attacker devices
@@ -342,7 +337,7 @@ sudo apt update
 sudo apt install hcxdumptool hcxtools hashcat
 ```
 
-**📖 For detailed installation instructions, version requirements, and troubleshooting, see [WPA3 Tool Requirements Guide](docs/WPA3_TOOL_REQUIREMENTS.md)**
+**📖 For WPA3-specific troubleshooting, see [WPA3 Troubleshooting](docs/WPA3_TROUBLESHOOTING.md)**
 
 #### Understanding WPA3 Network Types
 
@@ -425,7 +420,7 @@ sudo wifite --monitor-attacks --monitor-hop
 sudo wifite --monitor-attacks --monitor-log /path/to/attack_log.txt
 
 # Use classic text mode instead of TUI
-sudo wifite --monitor-attacks --classic
+sudo wifite --monitor-attacks --no-tui
 ```
 
 #### Understanding the TUI Display
@@ -523,7 +518,7 @@ sudo wifite --monitor-attacks --monitor-hop --monitor-log "attacks_$(date +%Y%m%
 sudo wifite --monitor-attacks --monitor-log /var/log/wifite/attacks_$(date +%Y%m%d).log
 
 # Monitor specific channel in classic mode (no TUI, lower resource usage)
-sudo wifite --monitor-attacks --monitor-channel 1 --classic --monitor-log attacks.log
+sudo wifite --monitor-attacks --monitor-channel 1 --no-tui --monitor-log attacks.log
 ```
 
 **Incident Response:**
@@ -576,7 +571,7 @@ sudo wifite -i wlan0mon --monitor-attacks --monitor-channel 6 --monitor-log comp
 **Optimization Tips:**
 - Use `--monitor-channel` to focus on specific channels for better performance
 - Avoid channel hopping on busy networks to reduce CPU usage
-- Use classic mode (`--classic`) on resource-constrained systems
+- Use classic mode (`--no-tui`) on resource-constrained systems
 - Regularly rotate log files to prevent excessive disk usage
 
 **Scalability:**
@@ -866,10 +861,10 @@ Performance Tips
 * **Use a dedicated wireless adapter** - USB adapters often perform better than built-in cards
 * **Position matters** - Get closer to target networks for better signal strength
 * **Choose the right channel** - Use `-c <channel>` to focus on specific channels
-* **Limit concurrent attacks** - Use `--first 5` to attack only the strongest targets first
+* **Limit concurrent attacks** - Use `-first 5` to attack only the strongest targets first
 
 ### Speed Optimization
-* **PMKID first** - Try `--pmkid-only` for fastest WPA/WPA2 attacks (no clients needed)
+* **PMKID first** - Try `--pmkid` for fastest WPA/WPA2 attacks (no clients needed)
 * **Skip WPS on modern routers** - Use `--no-wps` on newer routers that likely have WPS disabled
 * **Use wordlists efficiently** - Start with common passwords, use `--dict <wordlist>`
 * **WPA3 transition mode** - Downgrade attacks are faster than pure SAE capture
@@ -923,7 +918,7 @@ Troubleshooting
 
 **Handshake capture issues:**
 - Ensure clients are connected to the target network
-- Use `--deauth-count` to increase deauth attempts
+- Use `--num-deauths` to increase deauth attempts
 - Some networks may require longer capture times
 
 **WPA3 attack issues:**
@@ -944,7 +939,7 @@ Troubleshooting
 - **No attacks detected:** Ensure your wireless adapter is in monitor mode and positioned to receive signals
 - **Permission denied:** Run wifite with `sudo` - packet capture requires root privileges
 - **High CPU usage:** Use `--monitor-channel` instead of `--monitor-hop` to reduce processing load
-- **TUI not displaying:** Try classic mode with `--classic` or check terminal compatibility
+- **TUI not displaying:** Try classic mode with `--no-tui` or check terminal compatibility
 - **Log file not created:** Verify write permissions for the log file path
 - **Interface errors:** Ensure no other tools (airodump-ng, etc.) are using the interface
 
@@ -973,15 +968,6 @@ Documentation
 
 ### Comprehensive Guides
 
-* **[Attack Monitoring Guide](docs/ATTACK_MONITORING_GUIDE.md)** - Complete guide to wireless attack monitoring
-  * Legal requirements and authorization
-  * Installation and setup
-  * Basic and advanced usage
-  * TUI interface explanation
-  * Log file analysis techniques
-  * Use cases and best practices
-  * Troubleshooting and FAQ
-
 * **[Evil Twin Attack Guide](docs/EVILTWIN_GUIDE.md)** - Complete guide to Evil Twin attacks
   * Hardware and software requirements
   * Usage examples and advanced options
@@ -999,6 +985,10 @@ Documentation
 * **[TUI (Text User Interface) Guide](docs/TUI_README.md)** - Interactive mode documentation
 
 * **[WPA3 Troubleshooting](docs/WPA3_TROUBLESHOOTING.md)** - WPA3-specific issues and solutions
+
+* **[WPA3 Detection Optimization](docs/WPA3_DETECTION_OPTIMIZATION.md)** - WPA3 detection and optimization details
+
+* **[Dual Interface Examples](docs/DUAL_INTERFACE_EXAMPLES.md)** - Dual wireless interface usage examples
 
 ### Quick Reference
 
