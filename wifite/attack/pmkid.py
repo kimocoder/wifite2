@@ -225,7 +225,7 @@ class AttackPMKID(Attack):
             if self.view:
                 self.view.add_log("Skipping crack phase (--skip-crack flag)")
             return self._handle_hashcat_failure(
-                '{+} Not cracking pmkid because {C}skip-crack{W} was used{W}')
+                '\n{+} Not cracking pmkid because {C}skip-crack{W} was used{W}')
 
         # Crack it.
         if Process.exists(Hashcat.dependency_name):
