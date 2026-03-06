@@ -17,9 +17,10 @@ class John(Dependency):
     dependency_url = 'https://www.openwall.com/john/'
 
     @staticmethod
-    def crack_handshake(handshake, show_command=False):
+    def crack_handshake(handshake, show_command=False, wordlist=None):
         john_file = HcxPcapngTool.generate_john_file(handshake, show_command=show_command)
 
+        wordlist = wordlist or Configuration.wordlist
         key = None
         try:
             # Use `john --list=formats` to find if OpenCL or CUDA is supported.
@@ -32,7 +33,7 @@ class John(Dependency):
                 john_format = 'wpapsk'
 
             # Crack john file
-            command = ['john', f'--format={john_format}', f'--wordlist={Configuration.wordlist}', john_file]
+            command = ['john', f'--format={john_format}', f'--wordlist={wordlist}', john_file]
             if show_command:
                 Color.pl('{+} {D}Running: {W}{P}%s{W}' % ' '.join(command))
             process = Process(command)

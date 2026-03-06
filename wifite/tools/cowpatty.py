@@ -14,11 +14,11 @@ class Cowpatty(Dependency):
     dependency_url = 'https://tools.kali.org/wireless-attacks/cowpatty'
 
     @staticmethod
-    def crack_handshake(handshake, show_command=False):
-        # Crack john file
+    def crack_handshake(handshake, show_command=False, wordlist=None):
+        wordlist = wordlist or Configuration.wordlist
         command = [
             'cowpatty',
-            '-f', Configuration.wordlist,
+            '-f', wordlist,
             '-r', handshake.capfile,
             '-s', handshake.essid
         ]

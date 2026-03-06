@@ -368,8 +368,11 @@ class AttackWPA(Attack):
             return self._handle_attack_failure(
                 '{!} {O}Not cracking handshake because wordlist ({R}--dict{O}) is not set'
             )
-        elif not os.path.exists(Configuration.wordlist):
-            Color.pl('{!} {O}Not cracking handshake because wordlist {R}%s{O} was not found' % Configuration.wordlist)
+
+        # Get list of wordlists to try
+        wordlists_to_try = [wl for wl in Configuration.wordlists if os.path.exists(wl)]
+        if not wordlists_to_try:
+            Color.pl('{!} {O}Not cracking handshake because no valid wordlist files were found')
             self.success = False
             return False
 
@@ -384,34 +387,41 @@ class AttackWPA(Attack):
         # as Hashcat mode 22000 (hccapx) is generally preferred over aircrack-ng.
         # Aircrack.crack_handshake might be removed or kept for WEP only in future.
 
-        wordlist_name = os.path.split(Configuration.wordlist)[-1] if Configuration.wordlist else "default wordlist"
-        crack_msg = f'Cracking {"WPA3-SAE" if target_is_wpa3_sae else "WPA/WPA2"} Handshake: Running {cracker} with {wordlist_name} wordlist'
-        
-        Color.pl(f'\n{{+}} {{C}}{crack_msg}{{W}}')
-        
-        # Update TUI view if available
-        if self.view:
-            self.view.add_log(crack_msg)
-            self.view.update_progress({
-                'status': f'Cracking with {cracker}...',
-                'metrics': {
-                    'Cracker': cracker,
-                    'Wordlist': wordlist_name,
-                    'Type': 'WPA3-SAE' if target_is_wpa3_sae else 'WPA/WPA2'
-                }
-            })
+        key = None
+        for idx, wordlist in enumerate(wordlists_to_try):
+            wordlist_name = os.path.split(wordlist)[-1]
+            crack_msg = f'Cracking {"WPA3-SAE" if target_is_wpa3_sae else "WPA/WPA2"} Handshake: Running {cracker} with {wordlist_name} wordlist ({idx + 1}/{len(wordlists_to_try)})'
 
-        try:
-            key = Hashcat.crack_handshake(handshake, target_is_wpa3_sae, show_command=Configuration.verbose > 1)
-        except ValueError as e: # Catch errors from hash file generation (e.g. bad capture)
-            error_msg = f"Error during hash file generation for cracking: {e}"
-            Color.pl(f"[!] {error_msg}")
+            Color.pl(f'\n{{+}} {{C}}{crack_msg}{{W}}')
+
+            # Update TUI view if available
             if self.view:
-                self.view.add_log(error_msg)
-            key = None
+                self.view.add_log(crack_msg)
+                self.view.update_progress({
+                    'status': f'Cracking with {cracker}...',
+                    'metrics': {
+                        'Cracker': cracker,
+                        'Wordlist': wordlist_name,
+                        'Type': 'WPA3-SAE' if target_is_wpa3_sae else 'WPA/WPA2'
+                    }
+                })
+
+            try:
+                key = Hashcat.crack_handshake(handshake, target_is_wpa3_sae, show_command=Configuration.verbose > 1, wordlist=wordlist)
+            except ValueError as e: # Catch errors from hash file generation (e.g. bad capture)
+                error_msg = f"Error during hash file generation for cracking: {e}"
+                Color.pl(f"[!] {error_msg}")
+                if self.view:
+                    self.view.add_log(error_msg)
+                key = None
+
+            if key is not None:
+                break
+
+            Color.pl(f'{{!}} {{O}}{wordlist_name} did not contain password{{W}}')
 
         if key is None:
-            fail_msg = f"Failed to crack handshake: {wordlist_name} did not contain password"
+            fail_msg = 'Failed to crack handshake: password not found in any wordlist'
             Color.pl(f"{{!}} {{R}}{fail_msg}{{W}}")
             if self.view:
                 self.view.add_log(fail_msg)

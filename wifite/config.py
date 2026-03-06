@@ -84,6 +84,7 @@ class Configuration:
     wep_restart_aircrack = None
     wep_restart_stale_ivs = None
     wordlist = None
+    wordlists = []
     wpa_attack_timeout = None
     wpa_deauth_timeout = None
     wpa_filter = None
@@ -232,7 +233,8 @@ class Configuration:
         # Default dictionary for cracking
         cls.cracked_file = 'cracked.json'
         cls.wordlist = None
-        wordlists = [
+        cls.wordlists = []
+        default_wordlists = [
             './wordlist-probable.txt',  # Local file (ran from cloned repo)
             '/usr/share/dict/wordlist-probable.txt',  # setup.py with prefix=/usr
             '/usr/local/share/dict/wordlist-probable.txt',  # setup.py with prefix=/usr/local
@@ -241,9 +243,10 @@ class Configuration:
             '/usr/share/fuzzdb/wordlists-user-passwd/passwds/phpbb.txt',
             '/usr/share/wordlists/fern-wifi/common.txt'
         ]
-        for wlist in wordlists:
+        for wlist in default_wordlists:
             if os.path.exists(wlist):
                 cls.wordlist = wlist
+                cls.wordlists = [wlist]
                 break
 
         if os.path.isfile('/usr/share/ieee-data/oui.txt'):
@@ -771,15 +774,31 @@ class Configuration:
         if args.wordlist:
             if not os.path.exists(args.wordlist):
                 cls.wordlist = None
+                cls.wordlists = []
                 Color.pl('{+} {C}option:{O} wordlist {R}%s{O} was not found, wifite will NOT attempt to crack '
                          'handshakes' % args.wordlist)
             elif os.path.isfile(args.wordlist):
                 cls.wordlist = args.wordlist
+                cls.wordlists = [args.wordlist]
                 Color.pl('{+} {C}option:{W} using wordlist {G}%s{W} for cracking' % args.wordlist)
             elif os.path.isdir(args.wordlist):
-                cls.wordlist = None
-                Color.pl('{+} {C}option:{O} wordlist {R}%s{O} is a directory, not a file. Wifite will NOT attempt to '
-                         'crack handshakes' % args.wordlist)
+                # Collect all files in the directory as wordlists
+                dict_dir = args.wordlist
+                files = sorted([
+                    os.path.join(dict_dir, f)
+                    for f in os.listdir(dict_dir)
+                    if os.path.isfile(os.path.join(dict_dir, f))
+                ])
+                if files:
+                    cls.wordlists = files
+                    cls.wordlist = files[0]
+                    Color.pl('{+} {C}option:{W} using {G}%d{W} wordlist(s) from directory {G}%s{W} for cracking'
+                             % (len(files), dict_dir))
+                else:
+                    cls.wordlist = None
+                    cls.wordlists = []
+                    Color.pl('{+} {C}option:{O} wordlist directory {R}%s{O} contains no files. Wifite will NOT '
+                             'attempt to crack handshakes' % dict_dir)
 
         if args.wpa_deauth_timeout:
             cls.wpa_deauth_timeout = args.wpa_deauth_timeout

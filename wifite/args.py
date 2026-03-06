@@ -759,10 +759,10 @@ against the real AP and captures valid passwords.
         wpa.add_argument('--dict',
                          action='store',
                          dest='wordlist',
-                         metavar='[file]',
+                         metavar='[file/directory]',
                          type=str,
                          help=Color.s(
-                             'File containing passwords for cracking (default: {G}%s{W})') % self.config.wordlist)
+                             'File or directory containing wordlists for cracking (default: {G}%s{W})') % self.config.wordlist)
 
         wpa.add_argument('--wpadt',
                          action='store',

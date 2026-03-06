@@ -468,15 +468,25 @@ class AttackPMKID(Attack):
 
             key = None
         else:
-            log_info('AttackPMKID', f'Using wordlist: {Configuration.wordlist}')
+            wordlists_to_try = [wl for wl in Configuration.wordlists if os.path.exists(wl)]
+            if not wordlists_to_try:
+                wordlists_to_try = [Configuration.wordlist]
+
+            log_info('AttackPMKID', f'Using {len(wordlists_to_try)} wordlist(s)')
             if self.view:
                 self.view.set_attack_type("PMKID Crack")
-                self.view.add_log(f"Starting PMKID crack with wordlist: {Configuration.wordlist}")
+                self.view.add_log(f"Starting PMKID crack with {len(wordlists_to_try)} wordlist(s)")
                 self.view.add_log("Running hashcat...")
 
-            Color.clear_entire_line()
-            Color.pattack('PMKID', self.target, 'CRACK', 'Cracking PMKID using {C}%s{W} ...\n' % Configuration.wordlist)
-            key = Hashcat.crack_pmkid(pmkid_file)
+            key = None
+            for wordlist in wordlists_to_try:
+                wordlist_name = os.path.basename(wordlist)
+                Color.clear_entire_line()
+                Color.pattack('PMKID', self.target, 'CRACK', 'Cracking PMKID using {C}%s{W} ...\n' % wordlist_name)
+                key = Hashcat.crack_pmkid(pmkid_file, wordlist=wordlist)
+                if key is not None:
+                    break
+                Color.pl('{!} {O}%s did not contain password{W}' % wordlist_name)
 
         if key is not None:
             log_info('AttackPMKID', f'PMKID cracked successfully! Password: {mask_sensitive(key)}')
