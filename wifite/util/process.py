@@ -108,9 +108,10 @@ class Process:
     def call(command, cwd=None, shell=False):
         """ Calls a command (either string or list of args). Returns (stdout, stderr) """
         if isinstance(command, str) and not shell:
-            # Only enable shell mode if explicitly requested
+            # Split string commands into list of args for Popen when not using shell mode
             if Configuration.verbose > 1:
                 Color.pe(f'\n {{C}}[?]{{W}} Executing: {{B}}{command}{{W}}')
+            command = command.split()
         elif shell:
             if Configuration.verbose > 1:
                 Color.pe(f'\n {{C}}[?] {{W}} Executing (Shell): {{B}}{command}{{W}}')

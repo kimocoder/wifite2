@@ -1136,9 +1136,12 @@ class InterfaceManager:
     
     def __del__(self):
         """Cleanup on deletion."""
-        import contextlib
-        with contextlib.suppress(Exception):
-            self.cleanup_all()
+        try:
+            import contextlib
+            with contextlib.suppress(Exception):
+                self.cleanup_all()
+        except ImportError:
+            pass
     
     # ========================================================================
     # Interface Detection and Capability Checking (Task 2)
