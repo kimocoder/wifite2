@@ -7,12 +7,21 @@ from .util.color import Color
 from .tools.macchanger import Macchanger
 
 
+def _get_version():
+    """Get version from importlib.metadata (installed package) or fallback to hardcoded."""
+    try:
+        from importlib.metadata import version
+        return version('wifite2')
+    except Exception:
+        return '2.9.9-beta'
+
+
 class Configuration:
     """ Stores configuration variables and functions for Wifite. """
 
     initialized = False  # Flag indicating config has been initialized
     verbose = 0
-    version = '2.9.9-beta'
+    version = _get_version()
 
     all_bands = None
     attack_max = None
@@ -47,6 +56,7 @@ class Configuration:
     show_bssids = None
     show_cracked = None
     show_ignored = None
+    tx_power = None
     update_db = None
     db_filename = None
     show_manufacturers = None
@@ -59,6 +69,14 @@ class Configuration:
     use_bully = None
     use_reaver = None
     use_eviltwin = None
+    # Evil Twin settings
+    eviltwin_port = None
+    eviltwin_deauth_iface = None
+    eviltwin_fakeap_iface = None
+    eviltwin_deauth_interval = None
+    eviltwin_template = None
+    eviltwin_channel = None
+    eviltwin_validate_credentials = None
     # Dual interface support
     dual_interface_enabled = None
     interface_primary = None
@@ -83,11 +101,19 @@ class Configuration:
     wep_pps = None
     wep_restart_aircrack = None
     wep_restart_stale_ivs = None
+    wep_timeout = None
     wordlist = None
-    wordlists = []
+    wordlists = None
     wpa_attack_timeout = None
     wpa_deauth_timeout = None
     wpa_filter = None
+    wpa3_filter = None
+    wpa3_only = None
+    owe_filter = None
+    wpa3_no_downgrade = None
+    wpa3_force_sae = None
+    wpa3_check_dragonblood = None
+    wpa3_attack_timeout = None
     wpa_handshake_dir = None
     wpa_strip_handshake = None
     wps_fail_threshold = None
@@ -102,6 +128,8 @@ class Configuration:
     use_tui = None  # None = classic (default), True = force TUI, False = classic
     tui_refresh_rate = None
     tui_log_buffer_size = None
+    tui_color_scheme = None
+    tui_debug = None
     # WPA-SEC upload settings
     wpasec_enabled = None
     wpasec_api_key = None
@@ -217,11 +245,10 @@ class Configuration:
         cls.wep_crack_at_ivs = 10000  # Minimum IVs to start cracking
         cls.require_fakeauth = False
         cls.wep_restart_stale_ivs = 11  # Seconds to wait before restarting
-        # Aireplay if IVs don't increaes.
+        # Aireplay if IVs don't increase.
         # '0' means never restart.
         cls.wep_restart_aircrack = 30  # Seconds to give aircrack to crack
         # before restarting the process.
-        cls.wep_crack_at_ivs = 10000  # Number of IVS to start cracking
         cls.wep_keep_ivs = False  # Retain .ivs files across multiple attacks.
 
         # WPA variables
@@ -390,6 +417,7 @@ class Configuration:
             cls.resume_id = args.resume_id
         if args.clean_sessions:
             cls.clean_sessions = True
+
     @classmethod
     def validate(cls):
         if cls.use_pmkid_only and cls.wps_only:

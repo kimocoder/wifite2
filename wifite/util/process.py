@@ -137,7 +137,7 @@ class Process:
 
     @staticmethod
     def exists(program):
-        if Configuration.initialized and program in set(Configuration.existing_commands.keys()):
+        if Configuration.initialized and program in Configuration.existing_commands:
             return Configuration.existing_commands[program]
 
         p2 = Process(['which', program])

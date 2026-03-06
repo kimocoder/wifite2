@@ -26,9 +26,9 @@ setup(
         'wifite/ui',
         'wifite/util',
     ],
-    data_files=[
-        ('share/dict', ['wordlist-probable.txt'])
-    ],
+    package_data={
+        '': ['wordlist-probable.txt']
+    },
     license='GNU GPLv2',
     scripts=['bin/wifite'],
     description='Wireless Network Auditor for Linux & Android',

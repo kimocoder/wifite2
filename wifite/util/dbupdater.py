@@ -3,12 +3,12 @@ import os
 import sys
 import csv
 from datetime import datetime
-from typing import List
+
+import requests
 
 # keep the same import style as your example (adjust to your project layout)
 from ..config import Configuration
 from ..util.color import Color
-from ..util.process import Process
 
 class DBUpdater:
     """Updates a local database of MAC address prefixes to vendor names from IEEE registries.
@@ -97,7 +97,8 @@ class DBUpdater:
         Color.p('     Wrote {C}%d{W} entries from source: {C}%s{W}' % (count, key))
         return count
 
-    def is_up_to_date(filename: str) -> bool:
+    @classmethod
+    def is_up_to_date(cls, filename: str) -> tuple:
         mtime = os.path.getmtime(filename)
         last_update = datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M:%S")
         age_seconds = datetime.now().timestamp() - mtime

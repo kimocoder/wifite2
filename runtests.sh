@@ -1,15 +1,8 @@
 #!/bin/sh
 
-#echo "** Starting flake8 tests .."
-#sleep 2
-#sh tests/test_flake8.sh
-#sleep 2
 clear
 
 echo "** Starting pytest .."
 sleep 2
-#python3 -m unittest discover tests -v
-sleep 2
-pytest -k testNoHandshakeTshark
-#sleep 2
+pytest tests/ -v
 echo "** runtests.sh test script at the end"

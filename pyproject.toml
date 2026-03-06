@@ -21,11 +21,12 @@ classifiers = [
     "Topic :: Security",
 ]
 dependencies = [
-    "chardet>=5.2.0",
-    "requests>=2.31.0",
-    "rich>=13.0.0",
+    "chardet>=7.0.1",
+    "requests>=2.32.5",
+    "rich>=14.0.0",
     "scapy>=2.6.1; python_version < '4'",
-    "setuptools>=78.1.1",
+    "setuptools>=82.0.0",
+    "urllib3>=2.6.0",  # pinned by Snyk to avoid a vulnerability
 ]
 
 [project.urls]

@@ -1,9 +1,10 @@
-FROM python:3.15.0a6-slim
+FROM python:3.13-slim
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV HASHCAT_VERSION=hashcat-6.2.6
 ENV HASHCAT_UTILS_VERSION=1.9
 
+# Install all system dependencies in a single layer
 RUN echo "deb http://deb.debian.org/debian trixie main" > /etc/apt/sources.list && \
     echo "deb-src http://deb.debian.org/debian trixie main" >> /etc/apt/sources.list && \
     apt update && \
@@ -17,96 +18,62 @@ RUN echo "deb http://deb.debian.org/debian trixie main" > /etc/apt/sources.list 
     rm -rf /var/lib/apt/lists/*
 
 # Install Aircrack from Source
-RUN wget https://download.aircrack-ng.org/aircrack-ng-1.7.tar.gz
-RUN tar xzvf aircrack-ng-1.7.tar.gz
-WORKDIR /aircrack-ng-1.7/
-RUN autoreconf -i
-RUN ./configure --with-experimental
-RUN make
-RUN make install
-RUN airodump-ng-oui-update
+RUN wget https://download.aircrack-ng.org/aircrack-ng-1.7.tar.gz && \
+    tar xzvf aircrack-ng-1.7.tar.gz && \
+    cd /aircrack-ng-1.7/ && \
+    autoreconf -i && \
+    ./configure --with-experimental && \
+    make && make install && \
+    airodump-ng-oui-update && \
+    cd / && rm -rf /aircrack-ng-1.7 aircrack-ng-1.7.tar.gz
 
-# Workdir /
-WORKDIR /
+# Install pixiewps
+RUN git clone https://github.com/wiire/pixiewps && \
+    cd /pixiewps && make && make install && \
+    cd / && rm -rf /pixiewps
 
-# Install wps-pixie
-RUN git clone https://github.com/wiire/pixiewps
-WORKDIR /pixiewps/
-RUN make
-RUN make install
-
-# Workdir /
-WORKDIR /
-
-# Install hcxdump
-RUN git clone https://github.com/ZerBea/hcxdumptool.git
-WORKDIR /hcxdumptool/
-RUN make
-RUN make install
-
-# Workdir /
-WORKDIR /
+# Install hcxdumptool
+RUN git clone https://github.com/ZerBea/hcxdumptool.git && \
+    cd /hcxdumptool && make && make install && \
+    cd / && rm -rf /hcxdumptool
 
 # Install hcxtools
-RUN git clone https://github.com/ZerBea/hcxtools.git
-WORKDIR /hcxtools/
-RUN make
-RUN make install
-
-# Workdir /
-WORKDIR /
+RUN git clone https://github.com/ZerBea/hcxtools.git && \
+    cd /hcxtools && make && make install && \
+    cd / && rm -rf /hcxtools
 
 # Install bully
-RUN git clone https://github.com/kimocoder/bully
-WORKDIR /bully/src/
-RUN make
-RUN make install
-
-# Workdir /
-WORKDIR /
+RUN git clone https://github.com/kimocoder/bully && \
+    cd /bully/src && make && make install && \
+    cd / && rm -rf /bully
 
 # Install and configure hashcat
-RUN mkdir /hashcat
-
-# Install and configure hashcat: it's either the latest release or in legacy files
-RUN cd /hashcat && \
+RUN mkdir /hashcat && \
+    cd /hashcat && \
     wget --no-check-certificate https://hashcat.net/files/${HASHCAT_VERSION}.7z && \
     7zr x ${HASHCAT_VERSION}.7z && \
-    rm ${HASHCAT_VERSION}.7z
-
-RUN cd /hashcat && \
+    rm ${HASHCAT_VERSION}.7z && \
     wget https://github.com/hashcat/hashcat-utils/releases/download/v${HASHCAT_UTILS_VERSION}/hashcat-utils-${HASHCAT_UTILS_VERSION}.7z && \
     7zr x hashcat-utils-${HASHCAT_UTILS_VERSION}.7z && \
-    rm hashcat-utils-${HASHCAT_UTILS_VERSION}.7z
-
-# Add link for binary
-RUN ln -s /hashcat/${HASHCAT_VERSION}/hashcat64.bin /usr/bin/hashcat
-RUN ln -s /hashcat/hashcat-utils-${HASHCAT_UTILS_VERSION}/bin/cap2hccapx.bin /usr/bin/cap2hccapx
-
-# Workdir /
-WORKDIR /
+    rm hashcat-utils-${HASHCAT_UTILS_VERSION}.7z && \
+    ln -s /hashcat/${HASHCAT_VERSION}/hashcat64.bin /usr/bin/hashcat && \
+    ln -s /hashcat/hashcat-utils-${HASHCAT_UTILS_VERSION}/bin/cap2hccapx.bin /usr/bin/cap2hccapx
 
 # Install reaver
-RUN git clone https://github.com/t6x/reaver-wps-fork-t6x
-WORKDIR /reaver-wps-fork-t6x/src/
-RUN ./configure
-RUN make
-RUN make install
+RUN git clone https://github.com/t6x/reaver-wps-fork-t6x && \
+    cd /reaver-wps-fork-t6x/src && ./configure && make && make install && \
+    cd / && rm -rf /reaver-wps-fork-t6x
 
-# Workdir /
-WORKDIR /
+# Install cowpatty (with make install so binary is on PATH)
+RUN git clone https://github.com/joswr1ght/cowpatty && \
+    cd /cowpatty && make && make install && \
+    cd / && rm -rf /cowpatty
 
-# Install cowpatty
-RUN git clone https://github.com/joswr1ght/cowpatty
-WORKDIR /cowpatty/
-RUN make
+# Install wifite and Python dependencies
+RUN git clone https://github.com/kimocoder/wifite2.git && \
+    chmod -R 777 /wifite2/
 
-# Workdir /
-WORKDIR /
-
-# Install wifite
-RUN git clone https://github.com/kimocoder/wifite2.git
-RUN chmod -R 777 /wifite2/
 WORKDIR /wifite2/
-RUN apt install rfkill -y
-#ENTRYPOINT ["/bin/bash"]
+RUN pip install --no-cache-dir -r requirements.txt
+
+ENTRYPOINT ["python", "wifite.py"]

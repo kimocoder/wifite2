@@ -118,11 +118,18 @@ class Aireplay(Thread, Dependency):
         if hasattr(self, 'output_fh') and self.output_fh and not self.output_fh.closed:
             self.output_fh.close()
 
+
     def get_output(self):
         """ Returns stdout from aireplay process """
         return self.stdout
 
     def run(self):
+        try:
+            self._run_loop()
+        finally:
+            self.stop()
+
+    def _run_loop(self):
         self.stdout = ''
         self.xor_percent = '0%'
         while self.pid.poll() is None:

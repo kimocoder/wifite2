@@ -10,7 +10,6 @@ except (ValueError, ImportError) as e:
 from .util.color import Color
 
 import os
-import subprocess
 
 
 class Wifite:
@@ -1275,6 +1274,8 @@ def force_exit_handler(signum, frame):
     sys.exit(1)
 
 def main():
+    import subprocess
+
     try:
         wifite = Wifite()
         wifite.start()
