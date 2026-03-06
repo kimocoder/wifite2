@@ -48,20 +48,35 @@ class ClassicScannerOutput:
         Color.pl('{+} {C}Targets{W}')
         Color.pl('')
         
-        # Print header
-        header = '  NUM'
+        # Print header (column widths must match target.to_str())
+        col_num = 5
+        col_essid = 26
+        col_bssid = 19
+        col_mfg = 23
+        col_ch = 4
+        col_enc = 9
+        col_pwr = 7
+        col_wps = 5
+        col_cli = 7
+
+        header = '  ' + 'NUM'.rjust(col_num)
+        header += '  ' + 'ESSID'.ljust(col_essid)
         if show_bssid:
-            header += '  BSSID              '
+            header += '  ' + 'BSSID'.ljust(col_bssid)
         if show_manufacturer:
-            header += '  MANUFACTURER                '
-        header += '  ESSID                      CH  PWR  ENC  WPS  CLIENT'
+            header += '  ' + 'MANUFACTURER'.ljust(col_mfg)
+        header += '  ' + 'CH'.rjust(col_ch)
+        header += '  ' + 'ENCR'.ljust(col_enc)
+        header += '  ' + 'PWR'.rjust(col_pwr)
+        header += '  ' + 'WPS'.center(col_wps)
+        header += '  ' + 'CLI'.rjust(col_cli)
         Color.pl(header)
         Color.pl('  ' + '-' * (len(header) - 2))
         
         # Print targets
         for idx, target in enumerate(targets, start=1):
             target_str = target.to_str(show_bssid=show_bssid, show_manufacturer=show_manufacturer)
-            Color.pl('  {G}%3d{W}  %s' % (idx, target_str))
+            Color.pl(' {G}%s{W}  %s' % (str(idx).rjust(col_num), target_str))
         
         Color.pl('')
 
