@@ -54,7 +54,9 @@ python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
 addopts = "-v --tb=short"
-timeout = 30
+markers = [
+    "timeout(seconds): set a timeout for the test (requires pytest-timeout)",
+]
 
 [build-system]
 requires = ["poetry-core"]
