@@ -111,7 +111,8 @@ class Target:
         elif len(self.encryption) == 0: # Default to WPA if not specified, as per old logic
             self.primary_encryption = 'WPA'
         else: # Fallback for unknown types
-            self.primary_encryption = self.encryption.split(' ')[0]
+            parts = self.encryption.split(' ')
+            self.primary_encryption = parts[0] if parts and parts[0] else 'WPA'
 
 
         if 'SAE' in self.authentication:

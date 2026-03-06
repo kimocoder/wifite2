@@ -13,7 +13,7 @@ from shlex import quote as shlex_quote
 try:
     from ..native.scanner import NativeScanner, AccessPoint as NativeAP, is_available as native_scanner_available
     NATIVE_SCANNER_AVAILABLE = native_scanner_available()
-except ImportError:
+except BaseException:
     NATIVE_SCANNER_AVAILABLE = False
 
 

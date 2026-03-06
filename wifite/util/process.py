@@ -3,6 +3,7 @@
 
 import contextlib
 import re
+import shlex
 import time
 import signal
 import os
@@ -111,7 +112,7 @@ class Process:
             # Split string commands into list of args for Popen when not using shell mode
             if Configuration.verbose > 1:
                 Color.pe(f'\n {{C}}[?]{{W}} Executing: {{B}}{command}{{W}}')
-            command = command.split()
+            command = shlex.split(command)
         elif shell:
             if Configuration.verbose > 1:
                 Color.pe(f'\n {{C}}[?] {{W}} Executing (Shell): {{B}}{command}{{W}}')
@@ -150,7 +151,7 @@ class Process:
 
     def __init__(self, command, devnull=False, stdout=PIPE, stderr=PIPE, cwd=None, bufsize=0, stdin=PIPE):
         if isinstance(command, str):
-            command = command.split(' ')
+            command = shlex.split(command)
 
         self.command = command
         self._cleaned_up = False

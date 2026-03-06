@@ -23,14 +23,54 @@ Requirements:
 - scapy >= 2.6.1 (already a project dependency)
 """
 
-from .mac import NativeMac
-from .deauth import ScapyDeauth, ContinuousDeauth as NativeDeauth
-from .handshake import ScapyHandshake
-from .wps import ScapyWPS, WPSInfo
-from .interface import NativeInterface, InterfaceInfo
-from .pmkid import ScapyPMKID, PMKIDResult, PMKIDCapture
-from .scanner import ChannelHopper, NativeScanner, AccessPoint, Client
-from .beacon import BeaconGenerator, create_fake_ap as create_beacon
+try:
+    from .mac import NativeMac
+except BaseException:
+    NativeMac = None
+
+try:
+    from .deauth import ScapyDeauth, ContinuousDeauth as NativeDeauth
+except BaseException:
+    ScapyDeauth = None
+    NativeDeauth = None
+
+try:
+    from .handshake import ScapyHandshake
+except BaseException:
+    ScapyHandshake = None
+
+try:
+    from .wps import ScapyWPS, WPSInfo
+except BaseException:
+    ScapyWPS = None
+    WPSInfo = None
+
+try:
+    from .interface import NativeInterface, InterfaceInfo
+except BaseException:
+    NativeInterface = None
+    InterfaceInfo = None
+
+try:
+    from .pmkid import ScapyPMKID, PMKIDResult, PMKIDCapture
+except BaseException:
+    ScapyPMKID = None
+    PMKIDResult = None
+    PMKIDCapture = None
+
+try:
+    from .scanner import ChannelHopper, NativeScanner, AccessPoint, Client
+except BaseException:
+    ChannelHopper = None
+    NativeScanner = None
+    AccessPoint = None
+    Client = None
+
+try:
+    from .beacon import BeaconGenerator, create_fake_ap as create_beacon
+except BaseException:
+    BeaconGenerator = None
+    create_beacon = None
 
 __all__ = [
     # MAC manipulation
@@ -80,49 +120,49 @@ def check_native_availability() -> dict:
     try:
         from .mac import NativeMac
         status['mac'] = True
-    except ImportError:
+    except BaseException:
         status['mac'] = False
     
     try:
         from .deauth import SCAPY_AVAILABLE
         status['deauth'] = SCAPY_AVAILABLE
-    except ImportError:
+    except BaseException:
         status['deauth'] = False
     
     try:
         from .handshake import SCAPY_AVAILABLE
         status['handshake'] = SCAPY_AVAILABLE
-    except ImportError:
+    except BaseException:
         status['handshake'] = False
     
     try:
         from .wps import SCAPY_AVAILABLE
         status['wps'] = SCAPY_AVAILABLE
-    except ImportError:
+    except BaseException:
         status['wps'] = False
     
     try:
         from .interface import NativeInterface
         status['interface'] = True
-    except ImportError:
+    except BaseException:
         status['interface'] = False
     
     try:
         from .pmkid import SCAPY_AVAILABLE
         status['pmkid'] = SCAPY_AVAILABLE
-    except ImportError:
+    except BaseException:
         status['pmkid'] = False
     
     try:
         from .scanner import SCAPY_AVAILABLE
         status['scanner'] = SCAPY_AVAILABLE
-    except ImportError:
+    except BaseException:
         status['scanner'] = False
     
     try:
         from .beacon import SCAPY_AVAILABLE
         status['beacon'] = SCAPY_AVAILABLE
-    except ImportError:
+    except BaseException:
         status['beacon'] = False
     
     return status
@@ -156,5 +196,5 @@ def print_native_status():
         import scapy
         scapy_version = scapy.VERSION if hasattr(scapy, 'VERSION') else 'unknown'
         print(f"\nScapy Version: {scapy_version}")
-    except ImportError:
+    except BaseException:
         print("\nScapy: Not Installed")

@@ -145,9 +145,10 @@ class Wifite:
             # Only log if verbose mode is enabled and sessions were deleted
             if deleted > 0 and Configuration.verbose > 0:
                 Color.pl('{+} {D}Cleaned up {C}%d{D} old session file(s){W}' % deleted)
-        except Exception:
-            # Silently ignore cleanup errors on startup
-            pass
+        except Exception as e:
+            # Log cleanup errors but don't block startup
+            if Configuration.verbose > 0:
+                Color.pl('{!} {O}Session cleanup error: %s{W}' % str(e))
 
     def detect_and_assign_interfaces(self, attack_type='wpa'):
         """
