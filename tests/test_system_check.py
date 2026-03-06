@@ -116,7 +116,7 @@ class TestSystemCheckEnvironment(unittest.TestCase):
     @patch('shutil.which', return_value=None)
     @patch('subprocess.run')
     def test_non_root_fails(self, mock_run, mock_which, mock_isdir, mock_exists,
-                             mock_uname, mock_name, mock_uid):
+                             mock_uname, mock_uid):
         mock_uname.return_value = MagicMock(sysname='Linux', release='6.1.0')
         mock_run.return_value = MagicMock(returncode=1, stdout='', stderr='')
 
@@ -200,7 +200,8 @@ class TestSystemCheckInterfaces(unittest.TestCase):
     @patch('os.listdir')
     @patch('os.path.isdir')
     @patch('subprocess.run')
-    def test_no_interfaces(self, mock_run, mock_isdir, mock_listdir):
+    @patch('wifite.tools.iw.Iw.get_interfaces', return_value=[])
+    def test_no_interfaces(self, mock_iw, mock_run, mock_isdir, mock_listdir):
         mock_listdir.return_value = ['lo', 'eth0']
         mock_isdir.return_value = False  # no /wireless subdir
 
