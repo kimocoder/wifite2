@@ -48,6 +48,21 @@ class Target:
     """
     _ansi_re = re.compile(r'\033\[[0-9;]*m')
 
+    def _pad_colored(self, colored_str, width, align='left'):
+        """Pad a colored string to a specific visible width."""
+        visible = self._ansi_re.sub('', colored_str)
+        diff = width - len(visible)
+        if diff <= 0:
+            return colored_str
+        if align == 'right':
+            return ' ' * diff + colored_str
+        elif align == 'center':
+            left_pad = diff // 2
+            right_pad = diff - left_pad
+            return ' ' * left_pad + colored_str + ' ' * right_pad
+        else:
+            return colored_str + ' ' * diff
+
     def __init__(self, fields):
         """
             Initializes & stores target info based on fields.
@@ -249,7 +264,7 @@ class Target:
         decloaked_char = Color.s('{P}*') if self.decloaked else ' '
         essid += decloaked_char
 
-        bssid = Color.s('{D}%s{W}  ' % self.bssid) if show_bssid else ''
+        bssid = Color.s('{D}%s{W}' % self.bssid) if show_bssid else ''
         if show_manufacturer:
             oui = ''.join(self.bssid.split(':')[:3])
             self.manufacturer = Configuration.manufacturers.get(oui, "")
@@ -260,7 +275,7 @@ class Target:
                 mfg_name = f'{mfg_name[:max_oui_len - 3]}...'
             else:
                 mfg_name = mfg_name.ljust(max_oui_len)
-            manufacturer = Color.s('{W}%s  ' % mfg_name)
+            manufacturer = Color.s('{W}%s' % mfg_name)
         else:
             manufacturer = ''
 
@@ -328,21 +343,44 @@ class Target:
         power = f'{pwr_bar} {Color.s("{%s}%s" % (pwr_color, str(pwr_dbm).rjust(2)))}'
 
         if self.wps == WPSState.UNLOCKED:
-            wps = Color.s(' {G}yes')
+            wps = Color.s('{G}yes')
         elif self.wps == WPSState.NONE:
-            wps = Color.s(' {D} - ')
+            wps = Color.s('{D}-')
         elif self.wps == WPSState.LOCKED:
-            wps = Color.s(' {R}lck')
+            wps = Color.s('{R}lck')
         elif self.wps == WPSState.UNKNOWN:
-            wps = Color.s(' {O} ? ')
+            wps = Color.s('{O}?')
         else:
-            wps = '  - '
+            wps = '-'
 
-        clients = Color.s('{D}     - ')
         if len(self.clients) > 0:
-            clients = Color.s('{G}     %s' % str(len(self.clients)))
+            clients = Color.s('{G}%s' % str(len(self.clients)))
+        else:
+            clients = Color.s('{D}-')
 
-        result = f'{essid} {bssid}{manufacturer}{channel}  {encryption_display_string} {power}  {wps} {clients}'
+        # Column widths must match scanner.py header
+        COL_ESSID = 26
+        COL_BSSID = 19
+        COL_MFG = 23
+        COL_CH = 4
+        COL_ENC = 9
+        COL_PWR = 7
+        COL_WPS = 5
+        COL_CLI = 7
+        SEP = '  '
+
+        parts = [self._pad_colored(essid, COL_ESSID)]
+        if show_bssid:
+            parts.append(self._pad_colored(bssid, COL_BSSID))
+        if show_manufacturer:
+            parts.append(self._pad_colored(manufacturer, COL_MFG))
+        parts.append(self._pad_colored(channel, COL_CH, 'right'))
+        parts.append(self._pad_colored(encryption_display_string, COL_ENC))
+        parts.append(self._pad_colored(power, COL_PWR, 'right'))
+        parts.append(self._pad_colored(wps, COL_WPS, 'center'))
+        parts.append(self._pad_colored(clients, COL_CLI, 'right'))
+
+        result = SEP.join(parts)
 
         result += Color.s('{W}')
         return result
