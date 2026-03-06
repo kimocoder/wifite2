@@ -13,6 +13,7 @@ from .iw import Iw
 from ..config import Configuration
 from ..util.color import Color
 from ..util.process import Process
+from ..util.logger import log_debug
 
 
 class AirmonIface:
@@ -174,7 +175,7 @@ class Airmon(Dependency):
             # proc.wait() # Wait for command to complete.
             # Alternatively, use Process.call for simpler cases if output isn't critical and we just need to run it
             # For now, let's assume we want to wait and check for errors, similar to other Process calls.
-            stdout, stderr = proc.communicate() # communicate calls wait() internally
+            stdout, stderr = proc.get_output(timeout=30)
             if proc.poll() == 0:
                 Color.pl('{G}success!{W}')
             else:
@@ -303,30 +304,25 @@ class Airmon(Dependency):
             if 'mac80211 monitor mode' not in line:
                 continue
 
-            if Configuration.verbose > 0:
-                print(f"DEBUG: Parsing line: {repr(line)}")
+            log_debug('Airmon', f'Parsing line: {repr(line)}')
 
             # First try to get interface from "on" part if it looks like an interface name
             if matches := enabled_on_re.match(line):
                 result = matches.group(1)
-                if Configuration.verbose > 0:
-                    print(f"DEBUG: enabled_on_re matched: {repr(result)}")
+                log_debug('Airmon', f'enabled_on_re matched: {repr(result)}')
                 return result
             # Fallback to "for" part if "on" part is just a channel number
             elif matches := enabled_for_re.match(line):
                 result = matches.group(1)
-                if Configuration.verbose > 0:
-                    print(f"DEBUG: enabled_for_re matched: {repr(result)}")
+                log_debug('Airmon', f'enabled_for_re matched: {repr(result)}')
                 return result
             # Legacy fallback
             elif "monitor mode enabled" in line:
                 result = line.split()[-1]
-                if Configuration.verbose > 0:
-                    print(f"DEBUG: legacy fallback matched: {repr(result)}")
+                log_debug('Airmon', f'legacy fallback matched: {repr(result)}')
                 return result
             else:
-                if Configuration.verbose > 0:
-                    print(f"DEBUG: No regex matched this line")
+                log_debug('Airmon', 'No regex matched this line')
 
         return None
 

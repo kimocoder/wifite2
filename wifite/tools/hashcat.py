@@ -196,14 +196,14 @@ class HcxPcapngTool(Dependency):
         # Hashcat mode 22000 supports WPA-PBKDF2-PMKID+EAPOL (includes SAE)
         # Mode 22001 is for WPA-PMK-PMKID+EAPOL (pre-computed PMK)
 
-        # Create secure temporary file with proper permissions (0600)
-        # Using NamedTemporaryFile with delete=False to prevent race conditions
+        # Create secure temporary file with restricted permissions from the start
         log_debug('HcxPcapngTool', 'Creating secure temporary hash file')
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.22000', delete=False, prefix='wifite_hash_') as tmp:
-            hash_file = tmp.name
-
-        # Verify file permissions are secure (0600)
-        os.chmod(hash_file, 0o600)
+        old_umask = os.umask(0o177)  # Set umask so file is created with 0600
+        try:
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.22000', delete=False, prefix='wifite_hash_') as tmp:
+                hash_file = tmp.name
+        finally:
+            os.umask(old_umask)
         log_debug('HcxPcapngTool', f'Created temporary hash file: {hash_file} (permissions: 0600)')
 
         try:
@@ -339,7 +339,7 @@ class HcxPcapngTool(Dependency):
         if os.path.exists(self.pmkid_file):
             os.remove(self.pmkid_file)
 
-        command = 'hcxpcapngtool -o ' + self.pmkid_file + " " + pcapng_file
+        command = ['hcxpcapngtool', '-o', self.pmkid_file, pcapng_file]
         hcxpcap_proc = Process(command)
         hcxpcap_proc.wait()
 

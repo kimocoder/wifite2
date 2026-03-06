@@ -45,7 +45,11 @@ class Reaver(Attack, Dependency):
         if os.path.exists(self.output_filename):
             os.remove(self.output_filename)
 
-        self.output_write = open(self.output_filename, 'a')
+        try:
+            self.output_write = open(self.output_filename, 'a')
+        except OSError:
+            self.output_write = None
+            raise
         self._output_write_closed = False
 
         self.reaver_cmd = [

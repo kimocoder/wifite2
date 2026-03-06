@@ -9,7 +9,7 @@ from ..util.timer import Timer
 import os
 import time
 import re
-from threading import Thread
+from threading import Thread, Lock
 
 
 class WEPAttackType:
@@ -98,10 +98,14 @@ class Aireplay(Thread, Dependency):
                                                  client_mac=client_mac,
                                                  replay_file=replay_file)
         self.output_fh = open(self.output_file, 'a')
-        self.pid = Process(self.cmd,
-                           stdout=self.output_fh,
-                           stderr=Process.devnull(),
-                           cwd=Configuration.temp())
+        try:
+            self.pid = Process(self.cmd,
+                               stdout=self.output_fh,
+                               stderr=Process.devnull(),
+                               cwd=Configuration.temp())
+        except Exception:
+            self.output_fh.close()
+            raise
         self.start()
 
     def is_running(self):
@@ -524,8 +528,9 @@ class ContinuousDeauth(Thread):
         self.num_deauths = num_deauths
         self.broadcast = broadcast
         self.prefer_native = prefer_native
-        self.running = False
-        self.paused = False
+        self._lock = Lock()
+        self._running = False
+        self._paused = False
         self.process = None
         self.total_deauths_sent = 0
         self.last_deauth_time = 0
@@ -533,6 +538,26 @@ class ContinuousDeauth(Thread):
         # Statistics
         self.start_time = None
         self.deauth_count = 0
+
+    @property
+    def running(self):
+        with self._lock:
+            return self._running
+
+    @running.setter
+    def running(self, value):
+        with self._lock:
+            self._running = value
+
+    @property
+    def paused(self):
+        with self._lock:
+            return self._paused
+
+    @paused.setter
+    def paused(self, value):
+        with self._lock:
+            self._paused = value
         
         # Check native availability
         self._check_native()

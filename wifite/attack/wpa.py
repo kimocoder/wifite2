@@ -360,12 +360,12 @@ class AttackWPA(Attack):
 
         # Check for the --skip-crack flag
         if Configuration.skip_crack:
-            return self._extracted_from_run_30(
+            return self._handle_attack_failure(
                 '{+} Not cracking handshake because {C}skip-crack{W} was used{W}'
             )
         # Check wordlist
         if Configuration.wordlist is None:
-            return self._extracted_from_run_30(
+            return self._handle_attack_failure(
                 '{!} {O}Not cracking handshake because wordlist ({R}--dict{O}) is not set'
             )
         elif not os.path.exists(Configuration.wordlist):
@@ -438,9 +438,8 @@ class AttackWPA(Attack):
             self.success = True
         return self.success
 
-    # TODO Rename this here and in `run`
-    def _extracted_from_run_30(self, arg0):
-        Color.pl(arg0)
+    def _handle_attack_failure(self, message):
+        Color.pl(message)
         self.success = False
         return False
 

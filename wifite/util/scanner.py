@@ -140,7 +140,7 @@ class Scanner(object):
                     sleep(1)
 
         except KeyboardInterrupt:
-            return self._extracted_from_find_targets_50()
+            return self._prompt_attack_or_exit()
         finally:
             # Clean up TUI view
             if self.use_tui and self.view:
@@ -149,8 +149,7 @@ class Scanner(object):
                 if controller:
                     controller.stop()
 
-    # TODO Rename this here and in `find_targets`
-    def _extracted_from_find_targets_50(self):
+    def _prompt_attack_or_exit(self):
         if not Configuration.infinite_mode:
             return True
 
@@ -454,7 +453,7 @@ class Scanner(object):
                 
         except KeyboardInterrupt:
             scanner.stop()
-            return self._extracted_from_find_targets_50()
+            return self._prompt_attack_or_exit()
         finally:
             scanner.stop()
             if self.use_tui and self.view:
