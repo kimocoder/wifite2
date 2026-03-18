@@ -92,8 +92,14 @@ class Target:
             self.channel = int(fields[3].strip())
         except (ValueError, IndexError):
             self.channel = -1
-        self.encryption = fields[5].strip() # Contains encryption type(s) like "WPA2 WPA3 OWE"
-        self.authentication = fields[7].strip() # Contains auth type(s) like "PSK SAE MGT"
+        try:
+            self.encryption = fields[5].strip()
+        except IndexError:
+            self.encryption = ''
+        try:
+            self.authentication = fields[7].strip()
+        except IndexError:
+            self.authentication = ''
 
         # Determine primary encryption and auth
         # Note: SAE (Simultaneous Authentication of Equals) is the authentication method for WPA3
@@ -127,21 +133,43 @@ class Target:
             self.primary_authentication = self.authentication.split(' ')[0] if self.authentication else ''
 
 
-        self.power = int(fields[8].strip())
-        if self.power < 0:
-            self.power += 100
+        try:
+            self.power = int(fields[8].strip())
+            if self.power == -1:
+                # airodump-ng uses -1 as a sentinel meaning the driver does not
+                # report signal strength, or the AP is only heard one-way.
+                # Do NOT normalise it (+100 would produce a misleading 99).
+                self.power = 0
+            elif self.power < 0:
+                self.power += 100
+        except (ValueError, IndexError):
+            self.power = 0
         self.max_power = self.power
 
-        self.beacons = int(fields[9].strip())
-        self.ivs = int(fields[10].strip())
+        try:
+            self.beacons = int(fields[9].strip())
+        except (ValueError, IndexError):
+            self.beacons = 0
+        try:
+            self.ivs = int(fields[10].strip())
+        except (ValueError, IndexError):
+            self.ivs = 0
 
         self.essid_known = True
-        self.essid_len = int(fields[12].strip())
-        self.essid = fields[13]
-        if self.essid == '\\x00' * self.essid_len or \
-                self.essid == 'x00' * self.essid_len or \
-                self.essid == '\x00' * self.essid_len or \
-                self.essid.strip() == '':
+        try:
+            self.essid_len = int(fields[12].strip())
+        except (ValueError, IndexError):
+            self.essid_len = 0
+        try:
+            self.essid = fields[13]
+        except IndexError:
+            self.essid = None
+            self.essid_known = False
+        if self.essid is not None and (
+                self.essid == '\\x00' * self.essid_len or
+                self.essid == 'x00' * self.essid_len or
+                self.essid == '\x00' * self.essid_len or
+                self.essid.strip() == ''):
             # Don't display '\x00...' for hidden ESSIDs
             self.essid = None  # '(%s)' % self.bssid
             self.essid_known = False

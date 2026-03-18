@@ -95,7 +95,9 @@ class Airmon(Dependency):
         """Returns List of AirmonIface objects known by airmon-ng"""
         interfaces = []
         p2 = Process('airmon-ng')
-        for line in p2.stdout().split('\n'):
+        output = p2.stdout()
+        log_debug('Airmon', 'airmon-ng output: %s' % output.strip())
+        for line in output.split('\n'):
             # [PHY ]IFACE DRIVER CHIPSET
             airmon_re = re.compile(r'^(?:([^\t]*)\t+)?([^\t]*)\t+([^\t]*)\t+([^\t]*)$')
             matches = airmon_re.match(line)
@@ -111,6 +113,10 @@ class Airmon(Dependency):
 
             interfaces.append(AirmonIface(phy, interface, driver, chipset))
 
+        log_debug('Airmon', 'Found %d wireless interface(s)' % len(interfaces))
+        for iface in interfaces:
+            log_debug('Airmon', '  %s phy=%s driver=%s chipset=%s' % (
+                iface.interface, iface.phy, iface.driver, iface.chipset))
         return interfaces
 
     @staticmethod
@@ -187,12 +193,6 @@ class Airmon(Dependency):
         Ip.down(interface)
         Iw.mode(interface, 'managed')
         Ip.up(interface)
-
-        # /sys/class/net/wlan0/type
-        iface_type_path = os.path.join('/sys/class/net', interface, 'type')
-        if os.path.exists(iface_type_path):
-            with open(iface_type_path, 'r'):
-                pass
 
         return interface
 

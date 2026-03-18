@@ -3,6 +3,7 @@
 
 from ..util.process import Process
 from ..util.color import Color
+from ..util.logger import log_debug, log_info
 from ..tools.tshark import Tshark
 
 import re
@@ -37,7 +38,7 @@ class Handshake:
             # Tshark failed us, nothing else we can do.
             raise ValueError(f'Cannot find BSSID or ESSID in cap file {self.capfile}')
 
-        if not self.essid and not self.bssid:
+        if not self.essid and not self.bssid and len(pairs) > 0:
             # We do not know the bssid nor the essid
             # TODO: Display menu for user to select from list
             # HACK: Just use the first one we see
@@ -60,18 +61,29 @@ class Handshake:
                     Color.pl('\n{+} Discovered essid "{C}%s{W}"' % essid)
                     self.essid = essid
                     break
+
     def has_handshake(self):
         if not self.bssid or not self.essid:
             self.divine_bssid_and_essid()
 
-        #return len(self.tshark_handshakes()) > 0
+        log_debug('Handshake', 'Checking %s for handshake (bssid=%s essid=%s)' % (
+            self.capfile, self.bssid, self.essid))
+
         # Prefer strict validators. Do NOT accept aircrack alone as proof.
         # Tshark requires the full 4-way (strict) — keep it.
-        if len(self.tshark_handshakes()) > 0:
+        tshark_results = self.tshark_handshakes()
+        if len(tshark_results) > 0:
+            log_info('Handshake', 'tshark confirmed handshake in %s' % self.capfile)
             return True
 
         # cowpatty can be reliable for 2&3 captures
-        return len(self.cowpatty_handshakes()) > 0
+        cowpatty_results = self.cowpatty_handshakes()
+        if len(cowpatty_results) > 0:
+            log_info('Handshake', 'cowpatty confirmed handshake in %s' % self.capfile)
+            return True
+
+        log_debug('Handshake', 'No valid handshake found in %s' % self.capfile)
+        return False
 
     def tshark_handshakes(self):
         """Returns list[tuple] of BSSID & ESSID pairs (ESSIDs are always `None`)."""
@@ -98,20 +110,21 @@ class Handshake:
             command.append('-2')
         command.extend([
             '-r', self.capfile,
-            '-c'  # Check for handshake (requires ESSID)
+            '-c',  # Check for handshake
         ])
-        
-        # Add ESSID if available (required for -c option)
+
+        # Add ESSID (required for -c option)
         if self.essid:
-            command.append(self.essid)
+            command.extend(['-s', self.essid])
+        else:
+            return []  # cowpatty -c requires an ESSID
 
         proc = Process(command, devnull=False)
         return next(
             (
                 [(None, self.essid)]
                 for line in proc.stdout().split('\n')
-                if 'Collected all necessary data to '
-                'mount crack against WPA' in line
+                if 'Collected all necessary data to mount crack against WPA' in line
             ),
             [],
         )

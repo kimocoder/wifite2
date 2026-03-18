@@ -719,6 +719,21 @@ class Configuration:
             Color.pl('{+} {C}option: {O}ignoring ESSID(s): {R}%s{W}' %
                      ', '.join(args.ignore_essids))
 
+        if args.ignore_essids_file is not None:
+            try:
+                with open(args.ignore_essids_file, 'r', encoding='utf-8', errors='replace') as fh:
+                    file_essids = [line.strip() for line in fh if line.strip() and not line.startswith('#')]
+                if file_essids:
+                    cls.ignore_essids = list(set((cls.ignore_essids or []) + file_essids))
+                    Color.pl('{+} {C}option: {O}ignoring {R}%d{O} ESSID(s) from file {R}%s{W}' %
+                             (len(file_essids), args.ignore_essids_file))
+                else:
+                    Color.pl('{!} {O}ignore-essids-file {R}%s{O} is empty or has only comments{W}' %
+                             args.ignore_essids_file)
+            except (OSError, IOError) as e:
+                Color.pl('{!} {R}Could not read ignore-essids-file {O}%s{R}: %s{W}' %
+                         (args.ignore_essids_file, str(e)))
+
         from .model.result import CrackResult
         cls.ignore_cracked = CrackResult.load_ignored_bssids(args.ignore_cracked)
 
@@ -747,14 +762,28 @@ class Configuration:
             Color.pl('{+} {C}option:{W} using {G}classic text mode{W} (TUI disabled)')
         # else: use_tui remains False (classic mode is default)
 
+        # --debug is shorthand for -vvv + file logging
+        if args.debug:
+            args.verbose = max(args.verbose, 3)
+
         if args.verbose:
             cls.verbose = args.verbose
             Color.pl('{+} {C}option:{W} verbosity level {G}%d{W}' % args.verbose)
 
-            # Update logger with verbosity level
+            # Determine log file: explicit --log-file wins, then --debug default, then -vv+ default
             from .util.logger import Logger
-            log_file = os.path.join(os.path.expanduser('~'), '.wifite', 'wifite.log') if args.verbose >= 2 else None
+            log_file = getattr(args, 'log_file', None)
+            if log_file is None and args.verbose >= 2:
+                log_file = os.path.join(os.path.expanduser('~'), '.wifite', 'wifite.log')
+            if log_file:
+                Color.pl('{+} {C}option:{W} logging to {G}%s{W}' % log_file)
             Logger.initialize(log_file=log_file, verbose=args.verbose, enabled=True)
+        elif getattr(args, 'log_file', None):
+            # --log-file without -v: enable at least verbose=2 so the log is useful
+            cls.verbose = max(cls.verbose, 2)
+            from .util.logger import Logger
+            Color.pl('{+} {C}option:{W} logging to {G}%s{W} (verbose level raised to 2)' % args.log_file)
+            Logger.initialize(log_file=args.log_file, verbose=cls.verbose, enabled=True)
 
         if args.kill_conflicting_processes:
             cls.kill_conflicting_processes = True

@@ -456,6 +456,10 @@ class Dependency:
         # Show summary
         if present:
             Color.pl('{+} {G}Found %d tool(s){W}' % len(present))
+            from ..config import Configuration
+            if Configuration.verbose >= 2:
+                for app in present:
+                    Color.pl('{+} {D}  %s{W}' % app.dependency_name)
 
         # Offer to install missing optional deps
         if missing_optional:

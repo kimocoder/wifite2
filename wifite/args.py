@@ -254,6 +254,22 @@ against the real AP and captures valid passwords.
                           help=Color.s(
                               'Shows more options ({C}-h -v{W}). Prints commands and outputs. (default: {G}quiet{W})'))
 
+        glob.add_argument('--debug',
+                          action='store_true',
+                          default=False,
+                          dest='debug',
+                          help=self._verbose(
+                              'Shorthand for {C}-vvv{W}: max verbosity with file logging to {C}~/.wifite/wifite.log{W}'))
+
+        glob.add_argument('--log-file',
+                          action='store',
+                          dest='log_file',
+                          metavar='[path]',
+                          type=str,
+                          default=None,
+                          help=self._verbose(
+                              'Write debug log to {C}[path]{W} (implies {C}-vv{W} minimum verbosity)'))
+
         glob.add_argument('-i',
                           action='store',
                           dest='interface',
@@ -366,6 +382,14 @@ against the real AP and captures valid passwords.
                           help=self._verbose(
                               'Hides targets with ESSIDs that match the given text. Can be used more than once.'))
         glob.add_argument('--ignore-essid', help=argparse.SUPPRESS, action='append', dest='ignore_essids', type=str)
+        glob.add_argument('--ignore-essids-file',
+                          action='store',
+                          dest='ignore_essids_file',
+                          metavar='[file]',
+                          type=str,
+                          default=None,
+                          help=self._verbose(
+                              'Hides targets whose ESSID appears in {C}[file]{W} (one ESSID per line).'))
 
         glob.add_argument('-ic',
                           '--ignore-cracked',

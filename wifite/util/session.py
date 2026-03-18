@@ -266,8 +266,17 @@ class SessionManager:
             os.chmod(self.session_dir, 0o700)
     
     def _get_session_path(self, session_id: str) -> str:
-        """Get full path to session file."""
-        return os.path.join(self.session_dir, f'{session_id}.json')
+        """Get full path to session file, guarded against path traversal."""
+        import re
+        if not re.match(r'^[\w\-]+$', session_id):
+            raise ValueError(f'Invalid session ID: {session_id!r}')
+        path = os.path.join(self.session_dir, f'{session_id}.json')
+        # Defense-in-depth: confirm resolved path stays inside the session directory
+        real_dir = os.path.realpath(self.session_dir)
+        real_path = os.path.realpath(path)
+        if not real_path.startswith(real_dir + os.sep):
+            raise ValueError(f'Session ID resolves outside session directory: {session_id!r}')
+        return path
     
     def create_session(self, targets: List, config) -> SessionState:
         """

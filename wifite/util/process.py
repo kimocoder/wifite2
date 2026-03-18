@@ -10,6 +10,7 @@ import os
 import atexit
 import threading
 import subprocess
+import weakref
 from subprocess import Popen, PIPE, DEVNULL
 from ..util.color import Color
 from ..config import Configuration
@@ -160,10 +161,12 @@ class Process:
         self._devnull_handles = []
 
         cmd_str = " ".join(command) if isinstance(command, list) else str(command)
-        # Avoid logging sensitive arguments (e.g. API keys) in clear text
+        # Avoid logging sensitive arguments in clear text
         try:
             safe_cmd_str = re.sub(r"(-k)\s+\S+", r"\1 ****", cmd_str)
             safe_cmd_str = re.sub(r"(--key)\s+\S+", r"\1 ****", safe_cmd_str)
+            safe_cmd_str = re.sub(r"(--password)\s+\S+", r"\1 ****", safe_cmd_str)
+            safe_cmd_str = re.sub(r"(--psk)\s+\S+", r"\1 ****", safe_cmd_str)
         except Exception:
             safe_cmd_str = cmd_str
         log_debug('Process', f'Creating process: {safe_cmd_str}')
@@ -208,43 +211,29 @@ class Process:
                 raise
 
         self._manager.register_process(self)
+        # weakref.finalize fires when the object is GC'd, even during interpreter
+        # shutdown when __del__ can no longer safely acquire locks or import modules.
+        self._finalizer = weakref.finalize(self, Process._do_finalize, self.pid)
+
+    @staticmethod
+    def _do_finalize(pid):
+        """Backup cleanup: called by weakref.finalize if cleanup() was never invoked."""
+        try:
+            if pid.poll() is None:
+                pid.kill()
+                pid.wait()
+        except Exception:
+            pass
+        for stream in (pid.stdin, pid.stdout, pid.stderr):
+            if stream:
+                with contextlib.suppress(Exception):
+                    stream.close()
 
     def __enter__(self):
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.cleanup()
-
-    def __del__(self):
-        # During interpreter shutdown, module globals (including threading)
-        # may already be torn down.  Acquiring a threading.Lock in that state
-        # can trigger an infinite-restart loop, so we only do lightweight
-        # cleanup here and skip ProcessManager.unregister_process entirely
-        # (the atexit handler already handles bulk cleanup).
-        try:
-            if getattr(self, '_cleaned_up', True):
-                return
-            # Best-effort: kill still-running subprocesses and close FDs
-            if hasattr(self, 'pid') and self.pid:
-                try:
-                    if self.pid.poll() is None:
-                        self.pid.kill()
-                        self.pid.wait()
-                except Exception:
-                    pass
-                for stream in (self.pid.stdin, self.pid.stdout, self.pid.stderr):
-                    if stream:
-                        try:
-                            stream.close()
-                        except Exception:
-                            pass
-            for fh in getattr(self, '_devnull_handles', []):
-                try:
-                    fh.close()
-                except Exception:
-                    pass
-        except Exception:
-            pass
 
     def get_output(self, timeout=10):
         """ Wait for process to finish, safely collect output """
@@ -320,6 +309,10 @@ class Process:
 
     def wait(self):
         self.pid.wait()
+        rc = self.pid.returncode
+        if rc != 0:
+            log_debug('Process', 'Process exited with code %d (ran %ds)' % (
+                rc, self.running_time()))
 
     def running_time(self):
         return int(time.time() - self.start_time)
@@ -372,6 +365,10 @@ class Process:
         except Exception as e:
             log_debug('Process', f'Error unregistering process: {str(e)}')
             pass
+
+        # Detach the weakref finalizer — cleanup already done above
+        if hasattr(self, '_finalizer'):
+            self._finalizer.detach()
 
         self._cleaned_up = True
         log_debug('Process', 'Process cleanup complete')

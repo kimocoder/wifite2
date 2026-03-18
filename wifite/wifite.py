@@ -10,6 +10,7 @@ except (ValueError, ImportError) as e:
 from .util.color import Color
 
 import os
+import sys
 
 
 class Wifite:
@@ -54,6 +55,16 @@ class Wifite:
 
         from .tools.dependency import Dependency
         Dependency.run_dependency_check()
+
+        # Emit startup debug summary when verbose
+        if Configuration.verbose >= 2:
+            from .util.logger import log_info
+            import platform
+            log_info('Wifite', 'wifite %s on Python %s (%s %s)' % (
+                Configuration.version, platform.python_version(),
+                platform.system(), platform.release()))
+            log_info('Wifite', 'verbose=%d interface=%s' % (
+                Configuration.verbose, Configuration.interface or '(auto)'))
 
         # Automatic cleanup of old session files on startup
         self.cleanup_old_sessions()
@@ -1273,8 +1284,19 @@ def force_exit_handler(signum, frame):
     print('\n[!] Force exiting...')
     sys.exit(1)
 
+
+def emergency_exit(signum, frame):
+    """Aggressive exit handler used during final cleanup phase."""
+    import sys
+    print('\n[!] Emergency exit!')
+    sys.exit(1)
+
+
 def main():
     import subprocess
+    import signal as _signal
+
+    _original_sigint = _signal.getsignal(_signal.SIGINT)
 
     try:
         wifite = Wifite()
@@ -1290,30 +1312,19 @@ def main():
         Color.pl('\n{!} {R}Try running with sudo{W}\n')
     except KeyboardInterrupt:
         Color.pl('\n{!} {O}Interrupted, Shutting down...{W}')
-        # Set up force exit handler for cleanup phase
-        import signal
-        signal.signal(signal.SIGINT, force_exit_handler)
+        # Second Ctrl+C during cleanup will force-exit immediately
+        _signal.signal(_signal.SIGINT, force_exit_handler)
     except Exception as e:
-        Color.pl('\n{!} {R}Unexpected Error{W}: %s' % str(e))
-        Color.pexception(e)
+        if 'did not find any wireless interfaces' in str(e):
+            Color.pl('\n{!} {R}Exiting{W}\n')
+        else:
+            Color.pl('\n{!} {R}Unexpected Error{W}: %s' % str(e))
+            Color.pexception(e)
         Color.pl('\n{!} {R}Exiting{W}\n')
 
     finally:
-        # Set up aggressive force exit handler during cleanup
-        import signal
-        import sys
-
-        def emergency_exit(signum, frame):
-            print('\n[!] Emergency exit!')
-            # Disable atexit callbacks and suppress stderr to prevent ugly exception messages
-            import atexit
-            import os
-            atexit._clear()
-            # Redirect stderr to devnull to hide any remaining cleanup exceptions
-            os.dup2(os.open(os.devnull, os.O_WRONLY), 2)
-            sys.exit(1)
-
-        signal.signal(signal.SIGINT, emergency_exit)
+        # Use the module-level emergency_exit during final cleanup phase
+        _signal.signal(_signal.SIGINT, emergency_exit)
 
         # Quick cleanup with short timeouts
         try:

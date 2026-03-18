@@ -97,18 +97,24 @@ class Color:
         Color.p('\r{+} {G}%s{W} ({C}%sdb{W}) {G}%s {C}%s{W}: %s ' % (
             essid, power_str, attack_type, attack_name, progress))
 
+    # Exceptions whose stack traces are never useful to the user
+    _BENIGN_ERRORS = (
+        'No targets found',
+        'Enabled interface not in monitor mode',
+        'did not find any wireless interfaces',
+    )
+
     @staticmethod
     def pexception(exception):
         """Prints an exception. Includes stack trace if necessary."""
-        Color.pl('\n{!} {R}Error: {O}%s' % str(exception))
+        exc_str = str(exception)
+        exc_type = type(exception).__name__
+        Color.pl('\n{!} {R}%s: {O}%s' % (exc_type, exc_str))
 
-        # Don't dump trace for the "no targets found" case.
-        if 'No targets found' in str(exception):
-            return
-
-        # Don't dump trace for the "interface not in monitor mode" case.
-        if 'Enabled interface not in monitor mode' in str(exception):
-            return
+        # Don't dump trace for well-known non-bug errors.
+        for msg in Color._BENIGN_ERRORS:
+            if msg in exc_str:
+                return
 
         from ..config import Configuration
         if Configuration.verbose > 0 or Configuration.print_stack_traces:
@@ -120,6 +126,8 @@ class Color:
             err = err.replace('  File', '{W}File')
             err = err.replace('  Exception: ', '{R}Exception: {O}')
             Color.pl(err)
+        else:
+            Color.pl('{!} {D}Run with {W}-v{D} to see the full stack trace{W}')
 
 
 if __name__ == '__main__':

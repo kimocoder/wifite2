@@ -10,6 +10,7 @@ from ..config import Configuration
 from ..util.color import Color
 from ..util.timer import Timer
 from ..util.output import OutputManager
+from ..util.logger import log_debug, log_info, log_warning, log_error
 from ..model.handshake import Handshake
 from ..model.wpa_result import CrackResultWPA
 from ..util.wpasec_uploader import WpaSecUploader
@@ -299,7 +300,12 @@ class AttackWPA(Attack):
 
     def run(self):
         """Initiates full WPA handshake capture attack."""
-        
+
+        log_info('AttackWPA', 'Starting WPA attack on %s (%s) ch %s pwr %s' % (
+            self.target.essid or '?', self.target.bssid,
+            self.target.channel, self.target.power))
+        self._attack_start_time = time.time()
+
         # Start TUI view if available
         if self.view:
             self.view.start()
@@ -446,6 +452,10 @@ class AttackWPA(Attack):
             self.crack_result = CrackResultWPA(handshake.bssid, handshake.essid, handshake.capfile, key)
             self.crack_result.dump()
             self.success = True
+
+        elapsed = time.time() - getattr(self, '_attack_start_time', time.time())
+        log_info('AttackWPA', 'WPA attack on %s finished in %.1fs — %s' % (
+            self.target.bssid, elapsed, 'SUCCESS' if self.success else 'no key'))
         return self.success
 
     def _handle_attack_failure(self, message):

@@ -16,6 +16,7 @@ from ..tools.airodump import Airodump
 from ..tools.aireplay import Aireplay
 from ..config import Configuration
 from ..util.color import Color
+from ..util.logger import log_info, log_debug
 from ..util.timer import Timer
 from ..util.output import OutputManager
 from ..util.wpa3 import WPA3Detector, WPA3Info
@@ -71,6 +72,10 @@ class AttackWPA3SAE(Attack):
         Returns:
             bool: True if attack succeeded, False otherwise
         """
+        log_info('AttackWPA3', 'Starting WPA3 attack on %s (%s) ch %s' % (
+            self.target.essid or '?', self.target.bssid, self.target.channel))
+        attack_start = time.time()
+
         # Check for required WPA3 tools
         if not self._check_wpa3_tools():
             return False
@@ -96,16 +101,21 @@ class AttackWPA3SAE(Attack):
 
         # Execute strategy based on selection
         if self.attack_strategy == WPA3AttackStrategy.DOWNGRADE:
-            return self._execute_downgrade_strategy()
+            result = self._execute_downgrade_strategy()
         elif self.attack_strategy == WPA3AttackStrategy.DRAGONBLOOD:
-            return self._execute_dragonblood_strategy()
+            result = self._execute_dragonblood_strategy()
         elif self.attack_strategy == WPA3AttackStrategy.SAE_CAPTURE:
-            return self._execute_sae_capture_strategy()
+            result = self._execute_sae_capture_strategy()
         elif self.attack_strategy == WPA3AttackStrategy.PASSIVE:
-            return self._execute_passive_strategy()
+            result = self._execute_passive_strategy()
         else:
             Color.pl('{!} {R}Unknown attack strategy: %s{W}' % self.attack_strategy)
-            return False
+            result = False
+
+        log_info('AttackWPA3', 'WPA3 attack on %s finished in %.1fs — %s' % (
+            self.target.bssid, time.time() - attack_start,
+            'SUCCESS' if result else 'failed'))
+        return result
 
     def _check_wpa3_tools(self):
         """

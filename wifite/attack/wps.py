@@ -1,8 +1,11 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+import time
+
 from ..model.attack import Attack
 from ..util.color import Color
+from ..util.logger import log_info, log_debug
 from ..config import Configuration
 from ..util.output import OutputManager
 from ..tools.bully import Bully
@@ -35,7 +38,12 @@ class AttackWPS(Attack):
 
     def run(self):
         """ Run all WPS-related attacks """
-        
+
+        mode = 'pixie-dust' if self.pixie_dust else ('null-pin' if self.null_pin else 'pin')
+        log_info('AttackWPS', 'Starting WPS %s attack on %s (%s)' % (
+            mode, self.target.essid or '?', self.target.bssid))
+        self._attack_start = time.time()
+
         # Start TUI view if available
         if self.view:
             self.view.start()
@@ -96,6 +104,7 @@ class AttackWPS(Attack):
         return False
 
     def run_bully(self):
+        log_debug('AttackWPS', 'Using bully for WPS attack')
         bully = Bully(self.target, pixie_dust=self.pixie_dust)
         # Pass the view to bully for TUI updates
         if self.view:
@@ -104,9 +113,13 @@ class AttackWPS(Attack):
         bully.stop()
         self.crack_result = bully.crack_result
         self.success = self.crack_result is not None
+        log_info('AttackWPS', 'WPS bully attack on %s finished in %.1fs — %s' % (
+            self.target.bssid, time.time() - getattr(self, '_attack_start', time.time()),
+            'SUCCESS' if self.success else 'no pin'))
         return self.success
 
     def run_reaver(self):
+        log_debug('AttackWPS', 'Using reaver for WPS attack')
         reaver = Reaver(self.target, pixie_dust=self.pixie_dust, null_pin=self.null_pin)
         # Pass the view to reaver for TUI updates
         if self.view:
@@ -114,4 +127,7 @@ class AttackWPS(Attack):
         reaver.run()
         self.crack_result = reaver.crack_result
         self.success = self.crack_result is not None
+        log_info('AttackWPS', 'WPS reaver attack on %s finished in %.1fs — %s' % (
+            self.target.bssid, time.time() - getattr(self, '_attack_start', time.time()),
+            'SUCCESS' if self.success else 'no pin'))
         return self.success

@@ -247,7 +247,15 @@ class Aireplay(Thread, Dependency):
                         pps = matches[5]
                         self.status = 'Waiting for packet...' if pps == '0' else f'Replaying @ {pps}/sec'
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.stop()
+
     def __del__(self):
+        if hasattr(self, 'output_fh') and self.output_fh and not self.output_fh.closed:
+            self.output_fh.close()
         self.stop()
 
     @staticmethod
@@ -492,7 +500,10 @@ class Aireplay(Thread, Dependency):
                 client_mac=client_mac,
                 count=num_deauths
             )
-        except Exception:
+        except Exception as e:
+            if Configuration.verbose > 1:
+                from ..util.color import Color
+                Color.pl('{!} {O}deauth_native failed: %s{W}' % str(e))
             return False, 0
 
 
@@ -527,6 +538,7 @@ class ContinuousDeauth(Thread):
         """
         super().__init__()
         self.daemon = True
+        self._check_native()
         self.target_bssid = target_bssid
         self.interface = interface
         self.essid = essid
@@ -565,9 +577,6 @@ class ContinuousDeauth(Thread):
     def paused(self, value):
         with self._lock:
             self._paused = value
-        
-        # Check native availability
-        self._check_native()
     
     @classmethod
     def _check_native(cls):
@@ -624,8 +633,10 @@ class ContinuousDeauth(Thread):
                 if success:
                     self.total_deauths_sent += sent
                     return
-            except Exception:
-                pass  # Fall back to aireplay-ng
+            except Exception as e:
+                if Configuration.verbose > 1:
+                    from ..util.color import Color
+                    Color.pl('{!} {O}Native deauth failed, falling back to aireplay-ng: %s{W}' % str(e))
         
         # Fallback to aireplay-ng
         try:

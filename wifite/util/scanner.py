@@ -13,7 +13,7 @@ from shlex import quote as shlex_quote
 try:
     from ..native.scanner import NativeScanner, AccessPoint as NativeAP, is_available as native_scanner_available
     NATIVE_SCANNER_AVAILABLE = native_scanner_available()
-except BaseException:
+except (ImportError, Exception):
     NATIVE_SCANNER_AVAILABLE = False
 
 
@@ -31,6 +31,7 @@ class Scanner:
         self.err_msg = None
         self._max_targets = 1000  # Limit target list size to prevent memory bloat
         self._cleanup_counter = 0  # Counter for periodic cleanup
+        self._limit_warned = False  # Warn once when target cap is first reached
 
         # Initialize view based on output mode
         self.view = None
@@ -563,7 +564,12 @@ class Scanner:
             # Use heapq.nlargest: O(n log k) vs O(n log n) for full sort
             self.targets = heapq.nlargest(self._max_targets, self.targets, key=lambda x: x.power)
 
-            if Configuration.verbose > 1:
+            if not self._limit_warned:
+                Color.pl('{!} {O}Target limit reached (%d): keeping strongest signals, '
+                         'dropping %d weakest. Use {G}--verbose{O} for ongoing trim info.{W}'
+                         % (self._max_targets, removed_count))
+                self._limit_warned = True
+            elif Configuration.verbose > 1:
                 Color.pl('{!} {O}Trimmed %d weak targets (limit: %d){W}' %
                         (removed_count, self._max_targets))
         
@@ -680,6 +686,7 @@ class Scanner:
 
 
 if __name__ == '__main__':
+    import subprocess
     # 'Test' script will display targets and selects the appropriate one
     Configuration.initialize()
     targets = []

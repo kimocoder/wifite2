@@ -11,6 +11,7 @@ from .wps import AttackWPS
 from ..config import Configuration
 from ..model.target import WPSState
 from ..util.color import Color
+from ..util.logger import log_info, log_debug
 from ..util.wpa3_tools import WPA3ToolChecker
 from ..util.memory import MemoryMonitor, get_infinite_monitor
 
@@ -82,6 +83,9 @@ class AttackAll:
         Returns: True if attacks should continue, False otherwise.
         """
         global attack
+        log_info('AttackAll', 'Targeting %s (%s) enc=%s auth=%s wps=%s pwr=%s (%d remaining)' % (
+            target.essid or '(hidden)', target.bssid, target.encryption,
+            target.authentication, target.wps, target.power, targets_remaining))
         if 'MGT' in target.authentication:
             Color.pl("\n{!}{O}Skipping. Target is using {C}WPA-Enterprise {O}and can not be cracked.")
             # Mark as failed in session
@@ -268,7 +272,7 @@ class AttackAll:
             Answer.ExitOrReturn if the user wants to stop the remaining attacks
         """
         if attacks_remaining == 0 and targets_remaining == 0:
-            return  # No targets or attacksleft, drop out
+            return Answer.ExitOrReturn  # No targets or attacks left, drop out
 
         prompt_list = []
         if attacks_remaining > 0:

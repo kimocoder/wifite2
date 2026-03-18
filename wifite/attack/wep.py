@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+import subprocess
 import time
 
 from ..config import Configuration
@@ -11,6 +12,7 @@ from ..tools.aireplay import Aireplay, WEPAttackType
 from ..tools.airodump import Airodump
 from ..tools.ip import Ip
 from ..util.color import Color
+from ..util.logger import log_debug, log_info, log_warning
 from ..util.output import OutputManager
 
 
@@ -42,7 +44,11 @@ class AttackWEP(Attack):
             Including airodump-ng starting, cracking, etc.
             Returns: True if attack is successful, false otherwise
         """
-        
+
+        log_info('AttackWEP', 'Starting WEP attack on %s (%s) ch %s' % (
+            self.target.essid or '?', self.target.bssid, self.target.channel))
+        attack_start = time.time()
+
         # Start TUI view if available
         if self.view:
             self.view.start()
@@ -125,9 +131,9 @@ class AttackWEP(Attack):
                             client_mac = airodump_target.clients[0].station
 
                         if keep_ivs and current_ivs > airodump_target.ivs:
-                            # We now have less IVS than before; A new attack must have started.
-                            # Track how many we have in-total.
-                            previous_ivs += total_ivs
+                            # We now have less IVs than before; a new attack must have started.
+                            # Save the accumulated total so far before resetting.
+                            previous_ivs = total_ivs
                         current_ivs = airodump_target.ivs
                         total_ivs = previous_ivs + current_ivs
 
@@ -159,6 +165,8 @@ class AttackWEP(Attack):
                             Airodump.delete_airodump_temp_files('wep')
 
                             self.success = True
+                            log_info('AttackWEP', 'WEP attack on %s cracked in %.1fs (%d IVs)' % (
+                                self.target.bssid, time.time() - attack_start, total_ivs))
                             return self.success
 
                         if aircrack and aircrack.is_running():
@@ -215,7 +223,7 @@ class AttackWEP(Attack):
                                 wep_attack_type = WEPAttackType('forgedreplay')
                                 attack_name = 'forgedreplay'
                                 aireplay = Aireplay(self.target,
-                                                    'forgedreplay',
+                                                    wep_attack_type,
                                                     client_mac=client_mac,
                                                     replay_file=replay_file)
                                 time_unchanged_ivs = time.time()  # Reset unchanged IVs time (it may have taken a
@@ -288,6 +296,8 @@ class AttackWEP(Attack):
             Airodump.delete_airodump_temp_files('wep')
 
         self.success = False
+        log_info('AttackWEP', 'WEP attack on %s finished in %.1fs — no key' % (
+            self.target.bssid, time.time() - attack_start))
         return self.success
 
     @staticmethod
