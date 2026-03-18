@@ -1,0 +1,49 @@
+name: Claude Code
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+
+jobs:
+  claude:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write          # ← REQUIRED so Claude can push fixes/branches
+      pull-requests: write
+      issues: write
+      comments: write
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Run Claude Code Action
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+
+          # What Claude should do
+          prompt: |
+            You are an expert security researcher reviewing changes to wifite2 (a Python WiFi auditing tool).
+            Review this pull request or comment for:
+            - bugs
+            - security issues
+            - code quality problems
+            - performance improvements
+            Focus especially on Python code. Be concise but thorough. If you can fix something, do it.
+
+          # ← MODEL GOES HERE (this fixes your error)
+          claude_args: |
+            --model claude-3-opus-20240229
+            --max-turns 8
+            --temperature 0.2
+
+          # Optional but very useful
+          trigger_phrase: "@claude"
+          use_sticky_comment: true
+          include_fix_links: true
+          track_progress: true
