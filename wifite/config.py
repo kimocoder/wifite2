@@ -34,6 +34,7 @@ class Configuration:
     encryption_filter = None
     existing_commands = None
     five_ghz = None
+    ignore_captured = None
     ignore_cracked = None
     ignore_essids = None
     ignore_old_handshakes = None
@@ -204,6 +205,7 @@ class Configuration:
         cls.target_essid = None  # User-defined AP name
         cls.target_bssid = None  # User-defined AP BSSID
         cls.ignore_essids = None  # ESSIDs to ignore
+        cls.ignore_captured = False  # Ignore targets with existing captures
         cls.ignore_cracked = False  # Ignore previously-cracked BSSIDs
         cls.clients_only = False  # Only show targets that have associated clients
         cls.all_bands = False  # Scan for both 2Ghz and 5Ghz channels
@@ -744,6 +746,15 @@ class Configuration:
             else:
                 Color.pl('{!} {R}Previously-cracked access points not found in %s' % cls.cracked_file)
                 cls.ignore_cracked = False
+
+        if args.ignore_captured:
+            captured_bssids = CrackResult.load_captured_bssids(cls.wpa_handshake_dir)
+            if captured_bssids:
+                cls.ignore_captured = captured_bssids
+                Color.pl('{+} {C}option: {O}ignoring {R}%s{O} targets with existing captures' % len(captured_bssids))
+            else:
+                Color.pl('{!} {R}No captured handshakes/PMKIDs found in %s' % cls.wpa_handshake_dir)
+
         if args.clients_only:
             cls.clients_only = True
             Color.pl('{+} {C}option:{W} {O}ignoring targets that do not have associated clients')

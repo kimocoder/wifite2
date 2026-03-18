@@ -397,6 +397,11 @@ against the real AP and captures valid passwords.
                           dest='ignore_cracked',
                           help=Color.s('Hides previously-cracked targets. (default: {G}off{W})'))
 
+        glob.add_argument('--ignore-captured',
+                          action='store_true',
+                          dest='ignore_captured',
+                          help=Color.s('Hides targets with existing captured handshakes/pmkid. (default: {G}off{W})'))
+
         glob.add_argument('--clients-only',
                           action='store_true',
                           dest='clients_only',

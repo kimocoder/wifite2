@@ -4,7 +4,9 @@
 from ..util.color import Color
 from ..config import Configuration
 
+import glob
 import os
+import re
 import time
 from json import loads, dumps
 
@@ -145,6 +147,21 @@ class CrackResult:
             for item in json
             if item.get('type') != 'IGN'
         ]
+
+    @classmethod
+    def load_captured_bssids(cls, hs_dir):
+        """Scan hs_dir for captured handshake/PMKID files and return list of BSSIDs."""
+        bssids = set()
+        if not os.path.isdir(hs_dir):
+            return []
+
+        bssid_re = re.compile(r'^(?:handshake|pmkid)_.+_([0-9A-F]{2}-[0-9A-F]{2}-[0-9A-F]{2}-[0-9A-F]{2}-[0-9A-F]{2}-[0-9A-F]{2})_', re.IGNORECASE)
+        for fname in os.listdir(hs_dir):
+            m = bssid_re.match(fname)
+            if m:
+                bssids.add(m.group(1).replace('-', ':').upper())
+
+        return list(bssids)
 
     @staticmethod
     def load(json):

@@ -404,6 +404,9 @@ class Airodump(Dependency):
             elif Configuration.ignore_cracked and \
                     result[i].bssid in Configuration.ignore_cracked:
                 result.pop(i)
+            elif Configuration.ignore_captured and \
+                    result[i].bssid in Configuration.ignore_captured:
+                result.pop(i)
             elif bssid and result[i].bssid.lower() != bssid.lower():
                 result.pop(i)
             elif essid and result[i].essid and result[i].essid != essid:
