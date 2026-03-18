@@ -1,0 +1,29 @@
+name: Claude Code
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+jobs:
+  claude:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Run Claude Code Action
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+
+          # What Claude should do
+          prompt: |
+            Review this pull request for:
+            - bugs
+            - security issues
+            - code quality problems
+            Focus especially on Python code in wifite2.
+
+          # Optional but useful
+          model: claude-3-opus-20240229
