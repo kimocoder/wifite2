@@ -9,6 +9,7 @@ credentials through a captive portal.
 """
 
 import os
+import re
 import time
 import signal
 from typing import Optional, List
@@ -23,6 +24,7 @@ from ..util.logger import log_info, log_error, log_warning, log_debug, mask_sens
 from ..util.client_monitor import ClientMonitor, ClientConnection
 from ..util.cleanup import CleanupManager
 from ..util.adaptive_deauth import AdaptiveDeauthManager
+from ..util.process import Process
 from ..tools.aireplay import Aireplay
 
 
@@ -1071,8 +1073,10 @@ class EvilTwin(Attack):
                     killed_count = 0
                     for process_name, pid in conflicting:
                         try:
-                            import subprocess
-                            subprocess.run(['kill', '-9', pid], timeout=5)
+                            if not re.match(r'^\d+$', str(pid)):
+                                log_warning('EvilTwin', f'Skipping kill: invalid PID value: {pid!r}')
+                                continue
+                            os.kill(int(pid), signal.SIGKILL)
                             Color.pl('{+} {G}Killed {W}%s{G} (PID: {W}%s{G}){W}' % (process_name, pid))
                             log_info('EvilTwin', f'Killed conflicting {process_name} process (PID: {pid})')
                             killed_count += 1
@@ -1845,34 +1849,24 @@ class EvilTwin(Attack):
             True if an attack is running, False otherwise
         """
         import subprocess
-        
+
         try:
             # Check for hostapd processes with wifite config
-            result = subprocess.run(
-                ['pgrep', '-f', 'hostapd.*wifite'],
-                capture_output=True,
-                text=True,
-                timeout=5
-            )
-            
+            result = Process.run_simple(['pgrep', '-f', 'hostapd.*wifite'])
+
             if result.returncode == 0 and result.stdout.strip():
                 log_warning('EvilTwin', 'Detected running Evil Twin attack (hostapd process found)')
                 return True
-            
+
             # Check for dnsmasq processes with wifite config
-            result = subprocess.run(
-                ['pgrep', '-f', 'dnsmasq.*wifite'],
-                capture_output=True,
-                text=True,
-                timeout=5
-            )
-            
+            result = Process.run_simple(['pgrep', '-f', 'dnsmasq.*wifite'])
+
             if result.returncode == 0 and result.stdout.strip():
                 log_warning('EvilTwin', 'Detected running Evil Twin attack (dnsmasq process found)')
                 return True
-            
+
             return False
-            
+
         except Exception as e:
             log_debug('EvilTwin', f'Error checking for running attack: {e}')
             return False
@@ -1886,61 +1880,49 @@ class EvilTwin(Attack):
         interrupted attack.
         """
         import subprocess
-        
+
         log_info('EvilTwin', 'Checking for orphaned processes')
-        
+
         processes_to_kill = []
-        
+
         try:
             # Check for hostapd processes
-            result = subprocess.run(
-                ['pgrep', '-f', 'hostapd.*wifite'],
-                capture_output=True,
-                text=True,
-                timeout=5
-            )
+            result = Process.run_simple(['pgrep', '-f', 'hostapd.*wifite'])
             if result.returncode == 0 and result.stdout.strip():
                 pids = result.stdout.strip().split('\n')
                 processes_to_kill.extend([('hostapd', pid) for pid in pids])
         except Exception as e:
             log_debug('EvilTwin', f'Error checking for hostapd processes: {e}')
-        
+
         try:
             # Check for dnsmasq processes
-            result = subprocess.run(
-                ['pgrep', '-f', 'dnsmasq.*wifite'],
-                capture_output=True,
-                text=True,
-                timeout=5
-            )
+            result = Process.run_simple(['pgrep', '-f', 'dnsmasq.*wifite'])
             if result.returncode == 0 and result.stdout.strip():
                 pids = result.stdout.strip().split('\n')
                 processes_to_kill.extend([('dnsmasq', pid) for pid in pids])
         except Exception as e:
             log_debug('EvilTwin', f'Error checking for dnsmasq processes: {e}')
-        
+
         try:
             # Check for Python HTTP server processes (captive portal)
-            result = subprocess.run(
-                ['pgrep', '-f', 'python.*portal.*server'],
-                capture_output=True,
-                text=True,
-                timeout=5
-            )
+            result = Process.run_simple(['pgrep', '-f', 'python.*portal.*server'])
             if result.returncode == 0 and result.stdout.strip():
                 pids = result.stdout.strip().split('\n')
                 processes_to_kill.extend([('portal', pid) for pid in pids])
         except Exception as e:
             log_debug('EvilTwin', f'Error checking for portal processes: {e}')
-        
+
         # Kill orphaned processes
         if processes_to_kill:
             Color.pl('{!} {O}Found %d orphaned process(es) from previous attack{W}' % len(processes_to_kill))
             log_warning('EvilTwin', f'Found {len(processes_to_kill)} orphaned processes')
-            
+
             for process_name, pid in processes_to_kill:
                 try:
-                    subprocess.run(['kill', '-9', pid], timeout=5)
+                    if not re.match(r'^\d+$', str(pid)):
+                        log_warning('EvilTwin', f'Skipping kill: invalid PID value: {pid!r}')
+                        continue
+                    os.kill(int(pid), signal.SIGKILL)
                     log_info('EvilTwin', f'Killed orphaned {process_name} process (PID: {pid})')
                     Color.pl('{+} {C}Killed orphaned {W}%s{C} process (PID: {W}%s{C}){W}' % (process_name, pid))
                 except Exception as e:
@@ -1971,13 +1953,7 @@ class EvilTwin(Attack):
         # Check if interfaces are still available
         if state.interface_ap:
             try:
-                import subprocess
-                result = subprocess.run(
-                    ['iw', 'dev'],
-                    capture_output=True,
-                    text=True,
-                    timeout=5
-                )
+                result = Process.run_simple(['iw', 'dev'])
                 if state.interface_ap not in result.stdout:
                     log_warning('EvilTwin', f'Interface {state.interface_ap} not available')
                     Color.pl('{!} {O}Warning: Original interface {R}%s{O} not available{W}' % state.interface_ap)

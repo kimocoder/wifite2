@@ -7,11 +7,24 @@ Handles persistence and restoration of attack sessions for resume functionality.
 """
 
 import os
+import re
 import json
 import time
 from dataclasses import dataclass, field, asdict
 from typing import List, Dict, Any, Optional
 from datetime import datetime
+
+
+_IFACE_RE = re.compile(r'^[a-zA-Z0-9_\-]{1,15}$')
+
+
+def _is_valid_interface_name(name: str) -> bool:
+    """Return True if *name* is a safe Linux interface name (SEC-010).
+
+    Validates names parsed from iw/ip output before they are used in
+    subprocess commands, preventing injection via crafted interface names.
+    """
+    return bool(name and _IFACE_RE.match(name))
 
 
 @dataclass
@@ -851,48 +864,50 @@ class SessionManager:
         current_interface = getattr(config_obj, 'interface', None)
         
         if saved_interface:
-            # Check if saved interface is available
-            try:
-                import subprocess
-                result = subprocess.run(
-                    ['iw', 'dev'],
-                    capture_output=True,
-                    text=True,
-                    timeout=5
-                )
-                available_interfaces = result.stdout
-                
-                if saved_interface not in available_interfaces:
-                    warnings.append(
-                        f"Original interface '{saved_interface}' not found"
-                    )
-                    
-                    # If user specified a different interface via command line, use it
-                    if current_interface and current_interface != saved_interface:
-                        warnings.append(
-                            f"Using command-line interface '{current_interface}' instead"
-                        )
-                        interface_changed = True
-                    else:
-                        # Prompt will happen in wifite.py, just note it here
-                        warnings.append(
-                            "Will use current monitor mode interface"
-                        )
-                        interface_changed = True
-                else:
-                    # Interface is available, restore it
-                    if current_interface and current_interface != saved_interface:
-                        conflicts.append(
-                            f"--interface: command-line value '{current_interface}' "
-                            f"overridden by session value '{saved_interface}'"
-                        )
-                    config_obj.interface = saved_interface
-            except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
-                # Can't check interface availability, use current
+            # Validate the interface name from session data before use (SEC-010)
+            if not _is_valid_interface_name(saved_interface):
                 warnings.append(
-                    "Could not verify interface availability, using current interface"
+                    f"Saved interface name '{saved_interface}' is invalid, ignoring"
                 )
-                interface_changed = True
+                saved_interface = None
+            else:
+                # Check if saved interface is available
+                try:
+                    from .process import Process
+                    result = Process.run_simple(['iw', 'dev'])
+                    available_interfaces = result.stdout
+
+                    if saved_interface not in available_interfaces:
+                        warnings.append(
+                            f"Original interface '{saved_interface}' not found"
+                        )
+
+                        # If user specified a different interface via command line, use it
+                        if current_interface and current_interface != saved_interface:
+                            warnings.append(
+                                f"Using command-line interface '{current_interface}' instead"
+                            )
+                            interface_changed = True
+                        else:
+                            # Prompt will happen in wifite.py, just note it here
+                            warnings.append(
+                                "Will use current monitor mode interface"
+                            )
+                            interface_changed = True
+                    else:
+                        # Interface is available, restore it
+                        if current_interface and current_interface != saved_interface:
+                            conflicts.append(
+                                f"--interface: command-line value '{current_interface}' "
+                                f"overridden by session value '{saved_interface}'"
+                            )
+                        config_obj.interface = saved_interface
+                except (FileNotFoundError, OSError, Exception):
+                    # Can't check interface availability, use current
+                    warnings.append(
+                        "Could not verify interface availability, using current interface"
+                    )
+                    interface_changed = True
         
         # 2. Restore attack parameters
         # Check for conflicts with command-line flags
@@ -980,66 +995,68 @@ class SessionManager:
         # Primary interface
         saved_primary = saved_config.get('interface_primary')
         if saved_primary:
-            # Check if saved primary interface is available
-            try:
-                import subprocess
-                result = subprocess.run(
-                    ['iw', 'dev'],
-                    capture_output=True,
-                    text=True,
-                    timeout=5
-                )
-                available_interfaces = result.stdout
-                
-                if saved_primary not in available_interfaces:
-                    warnings.append(
-                        f"Saved primary interface '{saved_primary}' not found, will auto-assign"
-                    )
-                    config_obj.interface_primary = None
-                else:
-                    current_primary = getattr(config_obj, 'interface_primary', None)
-                    if current_primary and current_primary != saved_primary:
-                        conflicts.append(
-                            f"--interface-primary: command-line value overridden by session value"
-                        )
-                    config_obj.interface_primary = saved_primary
-            except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+            if not _is_valid_interface_name(saved_primary):
                 warnings.append(
-                    "Could not verify primary interface availability, will auto-assign"
+                    f"Saved primary interface name '{saved_primary}' is invalid, will auto-assign"
                 )
                 config_obj.interface_primary = None
-        
+            else:
+                # Check if saved primary interface is available
+                try:
+                    from .process import Process
+                    result = Process.run_simple(['iw', 'dev'])
+                    available_interfaces = result.stdout
+
+                    if saved_primary not in available_interfaces:
+                        warnings.append(
+                            f"Saved primary interface '{saved_primary}' not found, will auto-assign"
+                        )
+                        config_obj.interface_primary = None
+                    else:
+                        current_primary = getattr(config_obj, 'interface_primary', None)
+                        if current_primary and current_primary != saved_primary:
+                            conflicts.append(
+                                f"--interface-primary: command-line value overridden by session value"
+                            )
+                        config_obj.interface_primary = saved_primary
+                except (FileNotFoundError, OSError, Exception):
+                    warnings.append(
+                        "Could not verify primary interface availability, will auto-assign"
+                    )
+                    config_obj.interface_primary = None
+
         # Secondary interface
         saved_secondary = saved_config.get('interface_secondary')
         if saved_secondary:
-            # Check if saved secondary interface is available
-            try:
-                import subprocess
-                result = subprocess.run(
-                    ['iw', 'dev'],
-                    capture_output=True,
-                    text=True,
-                    timeout=5
-                )
-                available_interfaces = result.stdout
-                
-                if saved_secondary not in available_interfaces:
-                    warnings.append(
-                        f"Saved secondary interface '{saved_secondary}' not found, will auto-assign"
-                    )
-                    config_obj.interface_secondary = None
-                else:
-                    current_secondary = getattr(config_obj, 'interface_secondary', None)
-                    if current_secondary and current_secondary != saved_secondary:
-                        conflicts.append(
-                            f"--interface-secondary: command-line value overridden by session value"
-                        )
-                    config_obj.interface_secondary = saved_secondary
-            except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+            if not _is_valid_interface_name(saved_secondary):
                 warnings.append(
-                    "Could not verify secondary interface availability, will auto-assign"
+                    f"Saved secondary interface name '{saved_secondary}' is invalid, will auto-assign"
                 )
                 config_obj.interface_secondary = None
+            else:
+                # Check if saved secondary interface is available
+                try:
+                    from .process import Process
+                    result = Process.run_simple(['iw', 'dev'])
+                    available_interfaces = result.stdout
+
+                    if saved_secondary not in available_interfaces:
+                        warnings.append(
+                            f"Saved secondary interface '{saved_secondary}' not found, will auto-assign"
+                        )
+                        config_obj.interface_secondary = None
+                    else:
+                        current_secondary = getattr(config_obj, 'interface_secondary', None)
+                        if current_secondary and current_secondary != saved_secondary:
+                            conflicts.append(
+                                f"--interface-secondary: command-line value overridden by session value"
+                            )
+                        config_obj.interface_secondary = saved_secondary
+                except (FileNotFoundError, OSError, Exception):
+                    warnings.append(
+                        "Could not verify secondary interface availability, will auto-assign"
+                    )
+                    config_obj.interface_secondary = None
         
         # Auto-assign interfaces
         saved_auto_assign = saved_config.get('auto_assign_interfaces')

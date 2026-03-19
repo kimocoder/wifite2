@@ -9,7 +9,8 @@ due to transient network conditions or hardware issues.
 """
 
 import time
-import random
+import secrets
+_sysrng = secrets.SystemRandom()
 from functools import wraps
 from typing import Callable, Optional, Tuple, Type, Union, Any
 
@@ -44,7 +45,7 @@ def exponential_backoff(attempt: int,
 
     if jitter:
         # Add up to 25% jitter
-        delay *= (0.75 + random.random() * 0.5)
+        delay *= (0.75 + _sysrng.random() * 0.5)
 
     return delay
 

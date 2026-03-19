@@ -147,16 +147,16 @@ class Aircrack(Dependency):
 
 if __name__ == '__main__':
     (hexkey, asciikey) = Aircrack._hex_and_ascii_key('A1B1C1D1E1')
-    assert (
-        hexkey == 'A1:B1:C1:D1:E1'
-    ), f'hexkey was "{hexkey}", expected "A1:B1:C1:D1:E1"'
-    assert asciikey is None, f'asciikey was "{asciikey}", expected None'
+    if hexkey != 'A1:B1:C1:D1:E1':
+        raise ValueError(f'hexkey was "{hexkey}", expected "A1:B1:C1:D1:E1"')
+    if asciikey is not None:
+        raise ValueError(f'asciikey was "{asciikey}", expected None')
 
     (hexkey, asciikey) = Aircrack._hex_and_ascii_key('6162636465')
-    assert (
-        hexkey == '61:62:63:64:65'
-    ), f'hexkey was "{hexkey}", expected "61:62:63:64:65"'
-    assert asciikey == 'abcde', f'asciikey was "{asciikey}", expected "abcde"'
+    if hexkey != '61:62:63:64:65':
+        raise ValueError(f'hexkey was "{hexkey}", expected "61:62:63:64:65"')
+    if asciikey != 'abcde':
+        raise ValueError(f'asciikey was "{asciikey}", expected "abcde"')
 
     from time import sleep
 
@@ -169,14 +169,15 @@ if __name__ == '__main__':
     while aircrack.is_running():
         sleep(1)
 
-    assert aircrack.is_cracked(), f'Aircrack should have cracked {ivs_file}'
+    if not aircrack.is_cracked():
+        raise ValueError(f'Aircrack should have cracked {ivs_file}')
     print('aircrack process completed.')
 
     (hexkey, asciikey) = aircrack.get_key_hex_ascii()
     print(f'aircrack found HEX key: ({hexkey}) and ASCII key: ({asciikey})')
-    assert (
-        hexkey == '75:6E:63:6C:65'
-    ), f'hexkey was "{hexkey}", expected "75:6E:63:6C:65"'
-    assert asciikey == 'uncle', f'asciikey was "{asciikey}", expected "uncle"'
+    if hexkey != '75:6E:63:6C:65':
+        raise ValueError(f'hexkey was "{hexkey}", expected "75:6E:63:6C:65"')
+    if asciikey != 'uncle':
+        raise ValueError(f'asciikey was "{asciikey}", expected "uncle"')
 
     Configuration.exit_gracefully()

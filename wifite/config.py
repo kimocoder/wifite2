@@ -623,6 +623,24 @@ class Configuration:
         if cls.verbose > 0:
             Color.pl('{+} {G}wpa-sec configuration validated{W}')
 
+    @staticmethod
+    def _validate_interface_name(name):
+        """Validates a user-supplied wireless interface name.
+
+        Linux interface names may only contain letters, digits, hyphens, and
+        underscores (max 15 chars per IFNAMSIZ).  Rejecting anything outside
+        this set prevents malicious names from being interpolated into
+        subprocess f-strings even when shell=False is in use.
+
+        Raises ValueError with a descriptive message on invalid input.
+        """
+        if not re.match(r'^[a-zA-Z0-9_\-]{1,15}$', name):
+            raise ValueError(
+                f"Invalid interface name: '{name}'. "
+                "Interface names must be 1-15 characters and contain only "
+                "letters, digits, hyphens (-), and underscores (_)."
+            )
+
     @classmethod
     def parse_settings_args(cls, args):
         """Parses basic settings/configurations from arguments."""
@@ -653,6 +671,7 @@ class Configuration:
             Color.pl('{+} {C}option:{W} scanning for targets on channel {G}%s{W}' % args.channel)
 
         if args.interface:
+            cls._validate_interface_name(args.interface)
             cls.interface = args.interface
             Color.pl('{+} {C}option:{W} using wireless interface {G}%s{W}' % args.interface)
 
@@ -1038,10 +1057,12 @@ class Configuration:
             cls._display_eviltwin_interface_info()
 
         if hasattr(args, 'eviltwin_deauth_iface') and args.eviltwin_deauth_iface:
+            cls._validate_interface_name(args.eviltwin_deauth_iface)
             cls.eviltwin_deauth_iface = args.eviltwin_deauth_iface
             Color.pl('{+} {C}option:{W} Evil Twin deauth interface: {G}%s{W}' % args.eviltwin_deauth_iface)
 
         if hasattr(args, 'eviltwin_fakeap_iface') and args.eviltwin_fakeap_iface:
+            cls._validate_interface_name(args.eviltwin_fakeap_iface)
             cls.eviltwin_fakeap_iface = args.eviltwin_fakeap_iface
             Color.pl('{+} {C}option:{W} Evil Twin fake AP interface: {G}%s{W}' % args.eviltwin_fakeap_iface)
 
@@ -1146,6 +1167,7 @@ class Configuration:
 
         # Manual primary interface selection
         if hasattr(args, 'interface_primary') and args.interface_primary:
+            cls._validate_interface_name(args.interface_primary)
             cls.interface_primary = args.interface_primary
             Color.pl('{+} {C}option:{W} primary interface: {G}%s{W}' % args.interface_primary)
             # If primary is specified, enable dual interface mode
@@ -1154,6 +1176,7 @@ class Configuration:
 
         # Manual secondary interface selection
         if hasattr(args, 'interface_secondary') and args.interface_secondary:
+            cls._validate_interface_name(args.interface_secondary)
             cls.interface_secondary = args.interface_secondary
             Color.pl('{+} {C}option:{W} secondary interface: {G}%s{W}' % args.interface_secondary)
             # If secondary is specified, enable dual interface mode

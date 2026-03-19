@@ -97,4 +97,5 @@ if __name__ == '__main__':
 
     print(f'Target(BSSID={targets[0].bssid}).wps = {targets[0].wps} (Expected: 1)')
 
-    assert targets[0].wps == WPSState.UNLOCKED
+    if targets[0].wps != WPSState.UNLOCKED:
+        raise ValueError(f'Expected WPSState.UNLOCKED, got {targets[0].wps}')

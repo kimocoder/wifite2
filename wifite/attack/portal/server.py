@@ -381,16 +381,21 @@ class PortalServer:
     Optimized for fast response times and low memory usage.
     """
     
-    def __init__(self, host='0.0.0.0', port=80, template_renderer=None):
+    def __init__(self, host=None, port=80, template_renderer=None):
         """
         Initialize portal server.
-        
+
         Args:
-            host: Host to bind to (default: 0.0.0.0 for all interfaces)
+            host: Host IP to bind to. Defaults to None, which binds only to the
+                  AP interface IP (192.168.100.1). Pass '0.0.0.0' explicitly only
+                  when binding on all interfaces is intentionally required.
             port: Port to listen on (default: 80)
             template_renderer: Optional template renderer for custom pages
         """
-        self.host = host
+        # Default to the standard evil-twin AP IP rather than all interfaces.
+        # This prevents the portal from being reachable on unrelated interfaces
+        # (e.g. wired LAN, VPN) when wifite is run on a multi-homed host.
+        self.host = host if host is not None else '192.168.100.1'
         self.port = port
         self.template_renderer = template_renderer
         self.credential_callback = None
@@ -462,7 +467,7 @@ class PortalServer:
             log_info('Portal', f'Server started on {self.host}:{self.port}')
             
             Color.pl('{+} {G}Captive portal started{W} on {C}http://%s:%d{W}' % (
-                self.host if self.host != '0.0.0.0' else '192.168.100.1', 
+                self.host,
                 self.port))
             
             return True

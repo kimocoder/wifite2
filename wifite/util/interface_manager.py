@@ -558,17 +558,22 @@ class InterfaceManager:
         """
         try:
             interfaces = []
-            
+            _iface_re = re.compile(r'^[a-zA-Z0-9_\-]{1,15}$')
+
             # Use iw to get all wireless interfaces
             output = Process(['iw', 'dev']).stdout()
-            
+
             for line in output.split('\n'):
                 if 'Interface' in line:
                     parts = line.split()
                     if len(parts) >= 2:
                         interface = parts[1]
-                        interfaces.append(interface)
-            
+                        # Validate name before use (SEC-010)
+                        if _iface_re.match(interface):
+                            interfaces.append(interface)
+                        else:
+                            log_debug('InterfaceManager', f'Ignoring invalid interface name from iw output: {interface!r}')
+
             log_info('InterfaceManager', f'Found {len(interfaces)} wireless interfaces')
             return interfaces
             

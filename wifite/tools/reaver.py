@@ -586,30 +586,35 @@ aca879469d5da5 -z c8a2ccc5fb6dc4f4d69b245091022dc7e998e42ec1d548d57c35a312ff63ef
 '''
 
     (pin, psk, ssid) = Reaver.get_pin_psk_ssid(old_stdout)
-    assert pin == '12345678', f'pin was "{pin}", should have been "12345678"'
-    assert psk == 'Test PSK', f'psk was "{psk}", should have been "Test PSK"'
-    assert ssid == 'Test Router', f'ssid was {repr(ssid)}, should have been Test Router'
+    if pin != '12345678':
+        raise ValueError(f'pin was "{pin}", should have been "12345678"')
+    if psk != 'Test PSK':
+        raise ValueError(f'psk was "{psk}", should have been "Test PSK"')
+    if ssid != 'Test Router':
+        raise ValueError(f'ssid was {repr(ssid)}, should have been Test Router')
 
     result = CrackResultWPS('AA:BB:CC:DD:EE:FF', ssid, pin, psk)
     result.dump()
     print('')
 
     (pin, psk, ssid) = Reaver.get_pin_psk_ssid(new_stdout)
-    assert pin == '11867722', f'pin was "{pin}", should have been "11867722"'
-    assert psk is None, f'psk was "{psk}", should have been "None"'
-    assert (
-        ssid == 'belkin.00e'
-    ), f'ssid was "{repr(ssid)}", should have been "belkin.00e"'
+    if pin != '11867722':
+        raise ValueError(f'pin was "{pin}", should have been "11867722"')
+    if psk is not None:
+        raise ValueError(f'psk was "{psk}", should have been "None"')
+    if ssid != 'belkin.00e':
+        raise ValueError(f'ssid was "{repr(ssid)}", should have been "belkin.00e"')
     result = CrackResultWPS('AA:BB:CC:DD:EE:FF', ssid, pin, psk)
     result.dump()
     print('')
 
     (pin, psk, ssid) = Reaver.get_pin_psk_ssid(pin_attack_stdout)
-    assert pin == '01030365', f'pin was "{pin}", should have been "01030365"'
-    assert psk == 'password', f'psk was "{psk}", should have been "password"'
-    assert (
-        ssid == 'AirLink89300'
-    ), f'ssid was "{repr(ssid)}", should have been "AirLink89300"'
+    if pin != '01030365':
+        raise ValueError(f'pin was "{pin}", should have been "01030365"')
+    if psk != 'password':
+        raise ValueError(f'psk was "{psk}", should have been "password"')
+    if ssid != 'AirLink89300':
+        raise ValueError(f'ssid was "{repr(ssid)}", should have been "AirLink89300"')
     result = CrackResultWPS('AA:BB:CC:DD:EE:FF', ssid, pin, psk)
     result.dump()
     print('')

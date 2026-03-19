@@ -7,6 +7,7 @@ Provides logging capabilities for TUI events and errors.
 """
 
 import os
+import stat
 import time
 from datetime import datetime
 
@@ -34,12 +35,20 @@ class TUILogger:
 
         if enabled:
             if log_file is None:
-                log_file = '/tmp/wifite_tui.log'
+                # Use a user-owned directory instead of world-readable /tmp
+                log_dir = os.path.join(os.path.expanduser('~'), '.config', 'wifite')
+                try:
+                    os.makedirs(log_dir, exist_ok=True)
+                    os.chmod(log_dir, stat.S_IRWXU)  # 0700 — owner only
+                except Exception:
+                    log_dir = os.path.expanduser('~')
+                log_file = os.path.join(log_dir, 'wifite_tui.log')
             cls._log_file = log_file
 
-            # Create/clear log file
+            # Create/clear log file with restricted permissions (owner read/write only)
             try:
-                with open(cls._log_file, 'w') as f:
+                fd = os.open(cls._log_file, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, stat.S_IRUSR | stat.S_IWUSR)
+                with os.fdopen(fd, 'w') as f:
                     f.write(f"=== Wifite TUI Log Started: {datetime.now()} ===\n")
             except Exception:
                 cls._enabled = False

@@ -21,7 +21,7 @@ as it provides full AP functionality including association handling.
 """
 
 import time
-import random
+import secrets
 from threading import Thread, Event
 from typing import Optional, List
 
@@ -103,8 +103,8 @@ class BeaconGenerator(Thread):
     def _generate_random_bssid(self) -> str:
         """Generate a random valid BSSID."""
         # Use locally administered, unicast MAC
-        first_byte = random.randint(0, 255) & 0xFC | 0x02
-        rest = [random.randint(0, 255) for _ in range(5)]
+        first_byte = secrets.token_bytes(1)[0] & 0xFC | 0x02
+        rest = list(secrets.token_bytes(5))
         return ':'.join(f'{b:02X}' for b in [first_byte] + rest)
     
     def _build_beacon_frame(self):

@@ -406,6 +406,7 @@ if __name__ == '__main__':
     Tshark.check_for_wps_and_update_targets(test_file, targets)
 
     print(f'Target(BSSID={targets[0].bssid}).wps = {targets[0].wps} (Expected: 1)')
-    assert targets[0].wps == WPSState.UNLOCKED
+    if targets[0].wps != WPSState.UNLOCKED:
+        raise ValueError(f'Expected WPSState.UNLOCKED, got {targets[0].wps}')
 
     print((Tshark.bssids_with_handshakes(test_file, bssid=target_bssid)))

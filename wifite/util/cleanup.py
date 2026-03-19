@@ -12,6 +12,8 @@ Provides comprehensive cleanup of all attack resources including:
 """
 
 import os
+import re
+import signal
 import subprocess
 from typing import List, Optional, Tuple
 
@@ -235,12 +237,7 @@ class CleanupManager:
             
             log_debug('Cleanup', f'Removing iptables rule: {" ".join(cmd)}')
             
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=5
-            )
+            result = Process.run_simple(cmd)
             
             if result.returncode == 0:
                 log_info('Cleanup', f'Removed iptables rule from {table}/{chain}')
@@ -362,24 +359,22 @@ def kill_orphaned_processes() -> List[Tuple[str, str]]:
     
     for process_name, pattern in patterns:
         try:
-            result = subprocess.run(
-                ['pgrep', '-f', pattern],
-                capture_output=True,
-                text=True,
-                timeout=5
-            )
-            
+            result = Process.run_simple(['pgrep', '-f', pattern])
+
             if result.returncode == 0 and result.stdout.strip():
                 pids = result.stdout.strip().split('\n')
-                
+
                 for pid in pids:
                     try:
-                        subprocess.run(['kill', '-9', pid], timeout=5)
+                        if not re.match(r'^\d+$', str(pid)):
+                            log_warning('Cleanup', f'Skipping kill: invalid PID value: {pid!r}')
+                            continue
+                        os.kill(int(pid), signal.SIGKILL)
                         killed_processes.append((process_name, pid))
                         log_info('Cleanup', f'Killed orphaned {process_name} process (PID: {pid})')
                     except Exception as e:
                         log_warning('Cleanup', f'Failed to kill {process_name} process {pid}: {e}')
-        
+
         except Exception as e:
             log_debug('Cleanup', f'Error checking for {process_name} processes: {e}')
     
@@ -412,19 +407,15 @@ def check_conflicting_processes() -> List[Tuple[str, str]]:
     
     for process_name, pattern in patterns:
         try:
-            result = subprocess.run(
-                ['pgrep', '-x', pattern],
-                capture_output=True,
-                text=True,
-                timeout=5
-            )
-            
+            result = Process.run_simple(['pgrep', '-x', pattern])
+
             if result.returncode == 0 and result.stdout.strip():
                 pids = result.stdout.strip().split('\n')
                 for pid in pids:
-                    conflicting.append((process_name, pid))
-                    log_debug('Cleanup', f'Found conflicting process: {process_name} (PID: {pid})')
-        
+                    if re.match(r'^\d+$', str(pid)):
+                        conflicting.append((process_name, pid))
+                        log_debug('Cleanup', f'Found conflicting process: {process_name} (PID: {pid})')
+
         except Exception as e:
             log_debug('Cleanup', f'Error checking for {process_name}: {e}')
     

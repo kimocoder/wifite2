@@ -4,6 +4,7 @@
 import contextlib
 import re
 import shlex
+import shutil
 import time
 import signal
 import os
@@ -61,8 +62,8 @@ class ProcessManager:
                     for p in oldest:
                         try:
                             p.force_kill()
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            log_debug('ProcessManager', f'force_kill failed during limit enforcement: {e}')
                     self._processes = self._processes[10:]
 
             self._processes.append(process)
@@ -106,9 +107,60 @@ class Process:
         """ Helper method returning subprocess.DEVNULL constant (no file handle to leak) """
         return DEVNULL
 
+    # Cache of resolved full tool paths to avoid repeated shutil.which() calls
+    _tool_path_cache: dict = {}
+
+    @staticmethod
+    def _resolve_tool(name: str) -> str:
+        """Resolve a bare tool name to its absolute path using shutil.which().
+
+        Raises FileNotFoundError if the tool cannot be found on PATH, preventing
+        partial-path subprocess calls that depend on a potentially manipulated $PATH.
+        Results are cached for the lifetime of the process.
+        """
+        if name in Process._tool_path_cache:
+            return Process._tool_path_cache[name]
+        full_path = shutil.which(name)
+        if full_path is None:
+            raise FileNotFoundError(f"Required tool not found on PATH: '{name}'")
+        Process._tool_path_cache[name] = full_path
+        log_debug('Process', f"Resolved tool '{name}' → '{full_path}'")
+        return full_path
+
+    @staticmethod
+    def run_simple(cmd: list, timeout: int = 5) -> subprocess.CompletedProcess:
+        """Safe replacement for bare subprocess.run() calls scattered across the codebase.
+
+        Resolves the executable to a full path (SEC-004), logs the call at DEBUG
+        level so it appears in the wifite log, and passes through capture_output
+        and text defaults that callers previously set inline.
+
+        Args:
+            cmd:     Command as a list of strings. The first element is resolved
+                     via shutil.which(); remaining elements are passed unchanged.
+            timeout: Seconds before the subprocess is killed (default 5).
+
+        Returns:
+            subprocess.CompletedProcess with .stdout / .stderr / .returncode.
+
+        Raises:
+            FileNotFoundError: If the executable cannot be found on PATH.
+        """
+        if not cmd:
+            raise ValueError('run_simple: cmd must be a non-empty list')
+        resolved = [Process._resolve_tool(cmd[0])] + cmd[1:]
+        log_debug('Process', f'run_simple: {resolved}')
+        if Configuration.verbose > 1:
+            Color.pe(f'\n {{C}}[?]{{W}} Executing: {{B}}{" ".join(resolved)}{{W}}')
+        return subprocess.run(resolved, capture_output=True, text=True, timeout=timeout)
+
     @staticmethod
     def call(command, cwd=None, shell=False):
-        """ Calls a command (either string or list of args). Returns (stdout, stderr) """
+        """ Calls a command (either string or list of args). Returns (stdout, stderr).
+
+        shell=True is supported but should be used with caution to prevent command injection.
+        String commands are always split via shlex before being passed to Popen when shell=False.
+        """
         if isinstance(command, str) and not shell:
             # Split string commands into list of args for Popen when not using shell mode
             if Configuration.verbose > 1:
@@ -261,15 +313,15 @@ class Process:
             if stream and not stream.closed:
                 try:
                     stream.close()
-                except Exception:
-                    pass
+                except Exception as e:
+                    log_debug('Process', f'Error closing stream in get_output: {e}')
 
         # Close any devnull handles
         for fh in self._devnull_handles:
             try:
                 fh.close()
-            except Exception:
-                pass
+            except Exception as e:
+                log_debug('Process', f'Error closing devnull handle: {e}')
         self._devnull_handles.clear()
 
         return self.out, self.err

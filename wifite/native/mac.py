@@ -26,11 +26,12 @@ Usage:
 
 import os
 import re
-import random
+import secrets
 import fcntl
 import socket
 import struct
 from typing import Optional, Tuple
+from ..util.logger import log_debug
 
 
 class NativeMac:
@@ -226,7 +227,7 @@ class NativeMac:
             if new_mac and new_mac.upper() == mac.upper():
                 return True, f'MAC address changed to {mac} (via ip command)'
         except Exception as e:
-            pass
+            log_debug('NativeMac', f'MAC change via ip link failed on {interface}: {e}')
         
         return False, f'Failed to change MAC address on {interface}'
     
@@ -247,7 +248,7 @@ class NativeMac:
             current = cls.get_mac(interface)
             if current:
                 vendor = current[:8]  # First 3 bytes (with colons)
-                device = ':'.join(f'{random.randint(0, 255):02X}' for _ in range(3))
+                device = ':'.join(f'{b:02X}' for b in secrets.token_bytes(3))
                 new_mac = f'{vendor}:{device}'
             else:
                 new_mac = cls._generate_random_mac()
@@ -290,13 +291,13 @@ class NativeMac:
             Random MAC address string
         """
         if use_real_vendor:
-            vendor = random.choice(cls.VENDOR_OUIS)
-            device = ':'.join(f'{random.randint(0, 255):02X}' for _ in range(3))
+            vendor = cls.VENDOR_OUIS[secrets.randbelow(len(cls.VENDOR_OUIS))]
+            device = ':'.join(f'{b:02X}' for b in secrets.token_bytes(3))
             return f'{vendor}:{device}'
         else:
             # Generate completely random MAC with unicast, locally administered bit
-            first_byte = random.randint(0, 255) & 0xFE | 0x02  # Ensure unicast + locally administered
-            rest = [random.randint(0, 255) for _ in range(5)]
+            first_byte = secrets.token_bytes(1)[0] & 0xFE | 0x02  # Ensure unicast + locally administered
+            rest = list(secrets.token_bytes(5))
             return ':'.join(f'{b:02X}' for b in [first_byte] + rest)
     
     @classmethod
