@@ -19,7 +19,7 @@ jobs:
 
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6.0.2
 
       - name: Run Claude Code Action
         uses: anthropics/claude-code-action@v1
