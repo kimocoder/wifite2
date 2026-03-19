@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 try:
-    from setuptools import setup
+    from setuptools import setup, find_packages
 except ImportError:
     raise ImportError("setuptools is required to install wifite2")
 
@@ -16,16 +16,7 @@ setup(
     author='kimocoder',
     author_email='christian@aircrack-ng.org',
     url='https://github.com/kimocoder/wifite2',
-    packages=[
-        'wifite',
-        'wifite/attack',
-        'wifite/attack/portal',
-        'wifite/model',
-        'wifite/native',
-        'wifite/tools',
-        'wifite/ui',
-        'wifite/util',
-    ],
+    packages=find_packages(exclude=['tests', 'tests.*']),
     package_data={
         '': ['wordlist-probable.txt']
     },
