@@ -1,5 +1,6 @@
 [![GitHub version](https://img.shields.io/badge/version-2.9.9--beta-informational.svg)](#)
 [![GitHub issues](https://img.shields.io/github/issues/kimocoder/wifite2.svg)](https://github.com/kimocoder/wifite2/issues)
+[![Claude Code Review](https://github.com/kimocoder/wifite2/actions/workflows/claude-code-review.yml/badge.svg?branch=master&event=status)](https://github.com/kimocoder/wifite2/actions/workflows/claude-code-review.yml)
 [![GitHub forks](https://img.shields.io/github/forks/kimocoder/wifite2.svg)](https://github.com/kimocoder/wifite2/network)
 [![GitHub stars](https://img.shields.io/github/stars/kimocoder/wifite2.svg)](https://github.com/kimocoder/wifite2/stargazers)
 [![Android Supported](https://img.shields.io/badge/Android-Supported-green.svg)](#)
