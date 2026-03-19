@@ -811,7 +811,11 @@ against the real AP and captures valid passwords.
                                             % self.config.wpa_attack_timeout))
         wpa.add_argument('-wpat', help=argparse.SUPPRESS, action='store', dest='wpa_attack_timeout', type=int)
 
-        # TODO: Uncomment the --strip option once it works
+        # Handshake stripping is implemented (see Handshake.strip()), but the public
+        # --strip flag remains hidden because stripped captures may break compatibility
+        # with aircrack-ng and other downstream tools (Handshake.strip() warns of this).
+        # Keep only the hidden compatibility alias (-strip) until the behavior is
+        # validated across all supported cracking tools.
         '''
         wpa.add_argument('--strip',
             action='store_true',
