@@ -22,10 +22,10 @@ class Client:
                     5 BSSID, (Access Point's MAC address)
                     6 Probed ESSIDs
         """
-        self.station = fields[0].strip()
+        self.station = fields[0].strip().upper()
         self.power = int(fields[3].strip())
         self.packets = int(fields[4].strip())
-        self.bssid = fields[5].strip()
+        self.bssid = fields[5].strip().upper()
 
     def __str__(self):
         """ String representation of a Client """

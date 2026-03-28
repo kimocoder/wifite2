@@ -73,6 +73,10 @@ def parse_settings_args(cls, args):
         cls.show_manufacturers = True
         Color.pl('{+} {C}option:{W} showing {G}manufacturers{W} of targets during scan')
 
+    if getattr(args, 'detect_honeypots', False):
+        cls.detect_honeypots = True
+        Color.pl('{+} {C}option:{W} detecting {G}honeypot/rogue APs{W} via beacon anomalies')
+
     if args.no_deauth:
         cls.no_deauth = True
         Color.pl('{+} {C}option:{W} will {R}not{W} {O}deauth{W} clients during scans or captures')
@@ -108,8 +112,14 @@ def parse_settings_args(cls, args):
 
     if args.ignore_essids_file is not None:
         try:
-            with open(args.ignore_essids_file, 'r', encoding='utf-8', errors='replace') as fh:
-                file_essids = [line.strip() for line in fh if line.strip() and not line.startswith('#')]
+            # Try UTF-8 first (strict), fall back to latin-1 which accepts all byte values
+            try:
+                with open(args.ignore_essids_file, 'r', encoding='utf-8') as fh:
+                    file_essids = [line.strip() for line in fh if line.strip() and not line.startswith('#')]
+            except UnicodeDecodeError:
+                Color.pl('{!} {O}ignore-essids-file is not valid UTF-8, trying latin-1{W}')
+                with open(args.ignore_essids_file, 'r', encoding='latin-1') as fh:
+                    file_essids = [line.strip() for line in fh if line.strip() and not line.startswith('#')]
             if file_essids:
                 cls.ignore_essids = list(set((cls.ignore_essids or []) + file_essids))
                 Color.pl('{+} {C}option: {O}ignoring {R}%d{O} ESSID(s) from file {R}%s{W}' %

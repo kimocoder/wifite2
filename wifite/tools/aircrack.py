@@ -110,7 +110,13 @@ class Aircrack(Dependency):
         while crack_proc.poll() is None:
             if not crack_proc.pid or not crack_proc.pid.stdout:
                 break
-            line = crack_proc.pid.stdout.readline().decode('utf-8')
+            try:
+                raw = crack_proc.pid.stdout.readline()
+                if not raw:
+                    break  # EOF — process closed its stdout
+                line = raw.decode('utf-8', errors='replace')
+            except (OSError, ValueError):
+                break  # Pipe broken or closed
             match_nums = aircrack_nums_re.search(line)
             match_keys = aircrack_key_re.search(line)
             if match_nums:

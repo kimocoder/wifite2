@@ -222,6 +222,7 @@ class AttackWEP(Attack):
                                 Color.pl('{+} {C}forged packet{W}, {G}replaying...{W}')
                                 wep_attack_type = WEPAttackType('forgedreplay')
                                 attack_name = 'forgedreplay'
+                                aireplay.stop()
                                 aireplay = Aireplay(self.target,
                                                     wep_attack_type,
                                                     client_mac=client_mac,
@@ -244,7 +245,10 @@ class AttackWEP(Attack):
                             stale_seconds = time.time() - time_unchanged_ivs
                             if stale_seconds > Configuration.wep_restart_stale_ivs:
                                 # No new IVs within threshold, restart aireplay
-                                aireplay.stop()
+                                try:
+                                    aireplay.stop()
+                                except Exception:
+                                    pass
                                 Color.pl('\n{!} Restarting {C}aireplay{W} after {C}%d{W} seconds of no new IVs'
                                          % stale_seconds)
                                 aireplay = Aireplay(self.target,
@@ -259,6 +263,8 @@ class AttackWEP(Attack):
                                 # End of big while loop
                         # End of with-airodump
             except KeyboardInterrupt:
+                if aireplay:
+                    aireplay.stop()
                 if fakeauth_proc:
                     fakeauth_proc.stop()
                 if not attacks_remaining:

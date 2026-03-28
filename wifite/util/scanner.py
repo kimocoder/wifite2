@@ -248,6 +248,7 @@ class Scanner:
         col_pwr = 7
         col_wps = 5
         col_cli = 7
+        col_hp = 5 if Configuration.detect_honeypots else 0
 
         # Build header
         Color.p('\r')
@@ -263,6 +264,8 @@ class Scanner:
         hdr += '  ' + 'PWR'.rjust(col_pwr)
         hdr += '  ' + 'WPS'.center(col_wps)
         hdr += '  ' + 'CLI'.rjust(col_cli)
+        if Configuration.detect_honeypots:
+            hdr += '  ' + 'HP'.center(col_hp)
         hdr += '{W}'
         Color.pl(hdr)
 
@@ -272,6 +275,8 @@ class Scanner:
             sep_len += col_bssid + 2
         if Configuration.show_manufacturers:
             sep_len += col_mfg + 2
+        if Configuration.detect_honeypots:
+            sep_len += col_hp + 2
         sep_len = min(sep_len, term_width - 2)
         Color.pl('{W}{D} ' + '\u2500' * sep_len + '{W}')
 
@@ -408,6 +413,11 @@ class Scanner:
                 # Convert native APs to Target objects
                 native_aps = scanner.get_targets()
                 self.targets = self._convert_native_targets(native_aps)
+
+                # Honeypot detection for native scanner path
+                if Configuration.detect_honeypots:
+                    from ..util.honeypot_detector import HoneypotDetector
+                    HoneypotDetector.analyse(self.targets)
 
                 # Periodic memory cleanup
                 self._cleanup_counter += 1

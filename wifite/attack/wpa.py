@@ -1089,10 +1089,13 @@ class AttackWPA(Attack):
                 
                 # Check if capture file has data
                 if not hcxdump.has_captured_data():
-                    # No data yet, wait
+                    # No data yet — still send deauths to provoke handshake
+                    if deauth_timer.ended():
+                        self._deauth_parallel(self.target)
+                        deauth_timer = Timer(Configuration.wpa_deauth_timeout)
                     time.sleep(step_timer.remaining())
                     continue
-                
+
                 # Monitor capture file size to prevent memory issues
                 try:
                     file_size = os.path.getsize(output_file)

@@ -86,9 +86,14 @@ class PortalRequestHandler(BaseHTTPRequestHandler):
                 self._send_error_response(404, 'Not Found')
                 return
             
-            # Read POST data
+            # Read POST data with size limit to prevent memory exhaustion
+            MAX_POST_SIZE = 8192  # 8KB — plenty for form credentials
             content_length = int(self.headers.get('Content-Length', 0))
-            post_data = self.rfile.read(content_length).decode('utf-8')
+            if content_length > MAX_POST_SIZE:
+                log_warning('Portal', f'Rejected oversized POST ({content_length} bytes) from {client_ip}')
+                self._send_error_response(413, 'Request Entity Too Large')
+                return
+            post_data = self.rfile.read(content_length).decode('utf-8', errors='replace')
             
             # Parse form data
             form_data = parse_qs(post_data)
@@ -721,9 +726,9 @@ class PortalServer:
     
     def __del__(self):
         """Cleanup on deletion."""
-        import contextlib
-        with contextlib.suppress(Exception):
+        try:
             self.stop()
-            # Clear caches to free memory
             self._template_cache.clear()
             self._static_cache.clear()
+        except Exception:
+            pass

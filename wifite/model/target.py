@@ -4,6 +4,7 @@
 from ..util.color import Color
 from ..config import Configuration
 import re
+import time as _time
 
 class WPSState:
     NONE, UNLOCKED, LOCKED, UNKNOWN = list(range(4))
@@ -87,9 +88,15 @@ class Target:
         """
         self.manufacturer = None
         self.wps = WPSState.NONE
-        self.bssid = fields[0].strip()
+        bssid_raw = fields[0].strip().upper()
+        # Validate MAC address format (XX:XX:XX:XX:XX:XX)
+        if not re.match(r'^([0-9A-F]{2}:){5}[0-9A-F]{2}$', bssid_raw):
+            raise ValueError(f'Invalid BSSID format: {bssid_raw!r}')
+        self.bssid = bssid_raw
         try:
-            self.channel = int(fields[3].strip())
+            ch = int(fields[3].strip())
+            # Valid WiFi channels: 1-14 (2.4GHz), 32-177 (5GHz), 1-233 (6GHz)
+            self.channel = ch if 1 <= ch <= 233 else -1
         except (ValueError, IndexError):
             self.channel = -1
         try:
@@ -184,6 +191,23 @@ class Target:
 
         self.clients = []
 
+        # Parse timestamps for beacon-rate analysis (honeypot detection)
+        now = _time.time()
+        try:
+            self.first_seen = _time.mktime(
+                _time.strptime(fields[1].strip(), '%Y-%m-%d %H:%M:%S'))
+        except (ValueError, IndexError, OverflowError):
+            self.first_seen = now
+        try:
+            self.last_seen = _time.mktime(
+                _time.strptime(fields[2].strip(), '%Y-%m-%d %H:%M:%S'))
+        except (ValueError, IndexError, OverflowError):
+            self.last_seen = now
+
+        # Honeypot detection (populated by HoneypotDetector.analyse)
+        self.honeypot_score = 0
+        self.honeypot_reasons = []
+
         # Store full encryption and authentication strings for detailed info if needed
         self.full_encryption_string = self.encryption
         self.full_authentication_string = self.authentication
@@ -226,6 +250,11 @@ class Target:
             other.full_authentication_string = self.full_authentication_string
         if hasattr(self, 'wpa3_info'):
             other.wpa3_info = self.wpa3_info
+
+        # Preserve honeypot analysis across scan cycles
+        if hasattr(self, 'honeypot_score') and self.honeypot_score > 0:
+            other.honeypot_score = self.honeypot_score
+            other.honeypot_reasons = list(getattr(self, 'honeypot_reasons', []))
 
     @property
     def is_wpa3(self):
@@ -388,6 +417,17 @@ class Target:
         else:
             clients = Color.s('{D}-')
 
+        # Honeypot indicator (only shown when --detect-honeypots is active)
+        show_honeypot = Configuration.detect_honeypots
+        if show_honeypot:
+            hp_score = getattr(self, 'honeypot_score', 0)
+            if hp_score >= 50:
+                honeypot = Color.s('{R}!%d' % hp_score)
+            elif hp_score >= 20:
+                honeypot = Color.s('{O}?%d' % hp_score)
+            else:
+                honeypot = Color.s('{D}-')
+
         # Column widths must match scanner.py header
         COL_ESSID = 26
         COL_BSSID = 19
@@ -397,6 +437,7 @@ class Target:
         COL_PWR = 7
         COL_WPS = 5
         COL_CLI = 7
+        COL_HP = 5
         SEP = '  '
 
         parts = [self._pad_colored(essid, COL_ESSID)]
@@ -409,6 +450,8 @@ class Target:
         parts.append(self._pad_colored(power, COL_PWR, 'right'))
         parts.append(self._pad_colored(wps, COL_WPS, 'center'))
         parts.append(self._pad_colored(clients, COL_CLI, 'right'))
+        if show_honeypot:
+            parts.append(self._pad_colored(honeypot, COL_HP, 'center'))
 
         result = SEP.join(parts)
 

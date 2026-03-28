@@ -414,6 +414,12 @@ class AttackPMKID(Attack):
             log_debug('AttackPMKID', f'PMKID capture attempt {attempts}')
             pmkid_hash = pcaptool.get_pmkid_hash(self.pcapng_file)
             if pmkid_hash is not None:
+                # Validate hash format: WPA*type*hash*bssid*station*essid
+                pmkid_hash = pmkid_hash.strip()
+                if not pmkid_hash.startswith('WPA*') or pmkid_hash.count('*') < 5:
+                    log_warning('AttackPMKID', f'Invalid PMKID hash format (attempt {attempts}), retrying')
+                    pmkid_hash = None
+                    continue
                 log_info('AttackPMKID', f'PMKID captured successfully after {attempts} attempt(s)')
                 break  # Got PMKID
 
@@ -427,6 +433,11 @@ class AttackPMKID(Attack):
             time.sleep(1)
 
         self.keep_capturing = False
+        # Wait for dump tool thread to finish cleanup
+        try:
+            t.join(timeout=5)
+        except Exception:
+            pass
 
         if pmkid_hash is None:
             log_warning('AttackPMKID', f'PMKID capture failed: timeout after {attempts} attempt(s)')

@@ -209,6 +209,11 @@ class Airodump(Dependency):
         # Detect WPA3 capabilities for all targets
         Airodump.detect_wpa3_capabilities(new_targets)
 
+        # Honeypot / rogue AP detection
+        if Configuration.detect_honeypots:
+            from ..util.honeypot_detector import HoneypotDetector
+            HoneypotDetector.analyse(new_targets)
+
         if apply_filter:
             # Filter targets based on encryption, WPS capability & power
             new_targets = Airodump.filter_targets(new_targets, skip_wps=self.skip_wps)

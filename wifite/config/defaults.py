@@ -40,6 +40,7 @@ def initialize_defaults(cls):
     cls.inf_wait_time = 60
     cls.show_bssids = False  # Show BSSIDs in targets list
     cls.show_manufacturers = False  # Show manufacturers in targets list
+    cls.detect_honeypots = False  # Detect honeypot/rogue APs
     cls.random_mac = False  # Should generate a random Mac address at startup.
     cls.no_deauth = False  # Deauth hidden networks & WPA handshake targets
     cls.num_deauths = 1  # Number of deauth packets to send to each target.

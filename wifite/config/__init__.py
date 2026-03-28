@@ -61,6 +61,7 @@ class Configuration:
     update_db = None
     db_filename = None
     show_manufacturers = None
+    detect_honeypots = None
     skip_crack = None
     target_bssid = None
     target_channel = None

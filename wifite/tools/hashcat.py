@@ -72,15 +72,22 @@ class Hashcat(Dependency):
                     continue  # No cracked results
 
                 # Parse the key from hashcat output
-                # Expected format: hash:password
+                # Expected format for mode 22000: WPA*...*hash*bssid*station*essid:password
+                # The hash line starts with 'WPA*' and the password is after the last colon
                 lines = stdout.strip().split('\n')
                 for line in lines:
-                    if ':' in line and not line.startswith('The plugin') and 'hashcat.net' not in line:
-                        # Take the last part after the last colon as the password
+                    line = line.strip()
+                    if not line or not ':' in line:
+                        continue
+                    # Skip known non-result lines
+                    if line.startswith('The plugin') or 'hashcat.net' in line:
+                        continue
+                    # Valid result lines should contain 'WPA*' (hash format prefix)
+                    if 'WPA*' in line:
                         parts = line.split(':')
                         if len(parts) >= 2:
                             key = parts[-1].strip()
-                            if key and len(key) > 0:
+                            if key:
                                 break
                 else:
                     continue

@@ -134,6 +134,14 @@ class ScannerView:
         header.append(f" | Clients: ", style="white")
         header.append(f"{client_count}", style="green")
 
+        # Honeypot stats
+        from ..config import Configuration
+        if Configuration.detect_honeypots:
+            hp_count = sum(1 for t in self.targets if getattr(t, 'honeypot_score', 0) >= 50)
+            if hp_count > 0:
+                header.append(f" | Honeypots: ", style="white")
+                header.append(f"{hp_count}", style="red bold")
+
         return Panel(
             header,
             border_style="cyan",
@@ -176,6 +184,10 @@ class ScannerView:
         table.add_column("WPS", style="white", width=4, justify="center")
         table.add_column("CLIENTS", style="white", width=7, justify="right")
 
+        # Honeypot detection column
+        if Configuration.detect_honeypots:
+            table.add_column("HP", style="white", width=4, justify="center")
+
         # Add target rows
         if not self.targets:
             # Show placeholder when no targets
@@ -183,6 +195,8 @@ class ScannerView:
             empty_cols = ["", "", "", "", "", "", ""]
             if Configuration.show_manufacturers:
                 empty_cols.insert(2, "")  # Add extra column for manufacturer
+            if Configuration.detect_honeypots:
+                empty_cols.append("")  # Add extra column for honeypot
             
             table.add_row(
                 "",
@@ -218,7 +232,11 @@ class ScannerView:
                     self._format_wps(target),
                     self._format_clients(target)
                 ])
-                
+
+                # Honeypot indicator
+                if Configuration.detect_honeypots:
+                    row_data.append(self._format_honeypot(target))
+
                 table.add_row(*row_data)
             
             # Show indicator if there are more targets
@@ -330,6 +348,23 @@ class ScannerView:
         else:
             return Text("0", style="bright_black")
     
+    def _format_honeypot(self, target) -> Text:
+        """
+        Format honeypot score indicator.
+
+        Args:
+            target: Target object
+
+        Returns:
+            Rich Text with honeypot risk indicator
+        """
+        score = getattr(target, 'honeypot_score', 0)
+        if score >= 50:
+            return Text(f"!{score}", style="red bold")
+        elif score >= 20:
+            return Text(f"?{score}", style="yellow")
+        return Text("-", style="bright_black")
+
     def _format_manufacturer(self, target) -> Text:
         """
         Format manufacturer name from BSSID OUI.

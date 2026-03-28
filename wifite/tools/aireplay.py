@@ -104,19 +104,25 @@ class Aireplay(Thread, Dependency):
                                stderr=Process.devnull(),
                                cwd=Configuration.temp())
         except Exception:
-            self.output_fh.close()
+            try:
+                self.output_fh.close()
+            except OSError:
+                pass
             raise
         self.start()
 
     def is_running(self):
-        return self.pid.poll() is None
+        return hasattr(self, 'pid') and self.pid and self.pid.poll() is None
 
     def stop(self):
         """ Stops aireplay process """
         if hasattr(self, 'pid') and self.pid and self.pid.poll() is None:
             self.pid.interrupt()
         if hasattr(self, 'output_fh') and self.output_fh and not self.output_fh.closed:
-            self.output_fh.close()
+            try:
+                self.output_fh.close()
+            except OSError:
+                pass
 
 
     def get_output(self):
@@ -137,11 +143,14 @@ class Aireplay(Thread, Dependency):
             if not os.path.exists(self.output_file):
                 continue
             # Read output file & clear output file
-            with open(self.output_file, 'r+') as fid:
-                lines = fid.read()
-                self.stdout += lines
-                fid.seek(0)
-                fid.truncate()
+            try:
+                with open(self.output_file, 'r+') as fid:
+                    lines = fid.read()
+                    self.stdout += lines
+                    fid.seek(0)
+                    fid.truncate()
+            except (OSError, IOError):
+                continue
 
             if Configuration.verbose > 1 and lines.strip() != '':
                 from ..util.color import Color
@@ -254,8 +263,11 @@ class Aireplay(Thread, Dependency):
         self.stop()
 
     def __del__(self):
-        if hasattr(self, 'output_fh') and self.output_fh and not self.output_fh.closed:
-            self.output_fh.close()
+        try:
+            if hasattr(self, 'output_fh') and self.output_fh and not self.output_fh.closed:
+                self.output_fh.close()
+        except OSError:
+            pass
         self.stop()
 
     @staticmethod

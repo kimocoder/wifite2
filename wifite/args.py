@@ -417,6 +417,11 @@ against the real AP and captures valid passwords.
                           dest='show_manufacturers',
                           help=self._verbose('Show manufacturers of targets while scanning'))
 
+        glob.add_argument('--detect-honeypots',
+                          action='store_true',
+                          dest='detect_honeypots',
+                          help=Color.s('Detect potential honeypot/rogue APs via beacon anomalies (default: {G}off{W})'))
+
         glob.add_argument('--nodeauths',
                           action='store_true',
                           dest='no_deauth',

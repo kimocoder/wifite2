@@ -465,7 +465,12 @@ class Airmon(Dependency):
             elif pname == 'avahi-daemon' and Process.exists('service'):
                 Process(['service', 'avahi-daemon', 'stop']).stdout()
             else:
-                os.kill(int(pid), signal.SIGKILL)
+                try:
+                    os.kill(int(pid), signal.SIGKILL)
+                except ProcessLookupError:
+                    pass  # Process already exited
+                except OSError:
+                    pass  # Permission or other OS error
 
     @staticmethod
     def put_interface_up(interface):

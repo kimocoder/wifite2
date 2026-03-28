@@ -88,12 +88,11 @@ class ProcessManager:
                 log_info('ProcessManager', f'Cleaning up {process_count} registered process(es)')
             for process in list(self._processes):
                 try:
-                    if process.pid and process.pid.poll() is None:
-                        log_debug('ProcessManager', f'Force-killing process during cleanup')
-                        process.force_kill()
+                    process.force_kill()
+                except (ProcessLookupError, OSError):
+                    pass  # Process already exited
                 except Exception as e:
                     log_debug('ProcessManager', f'Error during process cleanup: {str(e)}')
-                    pass
             self._processes.clear()
             if process_count > 0:
                 log_info('ProcessManager', 'Process cleanup complete')
@@ -155,10 +154,15 @@ class Process:
         return subprocess.run(resolved, capture_output=True, text=True, timeout=timeout)
 
     @staticmethod
-    def call(command, cwd=None, shell=False):
+    def call(command, cwd=None, shell=False, timeout=30):
         """ Calls a command (either string or list of args). Returns (stdout, stderr).
 
-        shell=True is supported but should be used with caution to prevent command injection.
+        Args:
+            command: Command string or list of args.
+            cwd: Working directory for the command.
+            shell: If True, run via shell (use with caution).
+            timeout: Seconds before the subprocess is killed. Default 30. None for no timeout.
+
         String commands are always split via shlex before being passed to Popen when shell=False.
         """
         if isinstance(command, str) and not shell:
@@ -174,7 +178,11 @@ class Process:
                 Color.pe(f'\n {{C}}[?]{{W}} Executing: {{B}}{command}{{W}}')
 
         with Popen(command, cwd=cwd, stdout=PIPE, stderr=PIPE, shell=shell) as pid:
-            out, err = pid.communicate()
+            try:
+                out, err = pid.communicate(timeout=timeout)
+            except subprocess.TimeoutExpired:
+                pid.kill()
+                out, err = pid.communicate()
 
         if isinstance(out, bytes):
             out = out.decode('utf-8', errors='replace')
