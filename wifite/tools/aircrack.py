@@ -78,7 +78,10 @@ class Aircrack(Dependency):
 
     def __del__(self):
         if hasattr(self, 'cracked_file') and os.path.exists(self.cracked_file):
-            os.remove(self.cracked_file)
+            try:
+                os.remove(self.cracked_file)
+            except OSError:
+                pass
 
     @staticmethod
     def crack_handshake(handshake, show_command=False, wordlist=None):
@@ -110,7 +113,7 @@ class Aircrack(Dependency):
         while crack_proc.poll() is None:
             if not crack_proc.pid or not crack_proc.pid.stdout:
                 break
-            line = crack_proc.pid.stdout.readline().decode('utf-8')
+            line = crack_proc.pid.stdout.readline().decode('utf-8', errors='replace')
             match_nums = aircrack_nums_re.search(line)
             match_keys = aircrack_key_re.search(line)
             if match_nums:

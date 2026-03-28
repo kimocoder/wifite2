@@ -193,7 +193,12 @@ class Target:
         
         # WPA3 information (will be populated by scanner)
         self.wpa3_info = None
-        
+
+        # Honeypot detection metadata (will be populated by scanner when --detect-honeypots is enabled)
+        self.is_honeypot = False
+        self.honeypot_score = 0       # 0-100 confidence score
+        self.honeypot_reasons = []    # List of strings explaining detection
+
         self.validate()
 
     def __eq__(self, other):
@@ -226,6 +231,10 @@ class Target:
             other.full_authentication_string = self.full_authentication_string
         if hasattr(self, 'wpa3_info'):
             other.wpa3_info = self.wpa3_info
+        if hasattr(self, 'is_honeypot') and self.is_honeypot:
+            other.is_honeypot = self.is_honeypot
+            other.honeypot_score = self.honeypot_score
+            other.honeypot_reasons = list(self.honeypot_reasons)
 
     @property
     def is_wpa3(self):
@@ -269,7 +278,7 @@ class Target:
         if bssid_multicast.match(self.bssid):
             raise Exception(f'Ignoring target with Multicast BSSID ({self.bssid})')
 
-    def to_str(self, show_bssid=False, show_manufacturer=False):
+    def to_str(self, show_bssid=False, show_manufacturer=False, show_honeypot=False):
         # sourcery no-metrics
         """
             *Colored* string representation of this Target.
@@ -397,6 +406,7 @@ class Target:
         COL_PWR = 7
         COL_WPS = 5
         COL_CLI = 7
+        COL_HP = 4
         SEP = '  '
 
         parts = [self._pad_colored(essid, COL_ESSID)]
@@ -409,6 +419,18 @@ class Target:
         parts.append(self._pad_colored(power, COL_PWR, 'right'))
         parts.append(self._pad_colored(wps, COL_WPS, 'center'))
         parts.append(self._pad_colored(clients, COL_CLI, 'right'))
+        if show_honeypot:
+            hp_score = getattr(self, 'honeypot_score', 0)
+            if getattr(self, 'is_honeypot', False):
+                if hp_score >= 70:
+                    hp = Color.s('{R}!!!')
+                elif hp_score >= 40:
+                    hp = Color.s('{O}!')
+                else:
+                    hp = Color.s('{O}?')
+            else:
+                hp = Color.s('{D}-')
+            parts.append(self._pad_colored(hp, COL_HP, 'center'))
 
         result = SEP.join(parts)
 

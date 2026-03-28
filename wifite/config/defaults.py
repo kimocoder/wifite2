@@ -182,5 +182,8 @@ def initialize_defaults(cls):
     # System check mode
     cls.syscheck = False
 
+    # Honeypot detection
+    cls.detect_honeypots = False  # Detect potential honeypot networks during scan
+
     # A list to cache all checked commands (e.g. `which hashcat` will execute only once)
     cls.existing_commands = {}

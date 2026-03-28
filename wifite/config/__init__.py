@@ -145,6 +145,8 @@ class Configuration:
     monitor_log_file = None
     monitor_channel = None
     monitor_hop = None
+    # Honeypot detection
+    detect_honeypots = None
     # System check mode
     syscheck = None
 

@@ -176,6 +176,10 @@ class ScannerView:
         table.add_column("WPS", style="white", width=4, justify="center")
         table.add_column("CLIENTS", style="white", width=7, justify="right")
 
+        # Conditionally add honeypot detection column
+        if Configuration.detect_honeypots:
+            table.add_column("HP", style="white", width=5, justify="center")
+
         # Add target rows
         if not self.targets:
             # Show placeholder when no targets
@@ -218,7 +222,11 @@ class ScannerView:
                     self._format_wps(target),
                     self._format_clients(target)
                 ])
-                
+
+                # Add honeypot indicator if enabled
+                if Configuration.detect_honeypots:
+                    row_data.append(self._format_honeypot(target))
+
                 table.add_row(*row_data)
             
             # Show indicator if there are more targets
@@ -353,6 +361,27 @@ class ScannerView:
             manufacturer = manufacturer[:max_len - 3] + "..."
         
         return Text(manufacturer, style="white")
+
+    def _format_honeypot(self, target) -> Text:
+        """
+        Format honeypot indicator for a target.
+
+        Args:
+            target: Target object
+
+        Returns:
+            Rich Text with honeypot indicator
+        """
+        is_hp = getattr(target, 'is_honeypot', False)
+        score = getattr(target, 'honeypot_score', 0)
+        if is_hp:
+            if score >= 70:
+                return Text("!!!", style="bold red")
+            elif score >= 40:
+                return Text("!", style="bold yellow")
+            else:
+                return Text("?", style="yellow")
+        return Text("-", style="bright_black")
 
     def _render_footer(self) -> Panel:
         """

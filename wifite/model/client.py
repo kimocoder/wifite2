@@ -23,8 +23,14 @@ class Client:
                     6 Probed ESSIDs
         """
         self.station = fields[0].strip()
-        self.power = int(fields[3].strip())
-        self.packets = int(fields[4].strip())
+        try:
+            self.power = int(fields[3].strip())
+        except (ValueError, IndexError):
+            self.power = 0
+        try:
+            self.packets = int(fields[4].strip())
+        except (ValueError, IndexError):
+            self.packets = 0
         self.bssid = fields[5].strip()
 
     def __str__(self):

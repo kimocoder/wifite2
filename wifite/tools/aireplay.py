@@ -254,9 +254,15 @@ class Aireplay(Thread, Dependency):
         self.stop()
 
     def __del__(self):
-        if hasattr(self, 'output_fh') and self.output_fh and not self.output_fh.closed:
-            self.output_fh.close()
-        self.stop()
+        try:
+            if hasattr(self, 'output_fh') and self.output_fh and not self.output_fh.closed:
+                self.output_fh.close()
+        except Exception:
+            pass
+        try:
+            self.stop()
+        except Exception:
+            pass
 
     @staticmethod
     def get_aireplay_command(target, attack_type, client_mac=None, replay_file=None):

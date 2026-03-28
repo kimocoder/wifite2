@@ -147,7 +147,10 @@ class HcxDumpTool(Dependency):
 
     def __init__(self, target, pcapng_file):
         if os.path.exists(pcapng_file):
-            os.remove(pcapng_file)
+            try:
+                os.remove(pcapng_file)
+            except OSError:
+                pass
 
         command = [
             'hcxdumptool',

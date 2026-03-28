@@ -17,6 +17,7 @@ from ..util.wpasec_uploader import WpaSecUploader
 import time
 import os
 import re
+import subprocess
 from shutil import copy
 from contextlib import contextmanager
 

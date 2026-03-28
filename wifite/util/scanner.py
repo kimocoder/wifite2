@@ -96,6 +96,10 @@ class Scanner:
                     self.targets = airodump.get_targets(old_targets=self.targets,
                                                         target_archives=self.target_archives)
 
+                    # Honeypot detection analysis
+                    if Configuration.detect_honeypots and self.targets:
+                        self._analyze_honeypots(self.targets)
+
                     # Periodic memory cleanup
                     self._cleanup_counter += 1
                     if self._cleanup_counter % 10 == 0:  # Every 10 scans
@@ -248,6 +252,7 @@ class Scanner:
         col_pwr = 7
         col_wps = 5
         col_cli = 7
+        col_hp = 4 if Configuration.detect_honeypots else 0
 
         # Build header
         Color.p('\r')
@@ -263,6 +268,8 @@ class Scanner:
         hdr += '  ' + 'PWR'.rjust(col_pwr)
         hdr += '  ' + 'WPS'.center(col_wps)
         hdr += '  ' + 'CLI'.rjust(col_cli)
+        if Configuration.detect_honeypots:
+            hdr += '  ' + 'HP'.center(col_hp)
         hdr += '{W}'
         Color.pl(hdr)
 
@@ -272,6 +279,8 @@ class Scanner:
             sep_len += col_bssid + 2
         if Configuration.show_manufacturers:
             sep_len += col_mfg + 2
+        if Configuration.detect_honeypots:
+            sep_len += col_hp + 2
         sep_len = min(sep_len, term_width - 2)
         Color.pl('{W}{D} ' + '\u2500' * sep_len + '{W}')
 
@@ -281,7 +290,8 @@ class Scanner:
             Color.p(' {G}%s{W}  ' % str(idx).rjust(col_num))
             Color.pl(target.to_str(
                 Configuration.show_bssids,
-                Configuration.show_manufacturers
+                Configuration.show_manufacturers,
+                Configuration.detect_honeypots,
             )
             )
 
@@ -408,6 +418,10 @@ class Scanner:
                 # Convert native APs to Target objects
                 native_aps = scanner.get_targets()
                 self.targets = self._convert_native_targets(native_aps)
+
+                # Honeypot detection analysis
+                if Configuration.detect_honeypots and self.targets:
+                    self._analyze_honeypots(self.targets)
 
                 # Periodic memory cleanup
                 self._cleanup_counter += 1
@@ -538,6 +552,65 @@ class Scanner:
         
         return targets
     
+    def _analyze_honeypots(self, targets):
+        """
+        Analyze targets for potential honeypot/evil-twin indicators.
+        Updates each target's is_honeypot, honeypot_score, and honeypot_reasons fields.
+
+        Args:
+            targets: List of Target objects to analyze
+        """
+        from collections import defaultdict
+
+        # Group targets by ESSID for duplicate detection
+        essid_map = defaultdict(list)
+        for t in targets:
+            if t.essid_known and t.essid:
+                essid_map[t.essid].append(t)
+
+        for target in targets:
+            reasons = []
+            score = 0
+
+            # 1. Duplicate SSID with different BSSID prefix (different vendor OUI)
+            if target.essid_known and target.essid:
+                peers = essid_map.get(target.essid, [])
+                if len(peers) > 1:
+                    bssid_ouis = set(p.bssid[:8].upper() for p in peers)
+                    if len(bssid_ouis) > 1:
+                        reasons.append('duplicate SSID with different vendor OUI')
+                        score += 40
+
+            # 2. Very strong signal (unusually close AP)
+            if target.power > 80:
+                reasons.append('unusually strong signal (%d dBm)' % target.power)
+                score += 20
+
+            # 3. Open network with same SSID as a secured one
+            if target.essid_known and target.essid:
+                peers = essid_map.get(target.essid, [])
+                target_enc = target.encryption.upper()
+                if target_enc in ('', 'OPN', 'OWE'):
+                    secured = [p for p in peers if p is not target and
+                               p.encryption.upper() not in ('', 'OPN', 'OWE')]
+                    if secured:
+                        reasons.append('open network shares SSID with secured network')
+                        score += 35
+
+            # 4. No clients despite strong signal
+            if target.power > 60 and len(target.clients) == 0 and target.beacons > 50:
+                reasons.append('strong signal with no associated clients')
+                score += 10
+
+            if score > 0:
+                target.is_honeypot = True
+                target.honeypot_score = min(score, 100)
+                target.honeypot_reasons = reasons
+            else:
+                target.is_honeypot = False
+                target.honeypot_score = 0
+                target.honeypot_reasons = []
+
     def _cleanup_memory(self):
         """Enhanced memory cleanup with time-based expiration to prevent bloat during long scans"""
         from time import time

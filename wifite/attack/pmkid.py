@@ -428,6 +428,10 @@ class AttackPMKID(Attack):
 
         self.keep_capturing = False
 
+        # Wait for the capture thread to finish
+        if t.is_alive():
+            t.join(timeout=5)
+
         if pmkid_hash is None:
             log_warning('AttackPMKID', f'PMKID capture failed: timeout after {attempts} attempt(s)')
             if self.view:

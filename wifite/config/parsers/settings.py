@@ -144,6 +144,10 @@ def parse_settings_args(cls, args):
         cls.clients_only = True
         Color.pl('{+} {C}option:{W} {O}ignoring targets that do not have associated clients')
 
+    if getattr(args, 'detect_honeypots', False):
+        cls.detect_honeypots = True
+        Color.pl('{+} {C}option:{W} {O}honeypot detection{W} {G}enabled{W}')
+
     if args.scan_time:
         cls.scan_time = args.scan_time
         Color.pl(

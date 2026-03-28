@@ -478,7 +478,10 @@ class EvilTwin(Attack):
                 template=portal_template,
                 port=portal_port
             )
-            
+
+            # Wire credential callback so the portal calls back into EvilTwin
+            self.portal_server.set_credential_callback(self._portal_credential_callback)
+
             if not self.portal_server.start():
                 log_error('EvilTwin', 'Failed to start captive portal')
                 return False
@@ -1399,6 +1402,57 @@ class EvilTwin(Attack):
             Color.pl('{!} {R}Critical cleanup error:{W} %s' % str(e))
             Color.pl('{!} {O}Warning: System may be in an inconsistent state{W}')
     
+    def _validate_credentials(self, ssid: str, password: str) -> bool:
+        """
+        Validate captured credentials against the target network.
+
+        When eviltwin_validate_credentials is disabled, accepts any non-empty
+        password immediately (capture-only mode).
+
+        Args:
+            ssid: SSID submitted by the client
+            password: Password submitted by the client
+
+        Returns:
+            True if credentials are accepted, False otherwise
+        """
+        if not password:
+            return False
+        if not getattr(Configuration, 'eviltwin_validate_credentials', True):
+            # Capture-only mode: accept any non-empty password
+            log_info('EvilTwin', 'Credential validation disabled, accepting submitted password')
+            return True
+        # Length sanity check (WPA passphrase must be 8-63 chars)
+        if len(password) < 8:
+            log_info('EvilTwin', f'Rejecting short password ({len(password)} chars)')
+            return False
+        if len(password) > 63:
+            log_info('EvilTwin', f'Rejecting overly long password ({len(password)} chars)')
+            return False
+        # Additional validation could use pyrit/hashcat here; for now accept valid-length passwords
+        return True
+
+    def _portal_credential_callback(self, ssid: str, password: str, client_ip: str) -> bool:
+        """
+        Callback invoked by PortalServer when a client submits credentials.
+
+        Args:
+            ssid: Submitted SSID
+            password: Submitted password
+            client_ip: IP address of the submitting client
+
+        Returns:
+            True if credentials are considered valid (triggers success page), False otherwise
+        """
+        try:
+            log_info('EvilTwin', f'Portal credential from {client_ip}: SSID={ssid}')
+            is_valid = self._validate_credentials(ssid, password)
+            self.on_credential_submission(client_ip, password, is_valid)
+            return is_valid
+        except Exception as e:
+            log_error('EvilTwin', f'Error in portal credential callback: {e}', e)
+            return False
+
     def on_credential_submission(self, mac_address: str, password: str, success: bool):
         """
         Handle credential submission from captive portal.

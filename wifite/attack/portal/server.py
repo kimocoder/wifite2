@@ -75,6 +75,8 @@ class PortalRequestHandler(BaseHTTPRequestHandler):
     
     def do_POST(self):
         """Handle POST requests (credential submissions)."""
+        # Maximum allowed POST body size (8 KB) to prevent memory exhaustion
+        MAX_POST_SIZE = 8192
         try:
             client_ip = self.client_address[0]
             path = self.path
@@ -86,9 +88,17 @@ class PortalRequestHandler(BaseHTTPRequestHandler):
                 self._send_error_response(404, 'Not Found')
                 return
             
-            # Read POST data
-            content_length = int(self.headers.get('Content-Length', 0))
-            post_data = self.rfile.read(content_length).decode('utf-8')
+            # Read POST data with size limit
+            try:
+                content_length = int(self.headers.get('Content-Length', 0))
+            except (ValueError, TypeError):
+                content_length = 0
+            content_length = max(0, content_length)
+            if content_length > MAX_POST_SIZE:
+                log_warning('Portal', f'POST body too large from {client_ip}: {content_length} bytes')
+                self._send_error_response(413, 'Payload Too Large')
+                return
+            post_data = self.rfile.read(content_length).decode('utf-8', errors='replace')
             
             # Parse form data
             form_data = parse_qs(post_data)

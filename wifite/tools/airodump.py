@@ -112,7 +112,10 @@ class Airodump(Dependency):
         Called after 'with Airodump(...)' goes out of scope.
         """
         # Kill the process
-        self.pid.interrupt()
+        try:
+            self.pid.interrupt()
+        except Exception:
+            pass
 
         if self.delete_existing_files:
             self.delete_airodump_temp_files(self.output_file_prefix)

@@ -407,6 +407,11 @@ against the real AP and captures valid passwords.
                           dest='clients_only',
                           help=Color.s('Only show targets that have associated clients (default: {G}off{W})'))
 
+        glob.add_argument('--detect-honeypots',
+                          action='store_true',
+                          dest='detect_honeypots',
+                          help=Color.s('Detect potential honeypot/evil-twin networks during scan (default: {G}off{W})'))
+
         glob.add_argument('--showb',
                           action='store_true',
                           dest='show_bssids',
