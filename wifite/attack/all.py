@@ -8,6 +8,7 @@ from .wep import AttackWEP
 from .wpa import AttackWPA
 from .wpa3 import AttackWPA3SAE
 from .wps import AttackWPS
+from .owe import AttackOWE
 from ..config import Configuration
 from ..model.target import WPSState
 from ..util.color import Color
@@ -109,6 +110,9 @@ class AttackAll:
                     session_mgr.mark_target_failed(session, target.bssid, "Evil Twin requires WPA/WPA2/WPA3")
                     session_mgr.save_session(session)
                 return True
+
+        elif target.primary_encryption == 'OWE':
+            attacks.append(AttackOWE(target))
 
         elif target.primary_encryption == 'WEP':
             attacks.append(AttackWEP(target))

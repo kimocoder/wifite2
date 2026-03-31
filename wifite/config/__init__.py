@@ -395,10 +395,9 @@ class Configuration:
         if cls.interface is not None and Airmon.base_interface is not None:
             if not cls.daemon:
                 Color.pl('{!} {O}Note:{W} Leaving interface in Monitor Mode!')
-                if Airmon.isdeprecated:
-                    Color.pl('{!} To disable Monitor Mode when finished: {C}iwconfig %s mode managed{W}' % cls.interface)
-                else:
-                    Color.pl('{!} To disable Monitor Mode when finished: {C}airmon-ng stop %s{W}' % cls.interface)
+                Color.pl('{!} To disable Monitor Mode when finished: '
+                         '{C}ip link set %s down && iw dev %s set type managed && ip link set %s up{W}'
+                         % (cls.interface, cls.interface, cls.interface))
             else:
                 # Stop monitor mode
                 Airmon.stop(cls.interface)

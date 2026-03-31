@@ -226,7 +226,6 @@ class SystemCheck:
             ('aireplay-ng', True, 'core', None, 'https://www.aircrack-ng.org'),
             ('iw', True, 'core', None, 'apt install iw'),
             ('ip', True, 'core', None, 'apt install iproute2'),
-            ('iwconfig', False, 'core', None, 'apt install wireless-tools'),
             ('reaver', False, 'wps', '1.6.5', 'https://github.com/t6x/reaver-wps-fork-t6x'),
             ('bully', False, 'wps', '1.4', 'https://github.com/aanarchyy/bully'),
             ('wash', False, 'wps', None, 'https://github.com/t6x/reaver-wps-fork-t6x'),
@@ -742,11 +741,6 @@ class SystemCheck:
                     Color.pl(f'    Monitor test: {{R}}FAIL{{W}} (could not enter monitor mode)')
 
             # Driver warnings
-            from ..tools.airmon import Airmon
-            if iface.driver in Airmon.BAD_DRIVERS:
-                Color.pl(f'    {{O}}⚠ Known problematic driver — uses manual monitor mode{{W}}')
-            if iface.driver in Airmon.DEPRECATED_DRIVERS:
-                Color.pl(f'    {{O}}⚠ Deprecated driver — limited functionality{{W}}')
             if iface.driver in ('iwlwifi',):
                 Color.pl(f'    {{O}}⚠ Intel driver — no packet injection support{{W}}')
             if iface.driver in ('brcmfmac',):

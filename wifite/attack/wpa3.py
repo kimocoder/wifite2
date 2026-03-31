@@ -99,23 +99,158 @@ class AttackWPA3SAE(Attack):
         # Display strategy to user
         self._display_strategy()
 
-        # Execute strategy based on selection
-        if self.attack_strategy == WPA3AttackStrategy.DOWNGRADE:
-            result = self._execute_downgrade_strategy()
-        elif self.attack_strategy == WPA3AttackStrategy.DRAGONBLOOD:
-            result = self._execute_dragonblood_strategy()
-        elif self.attack_strategy == WPA3AttackStrategy.SAE_CAPTURE:
-            result = self._execute_sae_capture_strategy()
-        elif self.attack_strategy == WPA3AttackStrategy.PASSIVE:
-            result = self._execute_passive_strategy()
-        else:
-            Color.pl('{!} {R}Unknown attack strategy: %s{W}' % self.attack_strategy)
-            result = False
+        # Build fallback chain starting from the selected strategy
+        result = self._execute_fallback_chain(self.attack_strategy)
 
         log_info('AttackWPA3', 'WPA3 attack on %s finished in %.1fs — %s' % (
             self.target.bssid, time.time() - attack_start,
             'SUCCESS' if result else 'failed'))
         return result
+
+    def _execute_fallback_chain(self, start_strategy):
+        """
+        Execute attack strategies in a fallback chain.
+
+        Tries the selected strategy first, then falls back through
+        remaining strategies in priority order until one succeeds
+        or all are exhausted.
+
+        Chain order: DOWNGRADE → DRAGONBLOOD → SAE_CAPTURE → PMKID → PASSIVE
+
+        Args:
+            start_strategy: Strategy to start with
+
+        Returns:
+            bool: True if any strategy succeeded
+        """
+        # Full chain in priority order
+        full_chain = [
+            WPA3AttackStrategy.DOWNGRADE,
+            WPA3AttackStrategy.DRAGONBLOOD,
+            WPA3AttackStrategy.SAE_CAPTURE,
+            'pmkid',  # PMKID fallback (not a WPA3AttackStrategy constant)
+            WPA3AttackStrategy.PASSIVE,
+        ]
+
+        # Build the chain starting from the selected strategy
+        if start_strategy in full_chain:
+            start_idx = full_chain.index(start_strategy)
+        else:
+            start_idx = 0
+        chain = full_chain[start_idx:]
+
+        strategy_methods = {
+            WPA3AttackStrategy.DOWNGRADE: self._try_downgrade,
+            WPA3AttackStrategy.DRAGONBLOOD: self._try_dragonblood,
+            WPA3AttackStrategy.SAE_CAPTURE: self._try_sae_capture,
+            'pmkid': self._try_pmkid_fallback,
+            WPA3AttackStrategy.PASSIVE: self._try_passive,
+        }
+
+        attempted = []
+        for strategy in chain:
+            # Skip strategies that don't apply
+            if strategy == WPA3AttackStrategy.DOWNGRADE and not WPA3AttackStrategy.can_use_downgrade(self.wpa3_info):
+                continue
+            if strategy == WPA3AttackStrategy.DRAGONBLOOD and not WPA3AttackStrategy.should_use_dragonblood(self.wpa3_info):
+                continue
+
+            method = strategy_methods.get(strategy)
+            if not method:
+                continue
+
+            attempted.append(strategy)
+
+            try:
+                result = method()
+                if result:
+                    return True
+            except KeyboardInterrupt:
+                raise
+            except Exception as e:
+                log_info('AttackWPA3', 'Strategy %s failed with error: %s' % (strategy, e))
+
+            # Log fallback
+            remaining = [s for s in chain if s not in attempted]
+            if remaining:
+                next_strategy = remaining[0]
+                Color.pl('{+} {C}Falling back to: %s{W}' % (
+                    WPA3AttackStrategy.STRATEGY_DESCRIPTIONS.get(next_strategy, next_strategy)))
+                if self.view:
+                    self.view.add_log('Falling back to: %s' % next_strategy)
+
+        Color.pl('{!} {R}All WPA3 attack strategies exhausted{W}')
+        return False
+
+    def _try_downgrade(self):
+        """Execute downgrade strategy without internal fallback."""
+        Color.pl('{+} {C}Attempting transition mode downgrade attack...{W}')
+        if self.view:
+            self.view.add_log('Starting downgrade attack')
+        result = self.attempt_downgrade()
+        if result:
+            Color.pl('{+} {G}Downgrade successful! Captured WPA2 handshake{W}')
+            self.success = True
+            return True
+        Color.pl('{!} {O}Downgrade attack failed{W}')
+        return False
+
+    def _try_dragonblood(self):
+        """Execute dragonblood strategy without internal fallback."""
+        Color.pl('{+} {C}Attempting Dragonblood exploitation...{W}')
+        if self.view:
+            self.view.add_log('Starting Dragonblood exploitation')
+        self._display_dragonblood_vulnerability()
+        Color.pl('{!} {O}Full Dragonblood exploitation requires specialized tools{W}')
+        Color.pl('{!} {O}Consider using: dragonslayer, dragonforce, or dragontime{W}')
+        return False  # Dragonblood is informational, always falls through
+
+    def _try_sae_capture(self):
+        """Execute SAE capture strategy."""
+        Color.pl('{+} {C}Capturing SAE handshake...{W}')
+        if self.view:
+            self.view.add_log('Starting SAE handshake capture')
+        pmf_required = self._handle_pmf_prevention()
+        if pmf_required:
+            return False  # Let it fall through to passive
+        handshake = self.capture_sae_handshake()
+        if handshake:
+            Color.pl('{+} {G}SAE handshake captured successfully{W}')
+            self.success = True
+            return True
+        Color.pl('{!} {O}SAE handshake capture failed{W}')
+        return False
+
+    def _try_pmkid_fallback(self):
+        """Try PMKID attack as fallback for WPA3 targets."""
+        from ..attack.pmkid import AttackPMKID
+        if Configuration.dont_use_pmkid:
+            return False
+        Color.pl('{+} {C}Trying PMKID attack as fallback...{W}')
+        if self.view:
+            self.view.add_log('Trying PMKID fallback')
+        try:
+            pmkid_attack = AttackPMKID(self.target)
+            result = pmkid_attack.run()
+            if result:
+                self.success = True
+                self.crack_result = pmkid_attack.crack_result
+                return True
+        except Exception as e:
+            log_info('AttackWPA3', 'PMKID fallback failed: %s' % e)
+        return False
+
+    def _try_passive(self):
+        """Execute passive capture strategy."""
+        Color.pl('{+} {C}Starting passive SAE capture (last resort)...{W}')
+        if self.view:
+            self.view.add_log('Starting passive capture - final fallback')
+        handshake = self.passive_capture()
+        if handshake:
+            Color.pl('{+} {G}SAE handshake captured passively{W}')
+            self.success = True
+            return True
+        return False
 
     def _check_wpa3_tools(self):
         """
@@ -239,96 +374,6 @@ class AttackWPA3SAE(Attack):
             )
             self.view.add_log(strategy_display)
 
-    def _execute_downgrade_strategy(self):
-        """
-        Execute transition mode downgrade attack.
-        
-        This strategy:
-        1. Attempts to downgrade WPA3 connections to WPA2
-        2. Captures WPA2 handshake after downgrade
-        3. Falls back to SAE capture if downgrade fails
-        
-        Returns:
-            bool: True if attack succeeded
-        """
-        Color.pl('{+} {C}Attempting transition mode downgrade attack...{W}')
-        
-        if self.view:
-            self.view.add_log('Starting downgrade attack')
-        
-        # Attempt downgrade
-        downgrade_result = self.attempt_downgrade()
-        
-        if downgrade_result:
-            Color.pl('{+} {G}Downgrade successful! Captured WPA2 handshake{W}')
-            if self.view:
-                self.view.add_log('Downgrade successful - WPA2 handshake captured')
-            self.success = True
-            return True
-        else:
-            Color.pl('{!} {O}Downgrade attack failed{W}')
-            if self.view:
-                self.view.add_log('Downgrade failed - falling back to SAE capture')
-            
-            # Fall back to SAE capture
-            Color.pl('{+} {C}Falling back to SAE handshake capture...{W}')
-            return self._execute_sae_capture_strategy()
-
-    def _execute_dragonblood_strategy(self):
-        """
-        Execute Dragonblood vulnerability exploitation.
-        
-        Returns:
-            bool: True if attack succeeded
-        """
-        Color.pl('{+} {C}Attempting Dragonblood exploitation...{W}')
-        
-        if self.view:
-            self.view.add_log('Starting Dragonblood exploitation')
-        
-        # Display vulnerability information
-        self._display_dragonblood_vulnerability()
-        
-        # Dragonblood exploitation requires specialized tools (dragonslayer, etc.)
-        # For now, we provide vulnerability information and fall back to SAE capture
-        Color.pl('{!} {O}Full Dragonblood exploitation requires specialized tools{W}')
-        Color.pl('{!} {O}Consider using: dragonslayer, dragonforce, or dragontime{W}')
-        Color.pl('{+} {C}Falling back to SAE handshake capture...{W}')
-        
-        if self.view:
-            self.view.add_log('Dragonblood tools not available - falling back to SAE capture')
-        
-        return self._execute_sae_capture_strategy()
-    
-    def _display_dragonblood_vulnerability(self):
-        """Display Dragonblood vulnerability information."""
-        if not self.wpa3_info or not self.wpa3_info.get('dragonblood_vulnerable'):
-            return
-        
-        Color.pl('\n{+} {R}Dragonblood Vulnerability Detected!{W}')
-        Color.pl('    Target: {C}%s{W} ({C}%s{W})' % (self.target.essid or 'Hidden', self.target.bssid))
-        
-        sae_groups = self.wpa3_info.get('sae_groups', [])
-        if sae_groups:
-            Color.pl('    SAE Groups: {C}%s{W}' % ', '.join(map(str, sae_groups)))
-            
-            # Identify vulnerable groups
-            vulnerable_groups = [g for g in sae_groups if g in WPA3Detector.VULNERABLE_SAE_GROUPS]
-            if vulnerable_groups:
-                Color.pl('    Vulnerable Groups: {R}%s{W}' % ', '.join(map(str, vulnerable_groups)))
-        
-        Color.pl('\n{+} {O}Vulnerability Details:{W}')
-        Color.pl('    - CVE-2019-13377: Timing-based password partitioning')
-        Color.pl('    - CVE-2019-13456: Side-channel information leakage')
-        Color.pl('    - Vulnerable SAE groups allow timing attacks')
-        Color.pl('    - May reduce password search space significantly')
-        
-        Color.pl('\n{+} {O}Exploitation Tools:{W}')
-        Color.pl('    - dragonslayer: https://github.com/vanhoefm/dragonslayer')
-        Color.pl('    - dragonforce: Timing-based password partitioning')
-        Color.pl('    - dragontime: Side-channel analysis tool')
-        Color.pl('')
-    
     @staticmethod
     def check_dragonblood_vulnerability(target):
         """
@@ -389,71 +434,6 @@ class AttackWPA3SAE(Attack):
         Color.pl('')
         return is_vulnerable
 
-    def _execute_sae_capture_strategy(self):
-        """
-        Execute standard SAE handshake capture.
-        
-        Checks PMF status and switches to passive mode if needed.
-        
-        Returns:
-            bool: True if attack succeeded
-        """
-        Color.pl('{+} {C}Capturing SAE handshake...{W}')
-        
-        if self.view:
-            self.view.add_log('Starting SAE handshake capture')
-        
-        # Check PMF status and handle accordingly
-        pmf_required = self._handle_pmf_prevention()
-        
-        if pmf_required:
-            # PMF prevents deauth, use passive capture
-            Color.pl('{+} {C}Using passive capture due to PMF...{W}')
-            handshake = self.passive_capture()
-        else:
-            # PMF allows deauth, use active capture
-            handshake = self.capture_sae_handshake()
-        
-        if handshake:
-            Color.pl('{+} {G}SAE handshake captured successfully{W}')
-            if self.view:
-                self.view.add_log('SAE handshake captured')
-            self.success = True
-            return True
-        else:
-            Color.pl('{!} {R}Failed to capture SAE handshake{W}')
-            if self.view:
-                self.view.add_log('SAE handshake capture failed')
-            self.success = False
-            return False
-
-    def _execute_passive_strategy(self):
-        """
-        Execute passive SAE capture (no deauth).
-        
-        Returns:
-            bool: True if attack succeeded
-        """
-        Color.pl('{+} {C}Starting passive SAE capture (PMF prevents deauth)...{W}')
-        
-        if self.view:
-            self.view.add_log('Starting passive capture - PMF prevents deauth attacks')
-        
-        # Passive capture
-        handshake = self.passive_capture()
-        
-        if handshake:
-            Color.pl('{+} {G}SAE handshake captured passively{W}')
-            if self.view:
-                self.view.add_log('Passive SAE handshake captured')
-            self.success = True
-            return True
-        else:
-            Color.pl('{!} {R}Failed to capture SAE handshake passively{W}')
-            if self.view:
-                self.view.add_log('Passive capture failed')
-            self.success = False
-            return False
 
     def attempt_downgrade(self):
         """

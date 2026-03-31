@@ -150,15 +150,9 @@ class Handshake:
     def hcxpcapngtool_handshakes(self):
         """
         Returns tuple (BSSID,None) if hcxpcapngtool can extract valid handshake data.
-        This is especially useful for pcapng files captured by hcxdumptool.
-        Only runs on .pcapng files as hcxpcapngtool is optimized for that format.
+        Supports both .cap and .pcapng capture files.
         """
         if not Process.exists('hcxpcapngtool'):
-            return []
-        
-        # Only use hcxpcapngtool for pcapng files (hcxdumptool format)
-        # For older .cap files, use aircrack/cowpatty/tshark instead
-        if not self.capfile.lower().endswith('.pcapng'):
             return []
 
         import tempfile

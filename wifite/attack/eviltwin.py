@@ -285,7 +285,10 @@ class EvilTwin(Attack):
             if not self._start_network_services_dual():
                 self.error_message = 'Failed to start network services'
                 return False
-            
+
+            # Validate portal and DNS are accessible
+            self._validate_portal_health()
+
             # Start deauth on secondary interface (non-blocking, parallel)
             Color.pl('{+} {C}Starting deauth on {G}%s{W}...' % self.interface_deauth)
             self.state = AttackState.STARTING_DEAUTH
@@ -500,7 +503,40 @@ class EvilTwin(Attack):
         except Exception as e:
             log_error('EvilTwin', f'Failed to start network services: {e}', e)
             return False
-    
+
+    def _validate_portal_health(self):
+        """
+        Validate that the captive portal and DNS redirect are working.
+
+        Non-fatal: logs warnings if validation fails but does not abort the attack,
+        since the portal may become reachable once a client connects and gets a DHCP lease.
+        """
+        if not self.portal_server:
+            return
+
+        # Check portal HTTP accessibility
+        portal_ok = self.portal_server.validate_portal()
+        if portal_ok:
+            Color.pl('{+} {G}Portal validation passed{W}')
+            if self.attack_view:
+                self.attack_view.add_log('Portal validation: OK', timestamp=True)
+        else:
+            Color.pl('{!} {O}Portal not yet reachable - may start working once clients connect{W}')
+            if self.attack_view:
+                self.attack_view.add_log('Portal validation: not reachable yet (non-fatal)', timestamp=True)
+
+        # Check DNS redirect
+        from .portal.server import PortalServer
+        dns_ok = PortalServer.validate_dns_redirect()
+        if dns_ok:
+            Color.pl('{+} {G}DNS redirect validation passed{W}')
+            if self.attack_view:
+                self.attack_view.add_log('DNS redirect: OK', timestamp=True)
+        else:
+            Color.pl('{!} {O}DNS redirect not confirmed - clients may not auto-detect portal{W}')
+            if self.attack_view:
+                self.attack_view.add_log('DNS redirect: not confirmed (non-fatal)', timestamp=True)
+
     def _start_deauth_dual(self, interface: str) -> bool:
         """
         Start deauth on dedicated deauth interface (dual interface mode).

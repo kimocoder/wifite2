@@ -528,11 +528,87 @@ class PortalServer:
     def is_running(self) -> bool:
         """
         Check if server is running.
-        
+
         Returns:
             True if running, False otherwise
         """
         return self.running and self.server is not None
+
+    def validate_portal(self, timeout=3) -> bool:
+        """
+        Validate that the portal is accessible by making a test HTTP connection.
+
+        Checks:
+        1. TCP connection to the portal host:port
+        2. HTTP GET returns a valid login page
+
+        Args:
+            timeout: Connection timeout in seconds
+
+        Returns:
+            True if portal is accessible, False otherwise
+        """
+        import http.client
+
+        if not self.running:
+            log_warning('Portal', 'Cannot validate - server not running')
+            return False
+
+        try:
+            conn = http.client.HTTPConnection(self.host, self.port, timeout=timeout)
+            conn.request('GET', '/')
+            response = conn.getresponse()
+            body = response.read().decode('utf-8', errors='replace')
+            conn.close()
+
+            if response.status == 200 and '<form' in body.lower():
+                log_info('Portal', 'Validation passed: portal accessible on %s:%d' % (self.host, self.port))
+                return True
+            else:
+                log_warning('Portal', 'Validation failed: HTTP %d, form not found' % response.status)
+                return False
+
+        except (ConnectionRefusedError, socket.timeout, OSError) as e:
+            log_warning('Portal', 'Validation failed: cannot connect to %s:%d (%s)' % (
+                self.host, self.port, e))
+            return False
+        except Exception as e:
+            log_warning('Portal', 'Validation failed: %s' % e)
+            return False
+
+    @staticmethod
+    def validate_dns_redirect(target_ip='192.168.100.1', timeout=3) -> bool:
+        """
+        Validate that DNS is redirecting to the portal IP.
+
+        Attempts to resolve a common captive portal detection domain
+        and checks if it resolves to the expected target IP.
+
+        Args:
+            target_ip: Expected IP address for DNS redirect
+            timeout: DNS resolution timeout
+
+        Returns:
+            True if DNS redirect is working, False otherwise
+        """
+        import subprocess
+
+        test_domains = ['connectivitycheck.gstatic.com', 'captive.apple.com', 'www.msftconnecttest.com']
+
+        for domain in test_domains:
+            try:
+                result = subprocess.run(
+                    ['nslookup', domain, '127.0.0.1'],
+                    capture_output=True, text=True, timeout=timeout
+                )
+                if target_ip in result.stdout:
+                    log_info('Portal', 'DNS redirect validated: %s -> %s' % (domain, target_ip))
+                    return True
+            except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+                continue
+
+        log_warning('Portal', 'DNS redirect validation failed - captive portal detection may not trigger')
+        return False
     
     def get_stats(self) -> Dict[str, Any]:
         """

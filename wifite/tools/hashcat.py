@@ -16,6 +16,61 @@ class Hashcat(Dependency):
     dependency_name = 'hashcat'
     dependency_url = 'https://hashcat.net/hashcat/'
 
+    _cached_version = None  # Cache parsed version tuple
+
+    @staticmethod
+    def get_version():
+        """
+        Get hashcat version as a tuple (major, minor, patch).
+        Returns (0, 0, 0) if version cannot be determined.
+        Caches result after first call.
+        """
+        if Hashcat._cached_version is not None:
+            return Hashcat._cached_version
+
+        import re
+        try:
+            process = Process(['hashcat', '--version'])
+            stdout = process.stdout()
+            # hashcat --version outputs something like "v6.2.6" or "6.2.6"
+            match = re.search(r'v?(\d+)\.(\d+)\.(\d+)', stdout)
+            if match:
+                version = (int(match.group(1)), int(match.group(2)), int(match.group(3)))
+            else:
+                # Try simpler format like "v6.2" or "6.2"
+                match = re.search(r'v?(\d+)\.(\d+)', stdout)
+                if match:
+                    version = (int(match.group(1)), int(match.group(2)), 0)
+                else:
+                    log_warning('Hashcat', 'Could not parse hashcat version from: %s' % stdout.strip())
+                    version = (0, 0, 0)
+        except Exception as e:
+            log_debug('Hashcat', 'Failed to get hashcat version: %s' % e)
+            version = (0, 0, 0)
+
+        Hashcat._cached_version = version
+        log_debug('Hashcat', 'Hashcat version: %d.%d.%d' % version)
+        return version
+
+    @staticmethod
+    def supports_mode_22000():
+        """
+        Check if hashcat supports mode 22000 (WPA-PBKDF2-PMKID+EAPOL).
+        Mode 22000 requires hashcat 6.0.0 or later.
+
+        Returns:
+            True if supported, False otherwise
+        """
+        version = Hashcat.get_version()
+        if version == (0, 0, 0):
+            # Version unknown - assume it's new enough (fail at runtime if not)
+            log_warning('Hashcat', 'Could not determine hashcat version, assuming mode 22000 support')
+            return True
+        supported = version >= (6, 0, 0)
+        if not supported:
+            log_warning('Hashcat', 'Hashcat %d.%d.%d does not support mode 22000 (requires 6.0.0+)' % version)
+        return supported
+
     @staticmethod
     def should_use_force():
         command = ['hashcat', '-I']
@@ -44,6 +99,13 @@ class Hashcat(Dependency):
             # Mode 22000 supports both WPA/WPA2 and WPA3-SAE (WPA-PBKDF2-PMKID+EAPOL)
             hashcat_mode = '22000'
             file_type_msg = "WPA3-SAE hash" if target_is_wpa3_sae else "WPA/WPA2 hash"
+
+            if not Hashcat.supports_mode_22000():
+                version = Hashcat.get_version()
+                Color.pl('{!} {R}Hashcat %d.%d.%d does not support mode 22000{W}' % version)
+                Color.pl('{!} {O}Mode 22000 requires hashcat 6.0.0+. Falling back to aircrack-ng.{W}')
+                from .aircrack import Aircrack
+                return Aircrack.crack_handshake(handshake_obj, show_command=show_command, wordlist=wordlist)
 
             Color.pl(f"{{+}} {{C}}Attempting to crack {file_type_msg} using Hashcat mode {hashcat_mode}{{W}}")
 
@@ -112,6 +174,11 @@ class Hashcat(Dependency):
         Returns:
             Key (str) if found; `None` if not found.
         """
+        if not Hashcat.supports_mode_22000():
+            version = Hashcat.get_version()
+            Color.pl('{!} {R}Hashcat %d.%d.%d does not support mode 22000 (requires 6.0.0+){W}' % version)
+            return None
+
         wordlist = wordlist or Configuration.wordlist
 
         # Run hashcat once normally, then with --show if it failed

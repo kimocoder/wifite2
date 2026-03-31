@@ -408,6 +408,8 @@ class AttackPMKID(Attack):
         pmkid_hash = None
         pcaptool = HcxPcapngTool(self.target)
         attempts = 0
+        invalid_hash_count = 0
+        max_invalid_retries = 5  # Max consecutive invalid hashes before giving up
         log_debug('AttackPMKID', f'Starting PMKID capture loop (timeout: {Configuration.pmkid_timeout}s)')
         while self.timer.remaining() > 0:
             attempts += 1
@@ -417,9 +419,27 @@ class AttackPMKID(Attack):
                 # Validate hash format: WPA*type*hash*bssid*station*essid
                 pmkid_hash = pmkid_hash.strip()
                 if not pmkid_hash.startswith('WPA*') or pmkid_hash.count('*') < 5:
-                    log_warning('AttackPMKID', f'Invalid PMKID hash format (attempt {attempts}), retrying')
+                    invalid_hash_count += 1
+                    log_warning('AttackPMKID',
+                                f'Invalid PMKID hash format (invalid {invalid_hash_count}/{max_invalid_retries}, '
+                                f'attempt {attempts}): {pmkid_hash[:40]}...')
+                    if self.view:
+                        self.view.add_log(f'Invalid hash format ({invalid_hash_count}/{max_invalid_retries})')
+
+                    if invalid_hash_count >= max_invalid_retries:
+                        log_error('AttackPMKID',
+                                  f'Too many invalid PMKID hashes ({invalid_hash_count}), aborting capture')
+                        Color.pl('\n{!} {R}Too many invalid PMKID hashes, aborting{W}')
+                        pmkid_hash = None
+                        break
+
                     pmkid_hash = None
+                    # Brief backoff before retry to let pcapng accumulate more data
+                    time.sleep(min(2 * invalid_hash_count, 5))
                     continue
+
+                # Valid hash - reset invalid counter and break
+                invalid_hash_count = 0
                 log_info('AttackPMKID', f'PMKID captured successfully after {attempts} attempt(s)')
                 break  # Got PMKID
 

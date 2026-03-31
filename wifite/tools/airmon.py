@@ -61,11 +61,7 @@ class Airmon(Dependency):
     base_interface = None
     killed_network_manager = False
     use_ipiw = False
-    isdeprecated = False
 
-    # Drivers that need to be manually put into monitor mode
-    BAD_DRIVERS = ['rtl8821au']
-    DEPRECATED_DRIVERS = ['rtl8723cs']
     # see if_arp.h
     ARPHRD_ETHER = 1  # managed
     ARPHRD_IEEE80211_RADIOTAP = 803  # monitor
@@ -128,28 +124,19 @@ class Airmon(Dependency):
         return next((intf_adapter for intf_adapter in Airmon.get_interfaces() if intf_adapter.interface == interface_name), None)
 
     @staticmethod
-    def start_bad_driver(interface, isdeprecated=False):
-        """
-        Manually put interface into monitor mode (no airmon-ng or vif).
-        Fix for bad drivers like the rtl8812AU.
-        """
+    def start_monitor(interface):
+        """Put interface into monitor mode using ip/iw."""
         from ..util.process import Process
 
         Ip.down(interface)
 
-        if isdeprecated:
-            result = Process(['iwconfig', interface, 'mode', 'monitor']).stdout()
-            if Configuration.verbose > 0:
-                Color.pl('{D}iwconfig output: %s{W}' % result)
-        else:
-            # Use iw to set monitor mode
-            (out, err) = Process.call(f'iw dev {interface} set type monitor')
-            if Configuration.verbose > 0:
-                Color.pl('{D}iw set type monitor output: %s{W}' % out)
-                if err:
-                    Color.pl('{D}iw set type monitor error: %s{W}' % err)
-            if err and 'command failed' in err.lower():
-                Color.pl('{!} {O}Warning: iw command may have failed: %s{W}' % err)
+        (out, err) = Process.call(f'iw dev {interface} set type monitor')
+        if Configuration.verbose > 0:
+            Color.pl('{D}iw set type monitor output: %s{W}' % out)
+            if err:
+                Color.pl('{D}iw set type monitor error: %s{W}' % err)
+        if err and 'command failed' in err.lower():
+            Color.pl('{!} {O}Warning: iw command may have failed: %s{W}' % err)
 
         Ip.up(interface)
 
@@ -167,20 +154,13 @@ class Airmon(Dependency):
         return interface
 
     @staticmethod
-    def stop_bad_driver(interface):
-        """
-        Manually put interface into managed mode (no airmon-ng or vif).
-        Fix for bad drivers like the rtl8812AU.
-        """
+    def stop_monitor(interface):
+        """Put interface into managed mode using ip/iw."""
         # Get driver info for ICNSS2 check
         iface_info = Airmon.get_iface_info(interface)
         if iface_info and iface_info.driver == 'icnss2':
             Color.p('{+} ICNSS2 driver detected for %s. Running "svc wifi disable"... ' % interface)
-            # Run 'svc wifi disable'
             proc = Process(['svc', 'wifi', 'disable'])
-            # proc.wait() # Wait for command to complete.
-            # Alternatively, use Process.call for simpler cases if output isn't critical and we just need to run it
-            # For now, let's assume we want to wait and check for errors, similar to other Process calls.
             stdout, stderr = proc.get_output(timeout=30)
             if proc.poll() == 0:
                 Color.pl('{G}success!{W}')
@@ -188,7 +168,6 @@ class Airmon(Dependency):
                 Color.pl('{R}failed.{W}')
                 if stdout: Color.pl('{O}STDOUT: %s{W}' % stdout.strip())
                 if stderr: Color.pl('{R}STDERR: %s{W}' % stderr.strip())
-                # Decide if we should proceed or raise an error. For now, let's proceed.
 
         Ip.down(interface)
         Iw.mode(interface, 'managed')
@@ -263,9 +242,7 @@ class Airmon(Dependency):
         # airmon-ng creates interfaces that hcxdumptool doesn't work well with
         Color.p('{+} Enabling {G}monitor mode{W} on {C}%s{W}... ' % iface_name)
 
-        # Determine if driver needs special handling
-        Airmon.isdeprecated = driver in Airmon.DEPRECATED_DRIVERS
-        enabled_interface = Airmon.start_bad_driver(iface_name, Airmon.isdeprecated)
+        enabled_interface = Airmon.start_monitor(iface_name)
         cls.use_ipiw = True
 
         # Verify monitor mode was enabled
@@ -331,7 +308,7 @@ class Airmon(Dependency):
         Color.p('{!}{W} Disabling {O}monitor{W} mode on {R}%s{W}...\n' % interface)
 
         if cls.use_ipiw:
-            enabled_interface = disabled_interface = Airmon.stop_bad_driver(interface)
+            enabled_interface = disabled_interface = Airmon.stop_monitor(interface)
         else:
             airmon_output = Process(['airmon-ng', 'stop', interface]).stdout()
             disabled_interface, enabled_interface = Airmon._parse_airmon_stop(airmon_output)
