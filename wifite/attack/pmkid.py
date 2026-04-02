@@ -87,11 +87,12 @@ class AttackPMKID(Attack):
                         continue
 
                     # Split hash and validate sufficient fields
+                    # Format: WPA*type*hash*bssid*station*essid = 6 fields minimum
                     hash_fields = pmkid_hash.split('*')
-                    if len(hash_fields) < 4:
-                        log_debug('AttackPMKID', f'SKIP: Insufficient fields in {os.path.basename(pmkid_filename)} (got {len(hash_fields)}, need 4+)')
+                    if len(hash_fields) < 6:
+                        log_debug('AttackPMKID', f'SKIP: Insufficient fields in {os.path.basename(pmkid_filename)} (got {len(hash_fields)}, need 6)')
                         if Configuration.verbose > 2:
-                            Color.pl('{+} {D}SKIP: Insufficient fields in {C}%s{W} (got %d, need 4+)' % (os.path.basename(pmkid_filename), len(hash_fields)))
+                            Color.pl('{+} {D}SKIP: Insufficient fields in {C}%s{W} (got %d, need 6)' % (os.path.basename(pmkid_filename), len(hash_fields)))
                         continue
 
                     # Extract BSSID from correct field (index 3, not 1)
@@ -667,7 +668,7 @@ class AttackPMKID(Attack):
 
     def _generate_pmkid_filepath(self, extension):
         # Generate filesystem-safe filename from bssid, essid and date
-        essid_safe = re.sub('[^a-zA-Z0-9]', '', self.target.essid)
+        essid_safe = re.sub(r'[^a-zA-Z0-9]+', '_', self.target.essid).strip('_') or 'unknown'
         bssid_safe = self.target.bssid.replace(':', '-')
         date = time.strftime('%Y-%m-%dT%H-%M-%S')
         result = f'pmkid_{essid_safe}_{bssid_safe}_{date}{extension}'

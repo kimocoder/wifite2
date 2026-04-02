@@ -627,6 +627,14 @@ class AttackMonitor:
         # Display final statistics
         self.display_final_statistics()
 
+    def __del__(self):
+        """Ensure log file handle is closed even if stop() was never called."""
+        if self.log_file_handle and not self.log_file_handle.closed:
+            try:
+                self.log_file_handle.close()
+            except Exception:
+                pass
+
     def display_final_statistics(self):
         """
         Display final monitoring statistics.

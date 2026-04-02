@@ -369,7 +369,19 @@ def kill_orphaned_processes() -> List[Tuple[str, str]]:
                         if not re.match(r'^\d+$', str(pid)):
                             log_warning('Cleanup', f'Skipping kill: invalid PID value: {pid!r}')
                             continue
-                        os.kill(int(pid), signal.SIGKILL)
+                        pid_int = int(pid)
+                        if pid_int <= 0:
+                            log_warning('Cleanup', f'Skipping kill: non-positive PID: {pid_int}')
+                            continue
+                        os.kill(pid_int, signal.SIGTERM)
+                        import time as _time
+                        _time.sleep(0.3)
+                        try:
+                            os.kill(pid_int, 0)  # Check if still alive
+                            os.kill(pid_int, signal.SIGKILL)
+                            log_info('Cleanup', f'SIGKILL sent to {process_name} (PID: {pid}) after SIGTERM ignored')
+                        except ProcessLookupError:
+                            pass  # Process exited cleanly after SIGTERM
                         killed_processes.append((process_name, pid))
                         log_info('Cleanup', f'Killed orphaned {process_name} process (PID: {pid})')
                     except Exception as e:

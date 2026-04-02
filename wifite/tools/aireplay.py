@@ -563,8 +563,8 @@ class ContinuousDeauth(Thread):
         self._running = False
         self._paused = False
         self.process = None
-        self.total_deauths_sent = 0
-        self.last_deauth_time = 0
+        self._total_deauths_sent = 0
+        self._last_deauth_time = 0
 
         # Statistics
         self.start_time = None
@@ -589,7 +589,27 @@ class ContinuousDeauth(Thread):
     def paused(self, value):
         with self._lock:
             self._paused = value
-    
+
+    @property
+    def total_deauths_sent(self):
+        with self._lock:
+            return self._total_deauths_sent
+
+    @total_deauths_sent.setter
+    def total_deauths_sent(self, value):
+        with self._lock:
+            self._total_deauths_sent = value
+
+    @property
+    def last_deauth_time(self):
+        with self._lock:
+            return self._last_deauth_time
+
+    @last_deauth_time.setter
+    def last_deauth_time(self, value):
+        with self._lock:
+            self._last_deauth_time = value
+
     @classmethod
     def _check_native(cls):
         """Check if native Scapy deauth is available."""
@@ -643,7 +663,8 @@ class ContinuousDeauth(Thread):
                     verbose=False
                 )
                 if success:
-                    self.total_deauths_sent += sent
+                    with self._lock:
+                        self._total_deauths_sent += sent
                     return
             except Exception as e:
                 if Configuration.verbose > 1:
@@ -683,7 +704,8 @@ class ContinuousDeauth(Thread):
                     break
                 time.sleep(0.1)
 
-            self.total_deauths_sent += self.num_deauths
+            with self._lock:
+                self._total_deauths_sent += self.num_deauths
 
         except Exception as e:
             from ..util.color import Color

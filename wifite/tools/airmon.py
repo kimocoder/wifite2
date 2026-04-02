@@ -224,7 +224,6 @@ class Airmon(Dependency):
                         else:
                             Color.pl('{O}failed (ICNSS2 specific, could not verify monitor mode). Trying other methods...{W}')
                             # Attempt to revert if possible, or let subsequent methods handle it
-                            # Process(['echo', '0', '>', con_mode_path], shell=True) # Optional: revert
                     except subprocess.CalledProcessError as e:
                         Color.pl('{R}failed (ICNSS2 specific command error: %s). Trying other methods...{W}' % e.stderr.decode().strip())
                     except (OSError, IOError) as e:

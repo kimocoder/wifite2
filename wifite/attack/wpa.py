@@ -70,7 +70,7 @@ class AttackWPA(Attack):
         Yields:
             None - use 'with' statement to wrap operations
         """
-        from ..util.logger import log_error, log_info, log_warning
+        from ..util.logger import log_error, log_warning
         from ..util.process import ProcessManager, Process
         from ..util.memory import MemoryMonitor
         

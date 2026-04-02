@@ -31,7 +31,7 @@ try:
         sendp, sniff, conf as scapy_conf
     )
     SCAPY_AVAILABLE = True
-except BaseException:
+except Exception:
     SCAPY_AVAILABLE = False
 
 
