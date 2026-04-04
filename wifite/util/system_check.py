@@ -281,6 +281,7 @@ class SystemCheck:
         return results
 
     def _get_tool_version(self, name: str) -> Optional[str]:
+        """Try to get version string for a tool."""
         if name == 'airmon-ng':
             if shutil.which(name):
                 return None
