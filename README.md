@@ -196,11 +196,16 @@ yay -S wifite2-git
 After installation, verify all dependencies are available:
 
 ```bash
-sudo wifite --help
+sudo wifite --syscheck
 ```
 
-This will show if any required tools are missing.
+This command provides a comprehensive report including:
 
+* **Environment:** Checks for root privileges, RF-Kill status, and conflicting processes.
+* **Tool Dependencies:** Verified list of required (Core) and optional tools.
+* **Wireless Interfaces:** Detection of adapters and their capabilities (Monitor mode, Injection).
+* **Attack Readiness:** A summary of which attacks (WPS, WPA3, PMKID, etc.) are possible with your current setup.
+* **Tip:** If you see "Conflicting processes found", it is highly recommended to run `airmon-ng check kill` or use the `--kill` flag when starting Wifite to ensure reliable performance.
 
 
 Features
