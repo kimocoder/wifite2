@@ -282,18 +282,33 @@ class SystemCheck:
 
     def _get_tool_version(self, name: str) -> Optional[str]:
         """Try to get version string for a tool."""
-        for flag in ['--version', '-v', '-V', 'version']:
+        if name.lower() == 'airmon-ng':
+            return None
+
+        for flag in ['--version', '-v', '-V', 'version', '']:
             try:
-                out = subprocess.run(
-                    [name, flag], capture_output=True, text=True, timeout=5
+                cmd = [name] + ([flag] if flag else [])
+                proc = subprocess.run(
+                    cmd, 
+                    capture_output=True, 
+                    text=True, 
+                    timeout=5
                 )
-                combined = (out.stdout + ' ' + out.stderr).strip()
-                if combined:
-                    match = re.search(r'(\d+\.\d+[\.\d]*\w*)', combined)
+                
+                combined = f"{proc.stdout}\n{proc.stderr}"
+                
+                if combined.strip():
+                    pattern = rf"{re.escape(name)}\s+(\d+\.\d+[\.\d]*\w*)"
+                    match = re.search(pattern, combined, re.IGNORECASE)
                     if match:
                         return match.group(1)
-            except (subprocess.TimeoutExpired, FileNotFoundError, OSError,
-                    PermissionError):
+                    
+                    versions = re.findall(r'(\d+\.\d+[\.\d]*\w*)', combined)
+                    for v in versions:
+                        if not v.startswith('20'):
+                            return v
+                            
+            except (subprocess.TimeoutExpired, FileNotFoundError, OSError, PermissionError):
                 continue
         return None
 
