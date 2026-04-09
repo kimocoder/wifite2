@@ -282,6 +282,25 @@ class SystemCheck:
 
     def _get_tool_version(self, name: str) -> Optional[str]:
         """Try to get version string for a tool."""
+        if name == 'airmon-ng':
+            if shutil.which(name):
+                return None
+            return None
+
+        aircrack_family = ['aircrack-ng', 'airodump-ng', 'aireplay-ng']
+        if name in aircrack_family:
+            try:
+                process = subprocess.run(
+                    [name], capture_output=True, text=True, timeout=5
+                )
+                output = (process.stdout + "\n" + process.stderr).splitlines()[:5]
+                content = " ".join(output)
+                match = re.search(r'(\d+\.\d+)', content)
+                if match:
+                    return match.group(1)
+            except Exception:
+                pass
+
         for flag in ['--version', '-v', '-V', 'version']:
             try:
                 out = subprocess.run(
@@ -292,8 +311,7 @@ class SystemCheck:
                     match = re.search(r'(\d+\.\d+[\.\d]*\w*)', combined)
                     if match:
                         return match.group(1)
-            except (subprocess.TimeoutExpired, FileNotFoundError, OSError,
-                    PermissionError):
+            except (subprocess.TimeoutExpired, FileNotFoundError, OSError, PermissionError):
                 continue
         return None
 
