@@ -716,7 +716,7 @@ class SystemCheck:
                 else:
                     masked = iface.mac
                 Color.pl(f'    MAC: {masked}   Mode: {{C}}{iface.mode}{{W}}   '
-                         f'Up: {"{{G}}yes{{W}}" if iface.is_up else "{{O}}no{{W}}"}')
+                         f'Up: {"{G}yes{W}" if iface.is_up else "{O}no{W}"}')
 
             # Capability matrix
             mon = '{G}✓{W}' if iface.supports_monitor else '{R}✗{W}'
