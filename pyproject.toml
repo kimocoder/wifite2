@@ -41,7 +41,7 @@ wifite = "wifite.wifite:main"
 dev = [
     "pytest>=8.0.0",
     "pytest-cov>=4.1.0",
-    "pytest-timeout>=2.3.0",
+    "pytest-timeout>=2.4.0",
 ]
 
 [tool.poetry]
