@@ -26,7 +26,7 @@ dependencies = [
     "rich>=14.0.0",
     "scapy>=2.6.1; python_version < '4'",
     "setuptools>=82.0.0",
-    "urllib3>=2.6.0",  # pinned by Snyk to avoid a vulnerability
+    "urllib3>=2.6.3",  # pinned by Snyk to avoid a vulnerability
 ]
 
 [project.urls]
