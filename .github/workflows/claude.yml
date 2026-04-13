@@ -8,6 +8,7 @@ on:
 
 jobs:
   claude:
+    if: ${{ secrets.ANTHROPIC_API_KEY != null && vars.CLAUDE_CODE_ENABLED != 'false' }}
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -21,6 +22,7 @@ jobs:
 
       - name: Run Claude Code Action
         uses: anthropics/claude-code-action@v1
+        continue-on-error: true
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
 
