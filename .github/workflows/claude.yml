@@ -8,7 +8,7 @@ on:
 
 jobs:
   claude:
-    if: ${{ secrets.ANTHROPIC_API_KEY != null && vars.CLAUDE_CODE_ENABLED != 'false' }}
+    if: ${{ secrets.ANTHROPIC_API_KEY != '' && vars.CLAUDE_CODE_ENABLED != 'false' }}
     runs-on: ubuntu-latest
     permissions:
       id-token: write
