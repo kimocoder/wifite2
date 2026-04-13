@@ -39,7 +39,7 @@ wifite = "wifite.wifite:main"
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=8.0.0",
+    "pytest>=8.4.2",
     "pytest-cov>=7.1.0",
     "pytest-timeout>=2.4.0",
 ]
