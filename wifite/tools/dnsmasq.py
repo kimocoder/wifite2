@@ -121,9 +121,11 @@ class Dnsmasq(Dependency):
         Returns:
             Path to configuration file
         """
+        config_fd = None
+        lease_fd = None
         try:
             # Create temp file for config
-            fd, self.config_file = tempfile.mkstemp(
+            config_fd, self.config_file = tempfile.mkstemp(
                 prefix='dnsmasq_',
                 suffix='.conf',
                 dir=Configuration.temp()
@@ -131,19 +133,21 @@ class Dnsmasq(Dependency):
             
             # Write configuration
             config_content = self.generate_config()
-            os.write(fd, config_content.encode('utf-8'))
-            os.close(fd)
-            
+            os.write(config_fd, config_content.encode('utf-8'))
+            os.close(config_fd)
+            config_fd = None  # fd closed; avoid double-close
+
             # Set permissions
             os.chmod(self.config_file, 0o600)
             
             # Create lease file
-            fd_lease, self.lease_file = tempfile.mkstemp(
+            lease_fd, self.lease_file = tempfile.mkstemp(
                 prefix='dnsmasq_leases_',
                 suffix='.txt',
                 dir=Configuration.temp()
             )
-            os.close(fd_lease)
+            os.close(lease_fd)
+            lease_fd = None  # fd closed; avoid double-close
             
             log_debug('Dnsmasq', f'Created config file: {self.config_file}')
             log_debug('Dnsmasq', f'Created lease file: {self.lease_file}')
@@ -157,6 +161,26 @@ class Dnsmasq(Dependency):
             return self.config_file
             
         except Exception as e:
+            # Close open file descriptors
+            if config_fd is not None:
+                try:
+                    os.close(config_fd)
+                except OSError:
+                    pass
+            if lease_fd is not None:
+                try:
+                    os.close(lease_fd)
+                except OSError:
+                    pass
+            # Remove partially-created temp files
+            for path_attr in ('config_file', 'lease_file'):
+                path = getattr(self, path_attr, None)
+                if path and os.path.exists(path):
+                    try:
+                        os.remove(path)
+                    except OSError:
+                        pass
+                setattr(self, path_attr, None)
             log_error('Dnsmasq', f'Failed to create config file: {e}', e)
             raise
     

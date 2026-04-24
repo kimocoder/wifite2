@@ -201,9 +201,35 @@ class AttackWPA3SAE(Attack):
         if self.view:
             self.view.add_log('Starting Dragonblood exploitation')
         self._display_dragonblood_vulnerability()
+
+        # Run timing side-channel analysis if enabled
+        if Configuration.dragonblood_timing:
+            self._run_dragonblood_timing()
+
         Color.pl('{!} {O}Full Dragonblood exploitation requires specialized tools{W}')
         Color.pl('{!} {O}Consider using: dragonslayer, dragonforce, or dragontime{W}')
         return False  # Dragonblood is informational, always falls through
+
+    def _run_dragonblood_timing(self):
+        """Run Dragonblood timing side-channel analysis on the target."""
+        try:
+            from ..util.dragonblood_timing import run_timing_attack
+            interface = Configuration.interface
+            threshold = Configuration.dragonblood_timing_threshold or 0.005
+            Color.pl('{+} {C}Running Dragonblood timing analysis...{W}')
+            if self.view:
+                self.view.add_log('Running Dragonblood timing analysis')
+            result = run_timing_attack(
+                target=self.target,
+                interface=interface,
+                threshold=threshold,
+            )
+            if result.vulnerable:
+                Color.pl('{!} {O}Timing side-channel detected - target may be vulnerable to CVE-2019-13377{W}')
+                if self.view:
+                    self.view.add_log('Timing side-channel detected')
+        except Exception as e:
+            log_debug('AttackWPA3', 'Dragonblood timing analysis failed: %s' % e)
 
     def _try_sae_capture(self):
         """Execute SAE capture strategy."""

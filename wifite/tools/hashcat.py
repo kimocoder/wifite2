@@ -113,7 +113,8 @@ class Hashcat(Dependency):
             for additional_arg in ([], ['--show']):
                 command = [
                     'hashcat',
-                    '--quiet',
+                    '--status',           # Enable live status output
+                    '--status-timer=5',   # Update every 5 seconds
                     '-m', hashcat_mode,
                     hash_file,
                     wordlist
@@ -130,27 +131,16 @@ class Hashcat(Dependency):
                 if 'No hashes loaded' in stdout or 'No hashes loaded' in stderr:
                     continue  # No valid hashes to crack
 
-                if ':' not in stdout:
+                # Parse the key from hashcat output using shared helper
+                cracked_line = Hashcat._extract_cracked_line(stdout)
+                if cracked_line is None:
                     continue  # No cracked results
 
-                # Parse the key from hashcat output
-                # Expected format for mode 22000: WPA*...*hash*bssid*station*essid:password
-                # The hash line starts with 'WPA*' and the password is after the last colon
-                lines = stdout.strip().split('\n')
-                for line in lines:
-                    line = line.strip()
-                    if not line or not ':' in line:
-                        continue
-                    # Skip known non-result lines
-                    if line.startswith('The plugin') or 'hashcat.net' in line:
-                        continue
-                    # Valid result lines should contain 'WPA*' (hash format prefix)
-                    if 'WPA*' in line:
-                        parts = line.split(':')
-                        if len(parts) >= 2:
-                            key = parts[-1].strip()
-                            if key:
-                                break
+                parts = cracked_line.split(':')
+                if len(parts) >= 2:
+                    key = parts[-1].strip()
+                    if key:
+                        break
                 else:
                     continue
                 break
@@ -186,9 +176,10 @@ class Hashcat(Dependency):
         for additional_arg in ([], ['--show']):
             command = [
                 'hashcat',
-                '--quiet',      # Only output the password if found.
-                '-m', '22000',  # WPA-PMKID-PBKDF2
-                '-a', '0',      # Wordlist attack-mode
+                '--status',           # Enable live status output
+                '--status-timer=5',   # Update every 5 seconds
+                '-m', '22000',        # WPA-PMKID-PBKDF2
+                '-a', '0',            # Wordlist attack-mode
                 pmkid_file,
                 wordlist,
                 '-w', '3'
@@ -199,19 +190,50 @@ class Hashcat(Dependency):
             if verbose and additional_arg == []:
                 Color.pl(f'{{+}} {{D}}Running: {{W}}{{P}}{" ".join(command)}{{W}}')
 
-            # TODO: Check status of hashcat (%); it's impossible with --quiet
-
             hashcat_proc = Process(command)
             hashcat_proc.wait()
             stdout = hashcat_proc.stdout()
 
-            if ':' not in stdout:
+            # Extract cracked result from output (present even with --status)
+            cracked_line = Hashcat._extract_cracked_line(stdout)
+            if cracked_line is None:
                 # Failed
                 continue
             else:
                 # Hashcat PMKID output format: hash*bssid*station*essid:password
                 # We only want the password (last part after the last colon)
-                return stdout.strip().split(':')[-1]
+                return cracked_line.strip().split(':')[-1]
+
+    @staticmethod
+    def _extract_cracked_line(stdout: str):
+        """
+        Extract the cracked hash line from hashcat output.
+
+        Hashcat with --status outputs status blocks plus result lines.
+        Result lines for mode 22000 contain 'WPA*' and end with :password.
+
+        Returns:
+            The first matching result line, or None if not found.
+        """
+        if not stdout or ':' not in stdout:
+            return None
+        for line in stdout.strip().split('\n'):
+            line = line.strip()
+            if not line or ':' not in line:
+                continue
+            # Skip status/header lines produced by --status
+            if line.startswith('Session') or line.startswith('Status') \
+                    or line.startswith('Hash') or line.startswith('Time') \
+                    or line.startswith('Speed') or line.startswith('Recovered') \
+                    or line.startswith('Progress') or line.startswith('Rejected') \
+                    or line.startswith('Restore') or line.startswith('Candidates') \
+                    or line.startswith('Hardware') or line.startswith('Watchdog') \
+                    or line.startswith('The plugin') or 'hashcat.net' in line:
+                continue
+            # Valid result lines for mode 22000 start with 'WPA*'
+            if 'WPA*' in line:
+                return line
+        return None
 
 
 class HcxDumpTool(Dependency):

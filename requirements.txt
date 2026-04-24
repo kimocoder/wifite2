@@ -2,11 +2,11 @@
 # These should match pyproject.toml [project.dependencies]
 chardet>=7.0.1
 requests>=2.32.5
-rich>=14.0.0
-scapy>=2.7.0; python_version < '4'
-setuptools>=82.0.0
+rich>=15.0.0
+scapy>=2.6.1; python_version < '4'
+setuptools>=82.0.1
 
 # Development dependencies (optional)
 # For development, install with: pip install -e ".[dev]"
 # Or install from pyproject.toml: pip install pytest>=8.0.0 pytest-cov>=4.1.0 pytest-timeout>=2.3.0
-urllib3>=2.6.0 # not directly required, pinned by Snyk to avoid a vulnerability
+urllib3>=2.6.3 # not directly required, pinned by Snyk to avoid a vulnerability

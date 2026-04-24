@@ -757,6 +757,27 @@ against the real AP and captures valid passwords.
                                       'Checks for weak SAE groups and timing attack susceptibility. (default: {G}off{W})'))
         wpa.add_argument('-check-dragonblood', help=argparse.SUPPRESS, action='store_true', dest='wpa3_check_dragonblood')
 
+        # Dragonblood timing attack
+        wpa.add_argument('--dragonblood-timing',
+                         action='store_true',
+                         dest='dragonblood_timing',
+                         help=Color.s('Enable {C}Dragonblood timing side-channel{W} analysis '
+                                      '(CVE-2019-13377). Measures SAE commit response times to '
+                                      'detect timing-vulnerable WPA3 implementations. '
+                                      '(default: {G}off{W})'))
+        wpa.add_argument('-dragonblood-timing', help=argparse.SUPPRESS, action='store_true', dest='dragonblood_timing')
+
+        wpa.add_argument('--dragonblood-timing-threshold',
+                         action='store',
+                         dest='dragonblood_timing_threshold',
+                         metavar='[seconds]',
+                         type=float,
+                         help=self._verbose('Timing variance threshold in seconds for Dragonblood '
+                                            'side-channel detection. Lower values are more sensitive. '
+                                            '(default: {G}0.005{W})'))
+        wpa.add_argument('-dragonblood-timing-threshold', help=argparse.SUPPRESS, action='store',
+                         dest='dragonblood_timing_threshold', type=float)
+
         # WPA3 timing configuration
         wpa.add_argument('--wpa3-timeout',
                          action='store',

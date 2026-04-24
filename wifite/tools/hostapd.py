@@ -158,6 +158,7 @@ class Hostapd(Dependency):
         Returns:
             Path to configuration file
         """
+        fd = None
         try:
             # Create temp file
             fd, self.config_file = tempfile.mkstemp(
@@ -170,6 +171,7 @@ class Hostapd(Dependency):
             config_content = self.generate_config()
             os.write(fd, config_content.encode('utf-8'))
             os.close(fd)
+            fd = None  # fd is closed; avoid double-close in except block
 
             # Set permissions
             os.chmod(self.config_file, 0o600)
@@ -185,6 +187,19 @@ class Hostapd(Dependency):
             return self.config_file
 
         except Exception as e:
+            # Close the fd if it was left open due to an error
+            if fd is not None:
+                try:
+                    os.close(fd)
+                except OSError:
+                    pass
+            # Remove the partially-written temp file
+            if self.config_file and os.path.exists(self.config_file):
+                try:
+                    os.remove(self.config_file)
+                except OSError:
+                    pass
+                self.config_file = None
             log_error('Hostapd', f'Failed to create config file: {e}', e)
             raise
 

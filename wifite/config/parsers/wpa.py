@@ -80,6 +80,16 @@ def parse_wpa_args(cls, args):
         # Default to wpa_attack_timeout if not specified
         cls.wpa3_attack_timeout = cls.wpa_attack_timeout
 
+    # Dragonblood timing attack arguments
+    if hasattr(args, 'dragonblood_timing') and args.dragonblood_timing:
+        cls.dragonblood_timing = True
+        Color.pl('{+} {C}option:{W} will perform {C}Dragonblood timing side-channel{W} analysis')
+
+    if hasattr(args, 'dragonblood_timing_threshold') and args.dragonblood_timing_threshold is not None:
+        cls.dragonblood_timing_threshold = args.dragonblood_timing_threshold
+        Color.pl('{+} {C}option:{W} Dragonblood timing threshold set to {G}%.4f s{W}'
+                 % args.dragonblood_timing_threshold)
+
     if args.ignore_old_handshakes:
         cls.ignore_old_handshakes = True
         Color.pl('{+} {C}option:{W} will {O}ignore{W} existing handshakes (force capture)')

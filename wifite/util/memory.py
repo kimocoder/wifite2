@@ -245,7 +245,10 @@ class MemoryMonitor:
                 Configuration.existing_commands = dict(
                     list(Configuration.existing_commands.items())[-20:]
                 )
-        
+
+        # Remove any leftover temporary files created during credential validation
+        cls._cleanup_temp_credential_files()
+
         # Multiple GC passes
         total_collected = 0
         for _ in range(3):
@@ -265,6 +268,29 @@ class MemoryMonitor:
             Color.pl('{!} {R}Warning: Memory still critical after cleanup (%.1f MB){W}' % 
                     new_status['memory_mb'])
             Color.pl('{!} {O}Consider reducing target count or restarting wifite{W}')
+
+    @classmethod
+    def _cleanup_temp_credential_files(cls):
+        """Remove stale wpa_supplicant credential temp files from the temp directory."""
+        import glob as _glob
+        try:
+            temp_dir = Configuration.temp()
+            patterns = [
+                os.path.join(temp_dir, 'wpa_supplicant_*.conf'),
+            ]
+            removed = 0
+            for pattern in patterns:
+                for path in _glob.glob(pattern):
+                    try:
+                        os.remove(path)
+                        removed += 1
+                    except OSError:
+                        pass
+            if removed and Configuration.verbose > 1:
+                from ..util.color import Color
+                Color.pl('{+} {D}Cleanup: removed %d stale credential temp file(s){W}' % removed)
+        except Exception:
+            pass  # Best-effort cleanup; do not raise
     
     @classmethod
     def _fd_cleanup(cls):

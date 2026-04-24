@@ -309,6 +309,8 @@ class CredentialValidator:
         Returns:
             Path to configuration file
         """
+        fd = None
+        config_file = None
         try:
             # Create temp file
             fd, config_file = tempfile.mkstemp(
@@ -338,6 +340,7 @@ class CredentialValidator:
             config_content = '\n'.join(config)
             os.write(fd, config_content.encode('utf-8'))
             os.close(fd)
+            fd = None  # fd closed; avoid double-close
             
             # Set permissions
             os.chmod(config_file, 0o600)
@@ -349,6 +352,18 @@ class CredentialValidator:
             return config_file
             
         except Exception as e:
+            # Close the fd if it was left open
+            if fd is not None:
+                try:
+                    os.close(fd)
+                except OSError:
+                    pass
+            # Remove partially-written temp file
+            if config_file and os.path.exists(config_file):
+                try:
+                    os.remove(config_file)
+                except OSError:
+                    pass
             log_error('CredentialValidator', f'Failed to create wpa_supplicant config: {e}', e)
             raise
     

@@ -305,7 +305,24 @@ class InterfaceManager:
     # ========================================================================
     # Interface Configuration Methods (Task 10.2)
     # ========================================================================
-    
+
+    @staticmethod
+    def _validate_interface(interface: str) -> None:
+        """
+        Validate an interface name before use.
+
+        Applies the same validation rules as Configuration._validate_interface_name
+        to prevent untrusted strings from being passed to subprocess commands.
+
+        Args:
+            interface: Interface name to validate
+
+        Raises:
+            ValueError: If the interface name is invalid
+        """
+        from ..config.validators import validate_interface_name
+        validate_interface_name(interface)
+
     def bring_interface_up(self, interface: str) -> bool:
         """
         Bring an interface up.
@@ -319,6 +336,9 @@ class InterfaceManager:
             True if successful, False otherwise
         """
         try:
+            # Validate interface name before use
+            self._validate_interface(interface)
+
             # Task 11.3: Log each configuration step
             log_info('InterfaceManager', f'Configuration step: Bringing {interface} up')
             
@@ -355,6 +375,9 @@ class InterfaceManager:
             True if successful, False otherwise
         """
         try:
+            # Validate interface name before use
+            self._validate_interface(interface)
+
             log_debug('InterfaceManager', f'Bringing {interface} down')
             
             # Save state if not already managed
@@ -388,6 +411,9 @@ class InterfaceManager:
             True if successful, False otherwise
         """
         try:
+            # Validate interface name before use
+            self._validate_interface(interface)
+
             # Task 11.3: Log each configuration step
             log_info('InterfaceManager', f'Configuration step: Setting {interface} to {mode} mode')
             

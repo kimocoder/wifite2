@@ -96,6 +96,11 @@ def initialize_defaults(cls):
     cls.wpa3_check_dragonblood = False  # Only scan for Dragonblood vulnerabilities
     cls.wpa3_attack_timeout = None  # WPA3-specific timeout (defaults to wpa_attack_timeout)
 
+    # Dragonblood timing attack variables
+    cls.dragonblood_timing = False  # Enable Dragonblood timing side-channel analysis
+    cls.dragonblood_timing_threshold = 0.005  # Timing threshold in seconds (5 ms)
+    cls.dragonblood_timing_rounds = 20  # Number of timing probe rounds
+
     # PMKID variables
     cls.use_pmkid_only = False  # Only use PMKID Capture+Crack attack
     cls.pmkid_timeout = 300  # Time to wait for PMKID capture

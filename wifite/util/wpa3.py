@@ -102,8 +102,8 @@ class WPA3Detector:
             # WPA3-only networks require PMF by specification
             pmf_status = WPA3Detector.PMF_REQUIRED
         
-        # Get supported SAE groups (default to Group 19 for WPA3 targets)
-        sae_groups = [WPA3Detector.DEFAULT_SAE_GROUP]
+        # Get supported SAE groups from RSN IE if available, otherwise default
+        sae_groups = WPA3Detector._probe_sae_groups(target)
         
         # Check for Dragonblood vulnerability
         # Only vulnerable groups 22-24 are susceptible
@@ -118,6 +118,61 @@ class WPA3Detector:
             'sae_groups': sae_groups,
             'dragonblood_vulnerable': dragonblood_vulnerable
         }
+
+    @staticmethod
+    def _probe_sae_groups(target) -> List[int]:
+        """
+        Probe SAE groups advertised by the target.
+
+        Attempts to read SAE group information from the target object's
+        attributes (populated from beacon/probe-response parsing), falling
+        back to the default group (19) when not available.
+
+        Args:
+            target: Target object (may contain sae_groups attribute)
+
+        Returns:
+            List of SAE group numbers.  Defaults to [19] when unavailable.
+        """
+        # Check if target already has SAE group information
+        sae_groups = getattr(target, 'sae_groups', None)
+        if sae_groups and isinstance(sae_groups, list) and len(sae_groups) > 0:
+            return sae_groups
+
+        # Try to extract from target's information elements if present
+        # (populated by airodump/tshark parsers when available)
+        rsn_ie = getattr(target, 'rsn_information', None)
+        if rsn_ie and isinstance(rsn_ie, str):
+            groups = WPA3Detector._parse_sae_groups_from_rsn(rsn_ie)
+            if groups:
+                return groups
+
+        # Default to Group 19 (256-bit random ECP – most common WPA3 group)
+        return [WPA3Detector.DEFAULT_SAE_GROUP]
+
+    @staticmethod
+    def _parse_sae_groups_from_rsn(rsn_info: str) -> List[int]:
+        """
+        Parse SAE groups from a RSN information element string.
+
+        Args:
+            rsn_info: RSN information element as hex string or human-readable string
+
+        Returns:
+            List of SAE group numbers, empty if none found.
+        """
+        import re
+        groups: List[int] = []
+
+        # Match patterns like "Group: 19" or "SAE Group: 22, 19"
+        for match in re.finditer(r'\b(?:SAE\s+)?[Gg]roup[s]?\s*:?\s*(\d+(?:\s*,\s*\d+)*)', rsn_info):
+            for part in match.group(1).split(','):
+                try:
+                    groups.append(int(part.strip()))
+                except ValueError:
+                    pass
+
+        return groups
 
     @staticmethod
     def identify_transition_mode(target) -> bool:
