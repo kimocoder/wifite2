@@ -226,7 +226,7 @@ class Process:
             safe_cmd_str = re.sub(r"(--key)\s+\S+", r"\1 ****", safe_cmd_str)
             safe_cmd_str = re.sub(r"(--password)\s+\S+", r"\1 ****", safe_cmd_str)
             safe_cmd_str = re.sub(r"(--psk)\s+\S+", r"\1 ****", safe_cmd_str)
-        except Exception:
+        except (re.error, AttributeError):
             safe_cmd_str = cmd_str
         log_debug('Process', f'Creating process: {safe_cmd_str}')
         
@@ -281,11 +281,11 @@ class Process:
             if pid.poll() is None:
                 pid.kill()
                 pid.wait()
-        except Exception:
+        except (OSError, ValueError):
             pass
         for stream in (pid.stdin, pid.stdout, pid.stderr):
             if stream:
-                with contextlib.suppress(Exception):
+                with contextlib.suppress(OSError):
                     stream.close()
 
     def __enter__(self):
@@ -305,7 +305,7 @@ class Process:
             self.force_kill()
             try:
                 self.out, self.err = self.pid.communicate(timeout=2)
-            except Exception:
+            except (OSError, ValueError):
                 self.out, self.err = b'', b''
 
         if isinstance(self.out, bytes):
@@ -360,7 +360,7 @@ class Process:
             try:
                 self.pid.stdin.write(text.encode('utf-8'))
                 self.pid.stdin.flush()
-            except Exception:
+            except (OSError, ValueError):
                 pass
 
     def poll(self):
@@ -387,7 +387,7 @@ class Process:
             if hasattr(self, 'pid') and self.pid and self.pid.poll() is None:
                 log_debug('Process', 'Interrupting running process during cleanup')
                 self.interrupt()
-        except Exception as e:
+        except (OSError, ValueError) as e:
             log_debug('Process', f'Error interrupting process: {str(e)}')
             pass
 
@@ -398,10 +398,10 @@ class Process:
                 try:
                     stream.close()
                     streams_closed += 1
-                except Exception as e:
+                except (OSError, ValueError) as e:
                     log_debug('Process', f'Error closing stream: {str(e)}')
                     pass
-        
+
         if streams_closed > 0:
             log_debug('Process', f'Closed {streams_closed} stream(s)')
 
@@ -411,17 +411,17 @@ class Process:
             try:
                 fh.close()
                 devnull_closed += 1
-            except Exception as e:
+            except (OSError, ValueError) as e:
                 log_debug('Process', f'Error closing devnull handle: {str(e)}')
                 pass
         self._devnull_handles = []
-        
+
         if devnull_closed > 0:
             log_debug('Process', f'Closed {devnull_closed} devnull handle(s)')
 
         try:
             self._manager.unregister_process(self)
-        except Exception as e:
+        except (OSError, ValueError) as e:
             log_debug('Process', f'Error unregistering process: {str(e)}')
             pass
 
@@ -437,10 +437,10 @@ class Process:
             return
         try:
             self._graceful_shutdown(wait_time)
-        except Exception:
+        except (OSError, ValueError):
             try:
                 self.pid.wait()
-            except Exception:
+            except (OSError, ValueError):
                 pass
 
     def _graceful_shutdown(self, wait_time):
@@ -477,7 +477,7 @@ class Process:
 
         try:
             self.pid.wait()
-        except Exception:
+        except (OSError, ValueError):
             pass
 
     def force_kill(self):
@@ -487,7 +487,7 @@ class Process:
             if self.pid.poll() is None:
                 self.pid.kill()
                 self.pid.wait()
-        except Exception:
+        except (OSError, ValueError):
             pass
 
     def is_running(self):
@@ -500,7 +500,7 @@ class Process:
                 pid, _ = os.waitpid(-1, os.WNOHANG)
                 if pid == 0:
                     break
-        except Exception:
+        except (OSError, ValueError):
             pass
 
     # Cache for FD count to avoid filesystem scan on every process creation
@@ -520,7 +520,7 @@ class Process:
                 Process._fd_cache_value = len(os.listdir(proc_fd_dir))
                 Process._fd_cache_time = now
                 return Process._fd_cache_value
-        except Exception:
+        except OSError:
             pass
         Process._fd_cache_value = -1
         Process._fd_cache_time = now

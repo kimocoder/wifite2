@@ -31,7 +31,7 @@ try:
         sendp, sniff, conf as scapy_conf
     )
     SCAPY_AVAILABLE = True
-except Exception:
+except ImportError:
     SCAPY_AVAILABLE = False
 
 
@@ -251,7 +251,7 @@ class BeaconGenerator(Thread):
             try:
                 sendp(self._beacon_frame, iface=self.interface, verbose=False)
                 self.beacons_sent += 1
-            except Exception:
+            except OSError:
                 pass
             
             self._stop_event.wait(timeout=sleep_time)
@@ -287,9 +287,9 @@ class BeaconGenerator(Thread):
                             self.probes_responded += 1
                         break
                     elt = elt.payload.getlayer(Dot11Elt) if hasattr(elt.payload, 'getlayer') else None
-            except Exception:
+            except (UnicodeDecodeError, AttributeError):
                 pass
-        
+
         try:
             sniff(
                 iface=self.interface,
@@ -297,7 +297,7 @@ class BeaconGenerator(Thread):
                 store=False,
                 stop_filter=lambda _: self._stop_event.is_set()
             )
-        except Exception:
+        except OSError:
             pass
     
     def stop(self):

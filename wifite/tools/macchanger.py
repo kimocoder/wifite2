@@ -151,11 +151,11 @@ class Macchanger(Dependency):
                     Color.pl('\r{+} {C}macchanger{W}: changed mac address to {C}%s{W} on {C}%s{W} (native)' % (result, iface))
                     return
                     
-            except Exception as e:
+            except (OSError, RuntimeError) as e:
                 # Bring interface back up if it was taken down
                 try:
                     Ip.up(iface)
-                except Exception:
+                except (OSError, ValueError):
                     pass
         
         # Fallback: use macchanger binary
@@ -205,10 +205,10 @@ class Macchanger(Dependency):
                     Color.pl('\r{+} {C}macchanger{W}: set mac address to {C}%s{W} on {C}%s{W} (native)' % (mac_address, iface))
                     return True
                     
-            except Exception:
+            except (OSError, RuntimeError):
                 try:
                     Ip.up(iface)
-                except Exception:
+                except (OSError, ValueError):
                     pass
         
         # Fallback: use macchanger binary

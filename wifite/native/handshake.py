@@ -38,7 +38,7 @@ try:
         Dot11Elt, Raw, conf as scapy_conf
     )
     SCAPY_AVAILABLE = True
-except Exception:
+except (ImportError, AttributeError):
     SCAPY_AVAILABLE = False
 
 
@@ -149,8 +149,8 @@ class ScapyHandshake:
                 })
             
             return results
-            
-        except Exception:
+
+        except (OSError, AttributeError):
             return []
     
     @classmethod
@@ -211,8 +211,8 @@ class ScapyHandshake:
                 
                 # EAPOL-Key format: key_descriptor_type(1) + key_info(2) + key_len(2) + ...
                 key_info = (raw_data[1] << 8) | raw_data[2]
-                
-            except Exception:
+
+            except (UnicodeDecodeError, AttributeError):
                 continue
             
             # Determine message number from key info flags
@@ -372,13 +372,13 @@ class ScapyHandshake:
                             essid = elt.info.decode('utf-8', errors='replace')
                             if essid:
                                 return essid
-                        except Exception:
+                        except (UnicodeDecodeError, AttributeError):
                             pass
                     elt = elt.payload.getlayer(Dot11Elt) if hasattr(elt.payload, 'getlayer') else None
-            
+
             return None
-            
-        except Exception:
+
+        except (OSError, AttributeError):
             return None
 
 

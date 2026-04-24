@@ -282,7 +282,7 @@ class Wlancap2wpasec(Dependency):
             # If no version found but tool exists, return unknown
             return 'unknown'
             
-        except Exception:
+        except (OSError, RuntimeError):
             return None
 
 

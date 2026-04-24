@@ -143,7 +143,7 @@ class WPA3ToolChecker:
 
             return None, None
 
-        except Exception:
+        except (OSError, ValueError):
             return None, None
 
     @staticmethod
@@ -313,7 +313,7 @@ class WPA3ToolChecker:
             # Check for mode 22000 (WPA-PBKDF2-PMKID+EAPOL) or 22001 (WPA3-SAE)
             return '22000' in output or 'WPA' in output
 
-        except Exception:
+        except (OSError, ValueError):
             return False
 
 

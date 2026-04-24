@@ -111,7 +111,7 @@ class Logger:
         try:
             # Import lazily to avoid circular imports during module initialization
             from ..config import Configuration  # type: ignore
-        except Exception:
+        except (ImportError, AttributeError):
             Configuration = None  # type: ignore
 
         sanitized = message
@@ -123,7 +123,7 @@ class Logger:
                 if isinstance(api_key, str) and api_key:
                     masked_key = api_key[:4] + "*" * (len(api_key) - 4) if len(api_key) > 4 else "****"
                     sanitized = sanitized.replace(api_key, masked_key)
-        except Exception:
+        except (AttributeError, TypeError):
             # Never let sanitization break logging
             pass
 
@@ -137,7 +137,7 @@ class Logger:
 
             sanitized = re.sub(r"(-k)\s+\S+", _mask_cli_key, sanitized)
             sanitized = re.sub(r"(--key)\s+\S+", _mask_cli_key, sanitized)
-        except Exception:
+        except (re.error, AttributeError):
             pass
 
         # Mask MAC addresses: aa:bb:cc:dd:ee:ff -> aa:bb:cc:**:**:**
@@ -150,13 +150,13 @@ class Logger:
                 return full
 
             sanitized = re.sub(r"\b([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}\b", _mask_mac, sanitized)
-        except Exception:
+        except (re.error, AttributeError):
             pass
 
         # Mask aircrack "KEY FOUND! [ <key> ]" output
         try:
             sanitized = re.sub(r"(KEY FOUND!\s*\[)\s*\S.*?\s*(\])", r"\1 **** \2", sanitized)
-        except Exception:
+        except (re.error, AttributeError):
             pass
 
         # Mask aircrack live progress "Current passphrase: <value>"
@@ -167,7 +167,7 @@ class Logger:
                 sanitized,
                 flags=re.IGNORECASE,
             )
-        except Exception:
+        except (re.error, AttributeError):
             pass
 
         # Mask hashcat cracked output: trailing :<password> after PMKID/hash lines
@@ -179,7 +179,7 @@ class Logger:
                 sanitized,
                 flags=re.MULTILINE,
             )
-        except Exception:
+        except (re.error, AttributeError):
             pass
 
         # Mask generic keyword-value pairs: password/passphrase/psk followed by
@@ -190,7 +190,7 @@ class Logger:
                 r"\1=****",
                 sanitized,
             )
-        except Exception:
+        except (re.error, AttributeError):
             pass
 
         return sanitized

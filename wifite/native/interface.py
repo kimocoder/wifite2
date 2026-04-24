@@ -274,7 +274,7 @@ class NativeInterface:
             match = re.search(r'channel (\d+)', out)
             if match:
                 return int(match.group(1))
-        except Exception:
+        except (OSError, Exception):
             pass
         
         return None
@@ -434,7 +434,7 @@ class NativeInterface:
             match = re.search(r'type (\w+)', out)
             if match:
                 return match.group(1).lower()
-        except Exception:
+        except (OSError, Exception):
             pass
         
         return None

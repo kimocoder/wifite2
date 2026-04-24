@@ -40,7 +40,7 @@ class TUILogger:
                 try:
                     os.makedirs(log_dir, exist_ok=True)
                     os.chmod(log_dir, stat.S_IRWXU)  # 0700 — owner only
-                except Exception:
+                except (OSError, ValueError):
                     log_dir = os.path.expanduser('~')
                 log_file = os.path.join(log_dir, 'wifite_tui.log')
             cls._log_file = log_file
@@ -50,7 +50,7 @@ class TUILogger:
                 fd = os.open(cls._log_file, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, stat.S_IRUSR | stat.S_IWUSR)
                 with os.fdopen(fd, 'w') as f:
                     f.write(f"=== Wifite TUI Log Started: {datetime.now()} ===\n")
-            except Exception:
+            except (OSError, ValueError):
                 cls._enabled = False
 
     @classmethod

@@ -301,6 +301,20 @@ class SystemCheck:
             except Exception:
                 pass
 
+        if name == 'john':
+            try:
+                process = subprocess.run(
+                    ['john'], capture_output=True, text=True, timeout=5
+                )
+                output = (process.stdout + "\n" + process.stderr).splitlines()[:3]
+                content = " ".join(output)
+                match = re.search(r'version\s+([\d.]+\w*)', content, re.IGNORECASE)
+                if match:
+                    return match.group(1)
+            except Exception:
+                pass
+            return None
+
         for flag in ['--version', '-v', '-V', 'version']:
             try:
                 out = subprocess.run(

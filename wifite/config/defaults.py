@@ -114,16 +114,23 @@ def initialize_defaults(cls):
     cls.wordlist = None
     cls.wordlists = []
     default_wordlists = [
-        './wordlist-probable.txt',  # Local file (ran from cloned repo)
-        '/usr/share/dict/wordlist-probable.txt',  # setup.py with prefix=/usr
-        '/usr/local/share/dict/wordlist-probable.txt',  # setup.py with prefix=/usr/local
+        './wordlists/',  # Local directory (ran from cloned repo)
+        '/usr/share/dict/wordlists/',  # setup.py with prefix=/usr
+        '/usr/local/share/dict/wordlists/',  # setup.py with prefix=/usr/local
         # Other passwords found on Kali
         '/usr/share/wfuzz/wordlist/fuzzdb/wordlists-user-passwd/passwds/phpbb.txt',
         '/usr/share/fuzzdb/wordlists-user-passwd/passwds/phpbb.txt',
         '/usr/share/wordlists/fern-wifi/common.txt'
     ]
+    import glob
     for wlist in default_wordlists:
-        if os.path.exists(wlist):
+        if os.path.isdir(wlist):
+            files = sorted(glob.glob(os.path.join(wlist, '*.txt')))
+            if files:
+                cls.wordlist = files[0]
+                cls.wordlists = files
+                break
+        elif os.path.isfile(wlist):
             cls.wordlist = wlist
             cls.wordlists = [wlist]
             break

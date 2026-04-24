@@ -103,7 +103,7 @@ class Aireplay(Thread, Dependency):
                                stdout=self.output_fh,
                                stderr=Process.devnull(),
                                cwd=Configuration.temp())
-        except Exception:
+        except (OSError, RuntimeError):
             try:
                 self.output_fh.close()
             except OSError:
