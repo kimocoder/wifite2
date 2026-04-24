@@ -231,7 +231,7 @@ class SystemCheck:
             ('wash', False, 'wps', None, 'https://github.com/t6x/reaver-wps-fork-t6x'),
             ('tshark', False, 'inspection', '3.0.0', 'apt install tshark'),
             ('hashcat', False, 'cracking', '6.0.0', 'https://hashcat.net/hashcat/'),
-            ('john', False, 'cracking', None, 'apt install john'),
+            ('john', False, 'cracking', '1.9.0', 'apt install john'),
             ('hcxdumptool', False, 'wpa3', '6.2.0', 'apt install hcxdumptool'),
             ('hcxpcapngtool', False, 'wpa3', '6.2.0', 'apt install hcxtools'),
             ('cowpatty', False, 'cracking', None, 'apt install cowpatty'),
@@ -308,7 +308,11 @@ class SystemCheck:
                 )
                 output = (process.stdout + "\n" + process.stderr).splitlines()[:3]
                 content = " ".join(output)
-                match = re.search(r'version\s+([\d.]+\w*)', content, re.IGNORECASE)
+                # "John the Ripper 1.9.0-jumbo-1+bleeding-..." or "John the Ripper 1.9.0"
+                match = re.search(
+                    r'John the Ripper\s+(\d+\.\d+(?:\.\d+)?(?:-jumbo-\d+)?)',
+                    content,
+                )
                 if match:
                     return match.group(1)
             except Exception:
@@ -710,6 +714,8 @@ class SystemCheck:
                         icon = '{G}✓{W}'
                         ver_note = ''
                     Color.pl(f'    {icon} {{W}}{t.name.ljust(22)}{ver_str}{ver_note}{{W}}')
+                    if t.name == 'john' and t.version and 'jumbo' not in t.version.lower():
+                        Color.pl('        {O}⚠ Non-jumbo build — WPA cracking requires john-jumbo{W}')
                     if self.verbose > 0 and t.path:
                         Color.pl(f'        {{D}}{t.path}{{W}}')
                 else:
