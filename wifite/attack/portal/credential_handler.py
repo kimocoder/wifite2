@@ -364,20 +364,38 @@ class CredentialHandler:
         """
         return self.validation_results.copy()
     
+    def clear_credentials(self):
+        """Overwrite all stored credential data in memory to prevent leakage."""
+        # Overwrite passwords in validation results
+        for result in self.validation_results:
+            if result.submission.password:
+                result.submission.password = '\x00' * len(result.submission.password)
+                result.submission.password = ''
+        # Overwrite passwords in pending submissions
+        for submission in self.pending_submissions.values():
+            if submission.password:
+                submission.password = '\x00' * len(submission.password)
+                submission.password = ''
+        # Overwrite valid credential tuples
+        for i, (ssid, password) in enumerate(self.valid_credentials):
+            self.valid_credentials[i] = (ssid, '\x00' * len(password))
+        self.valid_credentials.clear()
+        log_info('CredentialHandler', 'Credential data cleared from memory')
+
     def clear_statistics(self):
         """Clear all statistics and results."""
+        self.clear_credentials()
         self.validation_results.clear()
-        self.valid_credentials.clear()
         self.client_attempts.clear()
         self.client_last_attempt.clear()
-        
+
         self.total_submissions = 0
         self.total_validations = 0
         self.successful_validations = 0
         self.failed_validations = 0
-        
+
         log_info('CredentialHandler', 'Statistics cleared')
-    
+
     def __str__(self):
         stats = self.get_statistics()
         return (f'CredentialHandler: {stats["total_submissions"]} submissions, '

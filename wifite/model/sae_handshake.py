@@ -319,6 +319,38 @@ class SAEHandshake:
         else:
             Color.pl('    Status: {R}Incomplete or invalid SAE handshake{W}')
 
+    def extract_frame_timing(self) -> List[Dict]:
+        """
+        Extract precise timestamps for all SAE Commit/Confirm frames.
+
+        Uses tshark to pull per-frame epoch timestamps so that response
+        latencies can be computed externally (e.g. by DragonbloodTimingAttack).
+
+        Returns:
+            List of dicts with keys: type ('commit'/'confirm'), timestamp,
+            src, dst, seq, sae_group.
+        """
+        from ..util.dragonblood_timing import DragonbloodTimingAttack
+        return DragonbloodTimingAttack.extract_timing_from_pcap(
+            self.capfile, self.bssid)
+
+    def get_ap_response_times_us(self) -> List[float]:
+        """
+        Compute AP SAE Commit response latencies from this capture.
+
+        Pairs each client-sent Commit with the next AP-sent Commit and
+        returns the time deltas in microseconds.
+
+        Returns:
+            List of response times in microseconds.
+        """
+        from ..util.dragonblood_timing import DragonbloodTimingAttack
+        frames = self.extract_frame_timing()
+        if not frames:
+            return []
+        return DragonbloodTimingAttack.compute_pcap_response_times(
+            frames, self.bssid)
+
     @staticmethod
     def check_tools() -> Dict[str, bool]:
         """

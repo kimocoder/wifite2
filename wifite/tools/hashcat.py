@@ -7,6 +7,171 @@ from ..util.process import Process
 from ..util.color import Color
 from ..util.logger import log_debug, log_info, log_warning, log_error
 import os
+import re
+import threading
+
+class HashcatCracker:
+    """
+    Runs hashcat and streams live progress from its own stdout.
+
+    Hashcat is launched with --status --status-timer=N --machine-readable,
+    so it emits tab-separated STATUS lines on a fixed cadence. A background
+    reader thread parses each line: STATUS lines update progress/speed/ETA,
+    cracked-hash lines capture the password.
+    """
+
+    STATUS_TIMER_SECONDS = 2
+
+    def __init__(self, hash_file, wordlist, mode='22000', target_is_wpa3_sae=False):
+        self.hash_file = hash_file
+        self.wordlist = wordlist
+        self.mode = mode
+        self.target_is_wpa3_sae = target_is_wpa3_sae
+        self.proc = None
+        self._result_key = None
+        self._status = {'progress': 0.0, 'speed': 'Unknown', 'eta': 'Unknown'}
+        self._status_lock = threading.Lock()
+        self._reader_thread = None
+        self._stop_reader = threading.Event()
+
+    def start(self, show_command=False):
+        """Launch hashcat with periodic machine-readable status output."""
+        # NOTE: deliberately NOT using --quiet. In hashcat 7.x, --quiet
+        # suppresses --status-timer output, so the reader thread would
+        # never see any STATUS lines and progress would stay at 0%.
+        # The reader thread filters for STATUS / WPA* lines and drops
+        # everything else, so the banner noise is invisible to the user.
+        command = [
+            'hashcat',
+            '-m', self.mode,
+            '--status',
+            '--status-timer', str(self.STATUS_TIMER_SECONDS),
+            '--machine-readable',
+            '-w', '3',
+            self.hash_file,
+            self.wordlist,
+        ]
+        if Hashcat.should_use_force():
+            command.append('--force')
+
+        if show_command:
+            Color.pl(f'{{+}} {{D}}Running: {{W}}{{P}}{" ".join(command)}{{W}}')
+
+        self.proc = Process(command)
+        self._reader_thread = threading.Thread(
+            target=self._read_output, daemon=True)
+        self._reader_thread.start()
+        return self.proc
+
+    def _read_output(self):
+        """Consume hashcat stdout; update status and capture cracked hash."""
+        if not self.proc or not self.proc.pid.stdout:
+            return
+        try:
+            while not self._stop_reader.is_set():
+                raw = self.proc.pid.stdout.readline()
+                if not raw:
+                    if self.proc.poll() is not None:
+                        break
+                    continue
+                line = raw.decode('utf-8', errors='replace') if isinstance(raw, bytes) else raw
+                line = line.rstrip('\r\n')
+                if not line:
+                    continue
+                if line.startswith('STATUS\t'):
+                    self._parse_status_line(line)
+                elif 'WPA*' in line and ':' in line:
+                    # Cracked hash line: <hash>:<password>. The hash itself
+                    # uses '*' as field separator, so rsplit on ':' is safe.
+                    self._result_key = line.rsplit(':', 1)[-1].strip()
+        except Exception as e:
+            log_debug('HashcatCracker', f'Reader thread error: {e}')
+
+    def _parse_status_line(self, line):
+        """Update self._status from a machine-readable STATUS tab line."""
+        # Format: STATUS <code> SPEED <h/s> <ms> EXEC_RUNTIME <s> CURKU <n>
+        #         PROGRESS <cur> <total> RECHASH <a> <b> RECSALT <a> <b>
+        #         REJECTED <n> UTIL <n>
+        parts = line.split('\t')
+        speed_hps = None
+        progress_cur = None
+        progress_total = None
+        i = 0
+        while i < len(parts):
+            tok = parts[i]
+            if tok == 'SPEED' and i + 1 < len(parts):
+                try:
+                    speed_hps = int(parts[i + 1])
+                except ValueError:
+                    pass
+                i += 3  # consume <h/s> and <ms> fields
+            elif tok == 'PROGRESS' and i + 2 < len(parts):
+                try:
+                    progress_cur = int(parts[i + 1])
+                    progress_total = int(parts[i + 2])
+                except ValueError:
+                    pass
+                i += 3
+            else:
+                i += 1
+
+        with self._status_lock:
+            if progress_total and progress_total > 0 and progress_cur is not None:
+                self._status['progress'] = progress_cur / progress_total
+            if speed_hps is not None:
+                self._status['speed'] = self._format_speed(speed_hps)
+            if (speed_hps and progress_total and progress_cur is not None
+                    and speed_hps > 0 and progress_total > progress_cur):
+                remaining = (progress_total - progress_cur) / speed_hps
+                self._status['eta'] = self._format_duration(remaining)
+
+    @staticmethod
+    def _format_speed(hps):
+        for unit, div in (('GH/s', 1e9), ('MH/s', 1e6), ('kH/s', 1e3)):
+            if hps >= div:
+                return f'{hps / div:.1f} {unit}'
+        return f'{hps} H/s'
+
+    @staticmethod
+    def _format_duration(seconds):
+        if seconds >= 3600:
+            return f'{seconds / 3600:.1f}h'
+        if seconds >= 60:
+            return f'{seconds / 60:.1f}m'
+        return f'{int(seconds)}s'
+
+    def poll_status(self):
+        """Return a snapshot of the latest parsed status."""
+        with self._status_lock:
+            return dict(self._status)
+
+    def is_finished(self):
+        """Check if the process has exited."""
+        if not self.proc:
+            return True
+        return self.proc.poll() is not None
+
+    def get_result(self):
+        """Return the cracked password, or None.
+
+        Waits briefly for the reader thread to drain any final output the
+        OS pipe buffer still holds after hashcat exits.
+        """
+        if self._reader_thread and self._reader_thread.is_alive():
+            self._reader_thread.join(timeout=2.0)
+        return self._result_key
+
+    def interrupt(self):
+        """Interrupt the cracking process and stop the reader thread."""
+        self._stop_reader.set()
+        if self.proc:
+            self.proc.interrupt()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.interrupt()
 
 hccapx_autoremove = False  # change this to True if you want the hccapx files to be automatically removed
 
@@ -78,6 +243,46 @@ class Hashcat(Dependency):
         return 'No devices found/left' in stderr or 'Unstable OpenCL driver detected!' in stderr
 
     @staticmethod
+    def _live_crack(hash_file, wordlist, mode='22000', show_command=False):
+        """Run hashcat via HashcatCracker with live progress printed on one line."""
+        import time
+        with HashcatCracker(hash_file, wordlist, mode=mode) as cracker:
+            cracker.start(show_command=show_command)
+            try:
+                while not cracker.is_finished():
+                    status = cracker.poll_status()
+                    Color.clear_entire_line()
+                    Color.p('\r{+} {C}Cracking:{W} %5.1f%%  {C}Speed:{W} %s  {C}ETA:{W} %s' %
+                            (status['progress'] * 100, status['speed'], status['eta']))
+                    time.sleep(cracker.STATUS_TIMER_SECONDS)
+            except KeyboardInterrupt:
+                Color.pl('')
+                raise
+            Color.pl('')  # terminate the progress line
+            return cracker.get_result()
+
+    @staticmethod
+    def _check_potfile(hash_file, mode='22000'):
+        """Check hashcat's potfile for an already-cracked hash; returns password or None."""
+        command = [
+            'hashcat',
+            '--quiet',
+            '-m', mode,
+            hash_file,
+            '--show',
+        ]
+        if Hashcat.should_use_force():
+            command.append('--force')
+        stdout, _ = Process.call(command, timeout=30)
+        if not stdout or ':' not in stdout:
+            return None
+        for line in stdout.strip().split('\n'):
+            line = line.strip()
+            if 'WPA*' in line and ':' in line:
+                return line.rsplit(':', 1)[-1].strip()
+        return None
+
+    @staticmethod
     def crack_handshake(handshake_obj, target_is_wpa3_sae, show_command=False, wordlist=None):
         """
         Cracks a handshake.
@@ -94,7 +299,6 @@ class Hashcat(Dependency):
             return Aircrack.crack_handshake(handshake_obj, show_command=show_command, wordlist=wordlist)
 
         wordlist = wordlist or Configuration.wordlist
-        key = None
         try:
             # Mode 22000 supports both WPA/WPA2 and WPA3-SAE (WPA-PBKDF2-PMKID+EAPOL)
             hashcat_mode = '22000'
@@ -109,53 +313,13 @@ class Hashcat(Dependency):
 
             Color.pl(f"{{+}} {{C}}Attempting to crack {file_type_msg} using Hashcat mode {hashcat_mode}{{W}}")
 
-            # Crack hash_file
-            for additional_arg in ([], ['--show']):
-                command = [
-                    'hashcat',
-                    '--quiet',
-                    '-m', hashcat_mode,
-                    hash_file,
-                    wordlist
-                ]
-                if Hashcat.should_use_force():
-                    command.append('--force')
-                command.extend(additional_arg)
-                if show_command:
-                    Color.pl(f'{{+}} {{D}}Running: {{W}}{{P}}{" ".join(command)}{{W}}')
-                process = Process(command)
-                stdout, stderr = process.get_output()
+            # Live cracking with streamed progress
+            key = Hashcat._live_crack(hash_file, wordlist, mode=hashcat_mode, show_command=show_command)
+            if key:
+                return key
 
-                # Check for errors first
-                if 'No hashes loaded' in stdout or 'No hashes loaded' in stderr:
-                    continue  # No valid hashes to crack
-
-                if ':' not in stdout:
-                    continue  # No cracked results
-
-                # Parse the key from hashcat output
-                # Expected format for mode 22000: WPA*...*hash*bssid*station*essid:password
-                # The hash line starts with 'WPA*' and the password is after the last colon
-                lines = stdout.strip().split('\n')
-                for line in lines:
-                    line = line.strip()
-                    if not line or not ':' in line:
-                        continue
-                    # Skip known non-result lines
-                    if line.startswith('The plugin') or 'hashcat.net' in line:
-                        continue
-                    # Valid result lines should contain 'WPA*' (hash format prefix)
-                    if 'WPA*' in line:
-                        parts = line.split(':')
-                        if len(parts) >= 2:
-                            key = parts[-1].strip()
-                            if key:
-                                break
-                else:
-                    continue
-                break
-
-            return key
+            # Fallback: pot-file lookup (catches hashes cracked in a prior run)
+            return Hashcat._check_potfile(hash_file, mode=hashcat_mode)
         finally:
             # Cleanup temporary hash file
             if hash_file and os.path.exists(hash_file):
@@ -181,37 +345,13 @@ class Hashcat(Dependency):
 
         wordlist = wordlist or Configuration.wordlist
 
-        # Run hashcat once normally, then with --show if it failed
-        # To catch cases where the password is already in the pot file.
-        for additional_arg in ([], ['--show']):
-            command = [
-                'hashcat',
-                '--quiet',      # Only output the password if found.
-                '-m', '22000',  # WPA-PMKID-PBKDF2
-                '-a', '0',      # Wordlist attack-mode
-                pmkid_file,
-                wordlist,
-                '-w', '3'
-            ]
-            if Hashcat.should_use_force():
-                command.append('--force')
-            command.extend(additional_arg)
-            if verbose and additional_arg == []:
-                Color.pl(f'{{+}} {{D}}Running: {{W}}{{P}}{" ".join(command)}{{W}}')
+        # Live cracking with streamed progress
+        key = Hashcat._live_crack(pmkid_file, wordlist, mode='22000', show_command=verbose)
+        if key:
+            return key
 
-            # TODO: Check status of hashcat (%); it's impossible with --quiet
-
-            hashcat_proc = Process(command)
-            hashcat_proc.wait()
-            stdout = hashcat_proc.stdout()
-
-            if ':' not in stdout:
-                # Failed
-                continue
-            else:
-                # Hashcat PMKID output format: hash*bssid*station*essid:password
-                # We only want the password (last part after the last colon)
-                return stdout.strip().split(':')[-1]
+        # Fallback: pot-file lookup (hash may have been cracked previously)
+        return Hashcat._check_potfile(pmkid_file, mode='22000')
 
 
 class HcxDumpTool(Dependency):

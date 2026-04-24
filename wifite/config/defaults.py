@@ -95,6 +95,9 @@ def initialize_defaults(cls):
     cls.wpa3_force_sae = False  # Skip WPA2 attacks on transition mode
     cls.wpa3_check_dragonblood = False  # Only scan for Dragonblood vulnerabilities
     cls.wpa3_attack_timeout = None  # WPA3-specific timeout (defaults to wpa_attack_timeout)
+    cls.dragonblood_timing = False  # Enable Dragonblood timing attack (CVE-2019-13377)
+    cls.dragonblood_samples = 3  # Timing samples per password candidate
+    cls.dragonblood_max_passwords = 50  # Max passwords to probe during timing attack
 
     # PMKID variables
     cls.use_pmkid_only = False  # Only use PMKID Capture+Crack attack

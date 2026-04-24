@@ -3,7 +3,7 @@
 
 from ..model.attack import Attack
 from ..tools.aircrack import Aircrack
-from ..tools.hashcat import Hashcat
+from ..tools.hashcat import Hashcat, HashcatCracker, HcxDumpTool, HcxPcapngTool
 from ..tools.airodump import Airodump
 from ..tools.aireplay import Aireplay
 from ..config import Configuration
@@ -413,7 +413,37 @@ class AttackWPA(Attack):
                 })
 
             try:
-                key = Hashcat.crack_handshake(handshake, target_is_wpa3_sae, show_command=Configuration.verbose > 1, wordlist=wordlist)
+                # Use the new HashcatCracker for non-blocking execution and progress polling
+                # First, generate the hash file (we use the existing HcxPcapngTool logic via a helper)
+                hash_file = HcxPcapngTool.generate_hash_file(handshake, target_is_wpa3_sae, show_command=Configuration.verbose > 1)
+
+                if hash_file is None:
+                    # Fallback to aircrack-ng if hash file generation failed
+                    key = Hashcat.crack_handshake(handshake, target_is_wpa3_sae, show_command=Configuration.verbose > 1, wordlist=wordlist)
+                else:
+                    try:
+                        with HashcatCracker(hash_file, wordlist, target_is_wpa3_sae=target_is_wpa3_sae) as cracker:
+                            cracker.start(show_command=Configuration.verbose > 1)
+
+                            while not cracker.is_finished():
+                                status = cracker.poll_status()
+                                if self.view:
+                                    self.view.update_progress({
+                                        'progress': status['progress'],
+                                        'metrics': {
+                                            'Speed': status['speed'],
+                                            'ETA': status['eta']
+                                        }
+                                    })
+                                time.sleep(2)
+
+                            key = cracker.get_result()
+                    finally:
+                        if hash_file and os.path.exists(hash_file):
+                            try:
+                                os.remove(hash_file)
+                            except OSError:
+                                pass
             except ValueError as e: # Catch errors from hash file generation (e.g. bad capture)
                 error_msg = f"Error during hash file generation for cracking: {e}"
                 Color.pl(f"[!] {error_msg}")

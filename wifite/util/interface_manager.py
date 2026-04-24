@@ -377,17 +377,20 @@ class InterfaceManager:
     def set_interface_mode(self, interface: str, mode: str) -> bool:
         """
         Set interface to a specific mode.
-        
+
         Tracks state changes for cleanup.
-        
+
         Args:
             interface: Interface name
             mode: Mode to set ('managed', 'monitor', 'AP', 'ad-hoc', 'mesh')
-            
+
         Returns:
             True if successful, False otherwise
         """
         try:
+            from ..config.validators import validate_interface_name
+            validate_interface_name(interface)
+
             # Task 11.3: Log each configuration step
             log_info('InterfaceManager', f'Configuration step: Setting {interface} to {mode} mode')
             

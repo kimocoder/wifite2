@@ -92,7 +92,11 @@ class DragonbloodDetector:
         
         sae_groups = wpa3_info.get('sae_groups', [])
         pmf_status = wpa3_info.get('pmf_status', 'unknown')
-        transition_mode = wpa3_info.get('transition_mode', False)
+        # The producer (WPA3Detector) writes 'is_transition'; fall back to
+        # the legacy 'transition_mode' key so callers with older dicts
+        # still work.
+        transition_mode = wpa3_info.get('is_transition',
+                                        wpa3_info.get('transition_mode', False))
         
         # Check for weak SAE groups
         for group in sae_groups:
@@ -203,6 +207,98 @@ class DragonbloodDetector:
         """Get list of recommended secure SAE groups."""
         return list(DragonbloodDetector.SECURE_SAE_GROUPS.keys())
     
+    @staticmethod
+    def is_timing_attack_viable(wpa3_info: Dict) -> bool:
+        """
+        Check whether the Dragonblood timing attack is worth attempting.
+
+        The timing side-channel (CVE-2019-13377) only applies when the AP
+        negotiates MODP groups 22, 23, or 24.
+
+        Args:
+            wpa3_info: WPA3 capability dict from WPA3Detector.
+
+        Returns:
+            True if timing attack is viable.
+        """
+        if not wpa3_info:
+            return False
+        sae_groups = wpa3_info.get('sae_groups', [])
+        modp_vulnerable = {22, 23, 24}
+        return bool(modp_vulnerable.intersection(sae_groups))
+
+    @staticmethod
+    def enrich_with_timing(vulnerability_info: Dict,
+                           timing_analysis) -> Dict:
+        """
+        Merge timing-attack results into an existing vulnerability report.
+
+        Args:
+            vulnerability_info: Dict from check_vulnerability().
+            timing_analysis:    TimingAnalysis from DragonbloodTimingAttack.
+
+        Returns:
+            The same dict, augmented with timing-specific fields.
+        """
+        if timing_analysis is None:
+            return vulnerability_info
+
+        vulnerability_info['timing_performed'] = True
+        vulnerability_info['timing_samples'] = timing_analysis.total_samples
+        vulnerability_info['timing_confidence'] = timing_analysis.confidence
+        vulnerability_info['timing_fast_count'] = len(
+            timing_analysis.fast_passwords)
+        vulnerability_info['timing_slow_count'] = len(
+            timing_analysis.slow_passwords)
+        vulnerability_info['timing_mean_us'] = timing_analysis.mean_us
+        vulnerability_info['timing_stdev_us'] = timing_analysis.stdev_us
+
+        # Upgrade risk level if timing attack yielded good separation
+        if timing_analysis.confidence >= 0.7:
+            vulnerability_info['risk_level'] = 'high'
+            vulnerability_info['vulnerabilities'].append(
+                'CVE-2019-13377: Timing attack confirmed with %.0f%% '
+                'confidence' % (timing_analysis.confidence * 100))
+            vulnerability_info['recommendations'].append(
+                'Timing attack reduced search space — '
+                'upgrade firmware to eliminate MODP group support')
+        elif timing_analysis.confidence >= 0.4:
+            vulnerability_info['vulnerabilities'].append(
+                'CVE-2019-13377: Timing attack partially successful '
+                '(%.0f%% confidence)' % (timing_analysis.confidence * 100))
+
+        return vulnerability_info
+
+    @staticmethod
+    def print_timing_report(timing_analysis) -> None:
+        """
+        Print a formatted summary of timing-attack results.
+
+        Args:
+            timing_analysis: TimingAnalysis from DragonbloodTimingAttack.
+        """
+        if timing_analysis is None:
+            return
+
+        Color.pl('\n{+} {C}Dragonblood Timing Results:{W}')
+        Color.pl('    Probes:    {C}%d{W}' % timing_analysis.total_samples)
+        Color.pl('    Mean:      {C}%.0f{W} us' % timing_analysis.mean_us)
+        Color.pl('    Stdev:     {C}%.0f{W} us' % timing_analysis.stdev_us)
+        Color.pl('    Fast:      {G}%d{W} passwords' %
+                 len(timing_analysis.fast_passwords))
+        Color.pl('    Slow:      {O}%d{W} passwords' %
+                 len(timing_analysis.slow_passwords))
+
+        if timing_analysis.confidence >= 0.7:
+            Color.pl('    Confidence: {G}%.0f%%{W} — strong partition' %
+                     (timing_analysis.confidence * 100))
+        elif timing_analysis.confidence >= 0.4:
+            Color.pl('    Confidence: {O}%.0f%%{W} — moderate partition' %
+                     (timing_analysis.confidence * 100))
+        else:
+            Color.pl('    Confidence: {R}%.0f%%{W} — weak partition' %
+                     (timing_analysis.confidence * 100))
+
     @staticmethod
     def scan_mode_check(targets: List) -> Dict:
         """

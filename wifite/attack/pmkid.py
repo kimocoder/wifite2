@@ -3,7 +3,7 @@
 
 from ..model.attack import Attack
 from ..config import Configuration
-from ..tools.hashcat import HcxDumpTool, HcxPcapngTool, Hashcat
+from ..tools.hashcat import HcxDumpTool, HcxPcapngTool, Hashcat, HashcatCracker
 from ..util.color import Color
 from ..util.timer import Timer
 from ..util.output import OutputManager
@@ -515,7 +515,36 @@ class AttackPMKID(Attack):
                 wordlist_name = os.path.basename(wordlist)
                 Color.clear_entire_line()
                 Color.pattack('PMKID', self.target, 'CRACK', 'Cracking PMKID using {C}%s{W} ...\n' % wordlist_name)
-                key = Hashcat.crack_pmkid(pmkid_file, wordlist=wordlist)
+
+                try:
+                    with HashcatCracker(pmkid_file, wordlist) as cracker:
+                        cracker.start(show_command=Configuration.verbose > 1)
+
+                        # Polling loop for progress tracking
+                        while not cracker.is_finished():
+                            status = cracker.poll_status()
+                            if self.view:
+                                self.view.update_progress({
+                                    'progress': status['progress'],
+                                    'metrics': {
+                                        'Speed': status['speed'],
+                                        'ETA': status['eta']
+                                    }
+                                })
+
+                            # Update TUI status line periodically (approx every 2 seconds)
+                            # We use a simple sleep since this is a dedicated attack thread
+                            time.sleep(2)
+
+                        key = cracker.get_result()
+                except KeyboardInterrupt:
+                    return self._handle_hashcat_failure(
+                        '\n{!} {R}Failed to crack PMKID: {O}Cracking interrupted by user{W}'
+                    )
+                except Exception as e:
+                    log_error('AttackPMKID', f'Error during hashcat polling: {e}')
+                    continue
+
                 if key is not None:
                     break
                 Color.pl('{!} {O}%s did not contain password{W}' % wordlist_name)

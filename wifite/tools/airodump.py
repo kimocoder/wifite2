@@ -206,8 +206,15 @@ class Airodump(Dependency):
                 # No tshark, or it failed. Fall-back to wash
                 Wash.check_for_wps_and_update_targets(capfile, new_targets)
 
-        # Detect WPA3 capabilities for all targets
-        Airodump.detect_wpa3_capabilities(new_targets)
+        # Detect WPA3 capabilities for all targets.
+        # Pass airodump's running capfile so WPA3Detector can parse real
+        # PMF bits from beacon RSN IEs (and SAE groups from any captured
+        # commit frames) instead of falling back to heuristics.
+        capfile = f'{csv_filename[:-3]}cap'
+        Airodump.detect_wpa3_capabilities(
+            new_targets,
+            capfile=capfile if os.path.isfile(capfile) else None,
+        )
 
         # Honeypot / rogue AP detection
         if Configuration.detect_honeypots:
@@ -316,27 +323,28 @@ class Airodump(Dependency):
         return targets2
 
     @staticmethod
-    def detect_wpa3_capabilities(targets):
+    def detect_wpa3_capabilities(targets, capfile=None):
         """
         Detect and store WPA3 capabilities for all targets.
-        This method analyzes each target's encryption and authentication
-        information to determine WPA3 support, transition mode, PMF status,
-        and other WPA3-related capabilities.
-        Performance: Detection results are cached in target.wpa3_info.
-        Subsequent calls to WPA3Detector methods will use cached data.
 
         Args:
             targets: List of Target objects to analyze
+            capfile: Optional pcap/pcapng file; when provided, WPA3Detector
+                     uses it to parse real PMF bits from beacon RSN IEs and
+                     observed SAE groups from any SAE Commit frames. This
+                     turns Dragonblood detection from a hardcoded [19]
+                     default into data-driven detection.
         """
         for target in targets:
             # Skip if already detected (cached)
             if hasattr(target, 'wpa3_info') and target.wpa3_info is not None:
+                # Opportunistically refine from the capture if we have one
+                if capfile:
+                    WPA3Detector.refresh_from_capture(target, capfile)
                 continue
 
-            # Detect WPA3 capability (use_cache=False since we're setting it)
-            wpa3_info_dict = WPA3Detector.detect_wpa3_capability(target, use_cache=False)
-
-            # Create WPA3Info object and attach to target for caching
+            wpa3_info_dict = WPA3Detector.detect_wpa3_capability(
+                target, use_cache=False, capfile=capfile)
             target.wpa3_info = WPA3Info.from_dict(wpa3_info_dict)
 
     @staticmethod

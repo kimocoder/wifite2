@@ -116,6 +116,9 @@ class Configuration:
     wpa3_force_sae = None
     wpa3_check_dragonblood = None
     wpa3_attack_timeout = None
+    dragonblood_timing = None
+    dragonblood_samples = 3
+    dragonblood_max_passwords = 50
     wpa_handshake_dir = None
     wpa_strip_handshake = None
     wps_fail_threshold = None

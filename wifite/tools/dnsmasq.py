@@ -41,6 +41,8 @@ class Dnsmasq(Dependency):
             dhcp_range_end: End of DHCP range
             portal_ip: IP address to redirect DNS queries to (defaults to gateway_ip)
         """
+        from ..config.validators import validate_interface_name
+        validate_interface_name(interface)
         self.interface = interface
         self.gateway_ip = gateway_ip
         self.dhcp_range_start = dhcp_range_start
@@ -92,11 +94,9 @@ class Dnsmasq(Dependency):
         # DNS configuration - redirect all queries to portal
         config.append(f'address=/#/{self.portal_ip}')
         
-        # Lease file
+        # Lease file (always use the secure temp file created in create_config_file)
         if self.lease_file:
             config.append(f'dhcp-leasefile={self.lease_file}')
-        else:
-            config.append('dhcp-leasefile=/tmp/dnsmasq.leases')
         
         # Logging
         config.append('log-queries')
@@ -137,13 +137,14 @@ class Dnsmasq(Dependency):
             # Set permissions
             os.chmod(self.config_file, 0o600)
             
-            # Create lease file
+            # Create lease file with restricted permissions
             fd_lease, self.lease_file = tempfile.mkstemp(
                 prefix='dnsmasq_leases_',
                 suffix='.txt',
                 dir=Configuration.temp()
             )
             os.close(fd_lease)
+            os.chmod(self.lease_file, 0o600)
             
             log_debug('Dnsmasq', f'Created config file: {self.config_file}')
             log_debug('Dnsmasq', f'Created lease file: {self.lease_file}')
@@ -163,7 +164,7 @@ class Dnsmasq(Dependency):
     def start(self) -> bool:
         """
         Start dnsmasq process.
-        
+
         Returns:
             True if started successfully, False otherwise
         """
@@ -171,50 +172,52 @@ class Dnsmasq(Dependency):
             if self.running:
                 log_warning('Dnsmasq', 'Already running')
                 return True
-            
+
             # Create config file
             if not self.config_file:
                 self.create_config_file()
-            
+
             # Setup IP forwarding and routing
             self._setup_routing()
-            
+
             # Start dnsmasq
             cmd = [
                 'dnsmasq',
                 '--conf-file=%s' % self.config_file,
                 '--no-daemon'
             ]
-            
+
             if Configuration.verbose > 0:
                 Color.pl('{+} Starting dnsmasq: {D}%s{W}' % ' '.join(cmd))
-            
+
             self.process = Process(cmd, devnull=False)
-            
+
             # Wait a moment for startup
             time.sleep(1)
-            
+
             # Check if process is running
             if self.process.poll() is not None:
-                # Process died
+                # Process died — clean up temp files
                 output = self.process.stdout()
                 log_error('Dnsmasq', f'Failed to start: {output}')
                 Color.pl('{!} {R}Dnsmasq failed to start{W}')
                 if Configuration.verbose > 0:
                     Color.pl('{!} {O}Output:{W}\n%s' % output)
+                self._remove_temp_files()
                 return False
-            
+
             self.running = True
             log_info('Dnsmasq', f'Started successfully on {self.interface}')
-            
+
             if Configuration.verbose > 0:
                 Color.pl('{+} {G}Dnsmasq started{W} on {C}%s{W}' % self.interface)
-            
+
             return True
-            
+
         except Exception as e:
             log_error('Dnsmasq', f'Failed to start: {e}', e)
             Color.pl('{!} {R}Failed to start dnsmasq:{W} %s' % str(e))
+            self._remove_temp_files()
             return False
     
     def _setup_routing(self):
@@ -295,27 +298,34 @@ class Dnsmasq(Dependency):
         except Exception as e:
             log_error('Dnsmasq', f'Error stopping dnsmasq: {e}', e)
     
+    def _remove_temp_files(self):
+        """Remove temporary config and lease files if they exist."""
+        for label, attr in [('config', 'config_file'), ('lease', 'lease_file')]:
+            path = getattr(self, attr, None)
+            if path:
+                try:
+                    if os.path.exists(path):
+                        os.remove(path)
+                        log_debug('Dnsmasq', f'Removed {label} file: {path}')
+                except OSError as e:
+                    log_warning('Dnsmasq', f'Failed to remove {label} file: {e}')
+                finally:
+                    setattr(self, attr, None)
+
     def cleanup(self):
         """Cleanup dnsmasq resources."""
         try:
             # Stop process
             self.stop()
-            
+
             # Cleanup routing
             self._cleanup_routing()
-            
-            # Remove config file
-            if self.config_file and os.path.exists(self.config_file):
-                os.remove(self.config_file)
-                log_debug('Dnsmasq', f'Removed config file: {self.config_file}')
-            
-            # Remove lease file
-            if self.lease_file and os.path.exists(self.lease_file):
-                os.remove(self.lease_file)
-                log_debug('Dnsmasq', f'Removed lease file: {self.lease_file}')
-            
+
+            # Remove temp files
+            self._remove_temp_files()
+
             log_info('Dnsmasq', 'Cleanup complete')
-            
+
         except Exception as e:
             log_error('Dnsmasq', f'Cleanup error: {e}', e)
     
