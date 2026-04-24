@@ -1,12 +1,12 @@
 # Core dependencies for wifite2
 # These should match pyproject.toml [project.dependencies]
-chardet>=7.4.1
-requests>=2.32.5
-rich>=14.0.0
-scapy>=2.7.0; python_version < '4'
-setuptools>=82.0.0
+chardet>=7.4.3
+requests>=2.33.1
+rich>=15.0.0
+scapy>=2.7.1rc1; python_version < '4'
+setuptools>=82.0.1
 
 # Development dependencies (optional)
 # For development, install with: pip install -e ".[dev]"
-# Or install from pyproject.toml: pip install pytest>=8.0.0 pytest-cov>=4.1.0 pytest-timeout>=2.3.0
-urllib3>=2.6.0 # not directly required, pinned by Snyk to avoid a vulnerability
+# (see [project.optional-dependencies] in pyproject.toml for dev pins)
+urllib3>=2.6.3 # not directly required, pinned by Snyk to avoid a vulnerability
