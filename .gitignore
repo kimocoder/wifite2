@@ -22,7 +22,6 @@ tools/reaver/
 tools/bully/
 tools/pixiewps/
 tools/hashcat/
-wordlists/
 files.txt
 *.swp
 *.cmd
