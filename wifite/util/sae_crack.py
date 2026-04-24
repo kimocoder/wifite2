@@ -15,7 +15,7 @@ from typing import Optional, Dict, Any, List
 
 from ..config import Configuration
 from ..model.sae_handshake import SAEHandshake
-from ..tools.hashcat import Hashcat, HcxPcapngTool
+from ..tools.hashcat import Hashcat, HashcatCracker, HcxPcapngTool
 from ..util.color import Color
 from ..util.process import Process
 
@@ -47,7 +47,6 @@ class SAECracker:
         self.wordlist = wordlist or Configuration.wordlist
         self.hash_file = None
         self.cracked_key = None
-        self.progress_data = {}
         
     @staticmethod
     def crack_sae_handshake(
@@ -234,68 +233,81 @@ class SAECracker:
         verbose: bool = True
     ) -> Optional[str]:
         """
-        Run hashcat with specified parameters.
-        
-        Args:
-            attack_mode: Hashcat attack mode (0=dictionary, 3=mask)
-            wordlist: Path to wordlist (for dictionary attacks)
-            rules: Path to rules file (optional)
-            mask: Mask pattern (for mask attacks)
-            show_command: Whether to display the command
-            verbose: Whether to display progress
-        
-        Returns:
-            Cracked password if successful, None otherwise
+        Run hashcat and return the cracked password, or None.
+
+        Dictionary attacks (mode 0) without rules route through
+        HashcatCracker so progress is streamed via --status-timer and the
+        caller's stdout pipe isn't force-closed mid-crack. Rules and mask
+        attacks (rarely used, currently no production callers) still go
+        through a plain one-shot subprocess that doesn't show progress.
         """
+        # Fast path: dictionary attack with optional progress display
+        if attack_mode == '0' and wordlist and not rules:
+            return self._run_dictionary_with_progress(
+                wordlist, show_command=show_command, verbose=verbose)
+
+        return self._run_hashcat_oneshot(
+            attack_mode, wordlist=wordlist, rules=rules, mask=mask,
+            show_command=show_command)
+
+    def _run_dictionary_with_progress(
+        self,
+        wordlist: str,
+        show_command: bool = False,
+        verbose: bool = True,
+    ) -> Optional[str]:
+        """Dictionary crack using HashcatCracker with live STATUS streaming."""
+        with HashcatCracker(self.hash_file, wordlist, mode=self.HASHCAT_MODE) as cracker:
+            cracker.start(show_command=show_command)
+            try:
+                while not cracker.is_finished():
+                    if verbose:
+                        status = cracker.poll_status()
+                        Color.clear_entire_line()
+                        Color.p(
+                            '\r{+} {C}Cracking SAE:{W} %5.1f%%  '
+                            '{C}Speed:{W} %s  {C}ETA:{W} %s'
+                            % (status['progress'] * 100,
+                               status['speed'], status['eta']))
+                    time.sleep(cracker.STATUS_TIMER_SECONDS)
+            except KeyboardInterrupt:
+                Color.pl('')
+                raise
+            if verbose:
+                Color.pl('')  # terminate the progress line
+            return cracker.get_result()
+
+    def _run_hashcat_oneshot(
+        self,
+        attack_mode: str,
+        wordlist: Optional[str] = None,
+        rules: Optional[str] = None,
+        mask: Optional[str] = None,
+        show_command: bool = False,
+    ) -> Optional[str]:
+        """Plain blocking hashcat run — for rules/mask paths only."""
         command = [
             'hashcat',
             '-m', self.HASHCAT_MODE,
             '-a', attack_mode,
-            self.hash_file
+            self.hash_file,
         ]
-        
-        # Add wordlist for dictionary attacks
         if attack_mode == '0' and wordlist:
             command.append(wordlist)
-        
-        # Add mask for mask attacks
         if attack_mode == '3' and mask:
             command.append(mask)
-        
-        # Add rules if specified
         if rules:
             command.extend(['-r', rules])
-        
-        # Add GPU workload profile
-        if Configuration.wpa_attack_timeout > 0:
-            command.extend(['-w', '3'])  # High performance
-        
-        # Add force flag if needed
+        command.extend(['-w', '3'])
         if Hashcat.should_use_force():
             command.append('--force')
-        
-        # Add status output for progress monitoring
-        if verbose:
-            command.extend(['--status', '--status-timer', '5'])
-        else:
-            command.append('--quiet')
-        
+
         if show_command:
             Color.pl('{+} {D}Running: {W}{P}%s{W}' % ' '.join(command))
-        
-        # Run hashcat
+
         proc = Process(command, devnull=False)
-        
-        if verbose:
-            # Monitor progress
-            self._monitor_progress(proc)
-        else:
-            proc.wait()
-        
-        # Check output for cracked password
-        stdout = proc.stdout()
-        stderr = proc.stderr()
-        
+        proc.wait()
+        stdout, stderr = proc.get_output()
         return self._parse_cracked_password(stdout, stderr)
     
     def _check_pot_file(self, show_command: bool = False) -> Optional[str]:
@@ -359,110 +371,6 @@ class SAECracker:
                         return password
         
         return None
-    
-    def _monitor_progress(self, proc: Process):
-        """
-        Monitor hashcat progress and display updates.
-        
-        Args:
-            proc: Running hashcat process
-        """
-        last_update = time.time()
-        update_interval = 5  # seconds
-        
-        while proc.poll() is None:
-            time.sleep(0.5)
-            
-            # Update progress every interval
-            if time.time() - last_update >= update_interval:
-                progress = self._get_progress(proc)
-                if progress:
-                    self._display_progress(progress)
-                last_update = time.time()
-        
-        # Final update
-        progress = self._get_progress(proc)
-        if progress:
-            self._display_progress(progress)
-    
-    def _get_progress(self, proc: Process) -> Optional[Dict[str, Any]]:
-        """
-        Extract progress information from hashcat output.
-        
-        Args:
-            proc: Running hashcat process
-        
-        Returns:
-            Dictionary with progress data, or None if unavailable
-        """
-        try:
-            output = proc.stdout()
-            
-            progress_data = {}
-            
-            # Parse status output
-            for line in output.split('\n'):
-                line = line.strip()
-                
-                # Extract progress percentage
-                if 'Progress' in line and '/' in line:
-                    match = re.search(r'(\d+)/(\d+)\s*\((\d+\.\d+)%\)', line)
-                    if match:
-                        progress_data['current'] = int(match.group(1))
-                        progress_data['total'] = int(match.group(2))
-                        progress_data['percent'] = float(match.group(3))
-                
-                # Extract time remaining
-                if 'Time.Estimated' in line:
-                    match = re.search(r'Time\.Estimated\.+:\s*(.+)', line)
-                    if match:
-                        progress_data['eta'] = match.group(1).strip()
-                
-                # Extract speed
-                if 'Speed.#' in line or 'Speed.Dev' in line:
-                    match = re.search(r'Speed\..*:\s*(\d+\.?\d*\s*\w+/s)', line)
-                    if match:
-                        progress_data['speed'] = match.group(1).strip()
-                
-                # Extract recovered count
-                if 'Recovered' in line:
-                    match = re.search(r'Recovered\.+:\s*(\d+)/(\d+)', line)
-                    if match:
-                        progress_data['recovered'] = int(match.group(1))
-                        progress_data['total_hashes'] = int(match.group(2))
-            
-            return progress_data if progress_data else None
-            
-        except Exception:
-            return None
-    
-    def _display_progress(self, progress: Dict[str, Any]):
-        """
-        Display progress information to user.
-        
-        Args:
-            progress: Dictionary with progress data
-        """
-        self.progress_data = progress
-        
-        # Build progress message
-        msg_parts = []
-        
-        if 'percent' in progress:
-            msg_parts.append('{C}Progress:{W} {G}%.1f%%{W}' % progress['percent'])
-        
-        if 'speed' in progress:
-            msg_parts.append('{C}Speed:{W} {G}%s{W}' % progress['speed'])
-        
-        if 'eta' in progress:
-            msg_parts.append('{C}ETA:{W} {G}%s{W}' % progress['eta'])
-        
-        if 'recovered' in progress and 'total_hashes' in progress:
-            msg_parts.append('{C}Recovered:{W} {G}%d{W}/{C}%d{W}' % 
-                           (progress['recovered'], progress['total_hashes']))
-        
-        if msg_parts:
-            Color.pl('{+} ' + ' | '.join(msg_parts))
     
     @staticmethod
     def check_dependencies() -> Dict[str, bool]:

@@ -768,6 +768,35 @@ against the real AP and captures valid passwords.
                                             '(default: {G}%d sec{W})' % self.config.wpa_attack_timeout))
         wpa.add_argument('-wpa3-timeout', help=argparse.SUPPRESS, action='store', dest='wpa3_attack_timeout', type=int)
 
+        # Dragonblood timing attack (CVE-2019-13377)
+        wpa.add_argument('--dragonblood-timing',
+                         action='store_true',
+                         dest='dragonblood_timing',
+                         help=Color.s('Enable {C}Dragonblood timing attack{W} (CVE-2019-13377) for APs with '
+                                      'vulnerable MODP groups (22, 23, 24). Probes the AP to measure SAE '
+                                      'response latency and partitions the password search space. '
+                                      '(default: {G}off{W})'))
+        wpa.add_argument('-dragonblood-timing', help=argparse.SUPPRESS, action='store_true', dest='dragonblood_timing')
+
+        wpa.add_argument('--dragonblood-samples',
+                         action='store',
+                         dest='dragonblood_samples',
+                         metavar='[count]',
+                         type=int,
+                         help=self._verbose('Number of timing samples per password candidate '
+                                            'during Dragonblood attack. More samples improve accuracy '
+                                            'but take longer. (default: {G}3{W})'))
+        wpa.add_argument('-dragonblood-samples', help=argparse.SUPPRESS, action='store', dest='dragonblood_samples', type=int)
+
+        wpa.add_argument('--dragonblood-max',
+                         action='store',
+                         dest='dragonblood_max_passwords',
+                         metavar='[count]',
+                         type=int,
+                         help=self._verbose('Maximum number of passwords to probe during '
+                                            'Dragonblood timing attack. (default: {G}50{W})'))
+        wpa.add_argument('-dragonblood-max', help=argparse.SUPPRESS, action='store', dest='dragonblood_max_passwords', type=int)
+
         wpa.add_argument('--owe',
                          action='store_true',
                          dest='owe_filter',

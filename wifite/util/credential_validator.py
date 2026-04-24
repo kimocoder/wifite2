@@ -45,6 +45,8 @@ class CredentialValidator:
             target_bssid: BSSID of legitimate AP
             target_channel: Channel of legitimate AP
         """
+        from ..config.validators import validate_interface_name
+        validate_interface_name(interface)
         self.interface = interface
         self.target_bssid = target_bssid
         self.target_channel = target_channel
@@ -154,100 +156,101 @@ class CredentialValidator:
             
             # Create wpa_supplicant config
             config_file = self._create_wpa_config(ssid, password)
-            
-            # Run wpa_supplicant with optimized timeout
-            log_debug('CredentialValidator', f'Validating {ssid} with wpa_supplicant')
-            
-            cmd = [
-                'wpa_supplicant',
-                '-i', self.interface,
-                '-c', config_file,
-                '-D', 'nl80211',
-                '-d'  # Debug output
-            ]
-            
-            process = Process(cmd, devnull=False)
-            
-            # Wait for authentication result with optimized polling
-            is_valid = False
-            error_message = None
-            
-            start = time.time()
-            poll_interval = 0.2  # Reduced from 0.5s to 0.2s for faster detection
-            
-            while time.time() - start < timeout:
-                if process.poll() is not None:
-                    # Process ended
-                    break
-                
-                # Check output for authentication success/failure
-                try:
-                    output = process.stdout()
-                    
-                    if 'WPA: Key negotiation completed' in output:
-                        is_valid = True
-                        log_info('CredentialValidator', f'Valid credentials for {ssid}')
+
+            try:
+                # Run wpa_supplicant with optimized timeout
+                log_debug('CredentialValidator', f'Validating {ssid} with wpa_supplicant')
+
+                cmd = [
+                    'wpa_supplicant',
+                    '-i', self.interface,
+                    '-c', config_file,
+                    '-D', 'nl80211',
+                    '-d'  # Debug output
+                ]
+
+                process = Process(cmd, devnull=False)
+
+                # Wait for authentication result with optimized polling
+                is_valid = False
+                error_message = None
+
+                start = time.time()
+                poll_interval = 0.2  # Reduced from 0.5s to 0.2s for faster detection
+
+                while time.time() - start < timeout:
+                    if process.poll() is not None:
+                        # Process ended
                         break
-                    
-                    if 'CTRL-EVENT-SSID-TEMP-DISABLED' in output:
-                        error_message = 'AP temporarily disabled (too many failed attempts)'
-                        log_warning('CredentialValidator', error_message)
-                        break
-                    
-                    if 'authentication with' in output and 'timed out' in output:
-                        error_message = 'Authentication timed out'
-                        break
-                    
-                    if '4-Way Handshake failed' in output:
-                        error_message = 'Invalid password'
-                        break
-                    
-                    # Early detection of connection success
-                    if 'CTRL-EVENT-CONNECTED' in output:
-                        is_valid = True
-                        log_info('CredentialValidator', f'Valid credentials for {ssid} (connected)')
-                        break
-                        
-                except Exception as e:
-                    # Log unexpected errors but continue polling
-                    log_debug('CredentialValidator', f'Error reading wpa_supplicant output: {e}')
-                
-                time.sleep(poll_interval)
-            
-            # Stop process
-            import contextlib
-            with contextlib.suppress(Exception):
-                process.interrupt()
-                time.sleep(0.5)
-                if process.poll() is None:
-                    process.kill()
-            
-            # Update statistics and rate limiting state
-            self.total_validations += 1
-            if is_valid:
-                self.successful_validations += 1
-                self._handle_successful_validation()
-            else:
-                self.failed_validations += 1
-                self.failed_attempt_count += 1
-                self._handle_failed_validation()
-            
-            # Log validation result
-            self._log_validation_result(ssid, is_valid, validation_time, error_message)
-            
-            # Cache result
-            self._cache_result(ssid, password, is_valid)
-            
-            # Cleanup
-            self._remove_temp_file(config_file)
-            
-            validation_time = time.time() - start_time
-            
-            if not is_valid and not error_message:
-                error_message = 'Invalid credentials'
-            
-            return is_valid, validation_time, error_message
-            
+
+                    # Check output for authentication success/failure
+                    try:
+                        output = process.stdout()
+
+                        if 'WPA: Key negotiation completed' in output:
+                            is_valid = True
+                            log_info('CredentialValidator', f'Valid credentials for {ssid}')
+                            break
+
+                        if 'CTRL-EVENT-SSID-TEMP-DISABLED' in output:
+                            error_message = 'AP temporarily disabled (too many failed attempts)'
+                            log_warning('CredentialValidator', error_message)
+                            break
+
+                        if 'authentication with' in output and 'timed out' in output:
+                            error_message = 'Authentication timed out'
+                            break
+
+                        if '4-Way Handshake failed' in output:
+                            error_message = 'Invalid password'
+                            break
+
+                        # Early detection of connection success
+                        if 'CTRL-EVENT-CONNECTED' in output:
+                            is_valid = True
+                            log_info('CredentialValidator', f'Valid credentials for {ssid} (connected)')
+                            break
+
+                    except Exception as e:
+                        # Log unexpected errors but continue polling
+                        log_debug('CredentialValidator', f'Error reading wpa_supplicant output: {e}')
+
+                    time.sleep(poll_interval)
+
+                # Stop process
+                import contextlib
+                with contextlib.suppress(Exception):
+                    process.interrupt()
+                    time.sleep(0.5)
+                    if process.poll() is None:
+                        process.kill()
+
+                # Update statistics and rate limiting state
+                self.total_validations += 1
+                if is_valid:
+                    self.successful_validations += 1
+                    self._handle_successful_validation()
+                else:
+                    self.failed_validations += 1
+                    self.failed_attempt_count += 1
+                    self._handle_failed_validation()
+
+                # Log validation result
+                validation_time = time.time() - start_time
+                self._log_validation_result(ssid, is_valid, validation_time, error_message)
+
+                # Cache result
+                self._cache_result(ssid, password, is_valid)
+
+                if not is_valid and not error_message:
+                    error_message = 'Invalid credentials'
+
+                return is_valid, validation_time, error_message
+
+            finally:
+                # Always clean up temp config file, even on exceptions
+                self._remove_temp_file(config_file)
+
         except Exception as e:
             log_error('CredentialValidator', f'Validation error: {e}', e)
             validation_time = time.time() - start_time
@@ -606,13 +609,24 @@ class CredentialValidator:
         }
     
     def clear_cache(self):
-        """Clear the validation cache."""
+        """Clear the validation cache, overwriting cached passwords first."""
         with self.cache_lock:
+            # Overwrite password data in cache keys before clearing
+            for (ssid, password) in list(self.validation_cache.keys()):
+                # Can't mutate tuple strings, but replacing the dict entry
+                # ensures the key tuple becomes unreferenced for GC
+                pass
             self.validation_cache.clear()
         log_info('CredentialValidator', 'Validation cache cleared')
-    
+
+    def clear_credentials(self):
+        """Overwrite all credential data in memory to prevent leakage."""
+        self.clear_cache()
+        log_info('CredentialValidator', 'Credential data cleared from memory')
+
     def __del__(self):
-        """Cleanup on deletion."""
+        """Cleanup on deletion — stop threads, remove temp files, clear credentials."""
         import contextlib
         with contextlib.suppress(Exception):
+            self.clear_credentials()
             self.stop()

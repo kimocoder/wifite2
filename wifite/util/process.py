@@ -21,7 +21,7 @@ from ..util.logger import log_debug, log_info, log_warning, log_error
 class ProcessManager:
     """Global process manager to track and cleanup all processes"""
     _instance = None
-    _lock = threading.Lock()
+    _lock = threading.RLock()  # Reentrant lock to prevent deadlocks during nested cleanup
 
     # Maximum number of concurrent processes
     MAX_PROCESSES = 100
@@ -160,24 +160,23 @@ class Process:
         Args:
             command: Command string or list of args.
             cwd: Working directory for the command.
-            shell: If True, run via shell (use with caution).
+            shell: Deprecated, ignored. All commands run without shell.
             timeout: Seconds before the subprocess is killed. Default 30. None for no timeout.
 
-        String commands are always split via shlex before being passed to Popen when shell=False.
+        String commands are always split via shlex before being passed to Popen.
         """
-        if isinstance(command, str) and not shell:
-            # Split string commands into list of args for Popen when not using shell mode
+        if shell:
+            log_warning('Process', 'Process.call(): shell=True is ignored for security; command will be split via shlex')
+
+        if isinstance(command, str):
             if Configuration.verbose > 1:
                 Color.pe(f'\n {{C}}[?]{{W}} Executing: {{B}}{command}{{W}}')
             command = shlex.split(command)
-        elif shell:
-            if Configuration.verbose > 1:
-                Color.pe(f'\n {{C}}[?] {{W}} Executing (Shell): {{B}}{command}{{W}}')
         else:
             if Configuration.verbose > 1:
                 Color.pe(f'\n {{C}}[?]{{W}} Executing: {{B}}{command}{{W}}')
 
-        with Popen(command, cwd=cwd, stdout=PIPE, stderr=PIPE, shell=shell) as pid:
+        with Popen(command, cwd=cwd, stdout=PIPE, stderr=PIPE) as pid:
             try:
                 out, err = pid.communicate(timeout=timeout)
             except subprocess.TimeoutExpired:
@@ -575,7 +574,7 @@ if __name__ == '__main__':
     out, err = Process.call(['ls', '-lah'])
     print(out, err)
 
-    out, err = Process.call('ls -l | head -2')
+    out, err = Process.call('ls -l')
     print(out, err)
 
     print(f'"reaver" exists: {Process.exists("reaver")}')

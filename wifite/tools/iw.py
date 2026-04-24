@@ -4,6 +4,12 @@
 from .dependency import Dependency
 
 
+def _check_iface(name):
+    """Validate interface name before passing to subprocess (SEC-010)."""
+    from ..config.validators import validate_interface_name
+    validate_interface_name(name)
+
+
 class Iw(Dependency):
     dependency_required = True
     dependency_name = 'iw'
@@ -18,6 +24,7 @@ class Iw(Dependency):
     def mode(cls, iface, mode_name):
         from ..util.process import Process
 
+        _check_iface(iface)
         # Use correct iw syntax: iw dev <interface> set type <mode>
         return Process.call(f'iw dev {iface} set type {mode_name}')
 

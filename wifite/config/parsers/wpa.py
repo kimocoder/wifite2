@@ -80,6 +80,18 @@ def parse_wpa_args(cls, args):
         # Default to wpa_attack_timeout if not specified
         cls.wpa3_attack_timeout = cls.wpa_attack_timeout
 
+    if hasattr(args, 'dragonblood_timing') and args.dragonblood_timing:
+        cls.dragonblood_timing = True
+        Color.pl('{+} {C}option:{W} will use {C}Dragonblood timing attack{W} (CVE-2019-13377) on vulnerable APs')
+
+    if hasattr(args, 'dragonblood_samples') and args.dragonblood_samples:
+        cls.dragonblood_samples = args.dragonblood_samples
+        Color.pl('{+} {C}option:{W} Dragonblood timing samples per password: {G}%d{W}' % args.dragonblood_samples)
+
+    if hasattr(args, 'dragonblood_max_passwords') and args.dragonblood_max_passwords:
+        cls.dragonblood_max_passwords = args.dragonblood_max_passwords
+        Color.pl('{+} {C}option:{W} Dragonblood max passwords to probe: {G}%d{W}' % args.dragonblood_max_passwords)
+
     if args.ignore_old_handshakes:
         cls.ignore_old_handshakes = True
         Color.pl('{+} {C}option:{W} will {O}ignore{W} existing handshakes (force capture)')

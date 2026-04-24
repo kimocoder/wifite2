@@ -11,6 +11,7 @@ and garbage collection for long-running operations like infinite mode.
 import gc
 import os
 import time
+import threading
 from typing import Optional, Dict, Any
 from ..config import Configuration
 
@@ -33,6 +34,9 @@ class MemoryMonitor:
     # Cleanup intervals
     CLEANUP_INTERVAL_SCANS = 50  # Every N scan cycles
     GC_INTERVAL_SCANS = 100  # Force GC every N scan cycles
+
+    # Lock for class-level state to prevent races from multiple threads
+    _state_lock = threading.Lock()
 
     # State tracking
     _last_cleanup_time: float = 0
@@ -142,17 +146,19 @@ class MemoryMonitor:
         performed_cleanup = False
         current_time = time.time()
 
-        # Check if it's time for periodic cleanup
-        should_cleanup = (
-            scan_count > 0 and scan_count % cls.CLEANUP_INTERVAL_SCANS == 0
-        ) or (
-            current_time - cls._last_cleanup_time > 60  # At least every 60 seconds
-        )
+        with cls._state_lock:
+            # Check if it's time for periodic cleanup
+            should_cleanup = (
+                scan_count > 0 and scan_count % cls.CLEANUP_INTERVAL_SCANS == 0
+            ) or (
+                current_time - cls._last_cleanup_time > 60  # At least every 60 seconds
+            )
 
-        if not should_cleanup:
-            return False
+            if not should_cleanup:
+                return False
 
-        cls._last_cleanup_time = current_time
+            cls._last_cleanup_time = current_time
+
         status = cls.check_memory_status()
 
         # Log status in verbose mode
@@ -164,51 +170,55 @@ class MemoryMonitor:
                 status['fd_usage_percent']
             ))
 
-        # Critical memory - force aggressive cleanup
-        if status['memory_critical']:
-            if not cls._warning_shown:
-                Color.pl('{!} {R}Critical memory usage: %.1f MB{W}' % status['memory_mb'])
-                Color.pl('{!} {O}Triggering aggressive cleanup...{W}')
-                cls._warning_shown = True
+        with cls._state_lock:
+            # Critical memory - force aggressive cleanup
+            if status['memory_critical']:
+                if not cls._warning_shown:
+                    Color.pl('{!} {R}Critical memory usage: %.1f MB{W}' % status['memory_mb'])
+                    Color.pl('{!} {O}Triggering aggressive cleanup...{W}')
+                    cls._warning_shown = True
 
-            cls._aggressive_cleanup()
-            performed_cleanup = True
+                cls._aggressive_cleanup()
+                performed_cleanup = True
 
-        # High memory warning
-        elif status['memory_warning']:
-            if not cls._warning_shown:
-                Color.pl('{!} {O}High memory usage: %.1f MB{W}' % status['memory_mb'])
-                cls._warning_shown = True
+            # High memory warning
+            elif status['memory_warning']:
+                if not cls._warning_shown:
+                    Color.pl('{!} {O}High memory usage: %.1f MB{W}' % status['memory_mb'])
+                    cls._warning_shown = True
 
-            cls._standard_cleanup()
-            performed_cleanup = True
+                cls._standard_cleanup()
+                performed_cleanup = True
 
-        # High FD usage
-        elif status['fd_warning']:
-            if Configuration.verbose > 0:
-                Color.pl('{!} {O}High FD usage: %d/%d{W}' % (
-                    status['fd_count'], status['fd_soft_limit']
-                ))
+            # High FD usage
+            elif status['fd_warning']:
+                if Configuration.verbose > 0:
+                    Color.pl('{!} {O}High FD usage: %d/%d{W}' % (
+                        status['fd_count'], status['fd_soft_limit']
+                    ))
 
-            cls._fd_cleanup()
-            performed_cleanup = True
+                cls._fd_cleanup()
+                performed_cleanup = True
 
-        # Periodic GC
-        elif scan_count > 0 and scan_count % cls.GC_INTERVAL_SCANS == 0:
-            collected = gc.collect()
-            if Configuration.verbose > 1:
-                Color.pl('{+} {D}Periodic GC: collected %d objects{W}' % collected)
-            performed_cleanup = True
+            # Periodic GC
+            elif scan_count > 0 and scan_count % cls.GC_INTERVAL_SCANS == 0:
+                collected = gc.collect()
+                if Configuration.verbose > 1:
+                    Color.pl('{+} {D}Periodic GC: collected %d objects{W}' % collected)
+                performed_cleanup = True
 
-        # Reset warning flag if memory is back to normal
-        if not status['memory_warning'] and not status['memory_critical']:
-            cls._warning_shown = False
+            # Reset warning flag if memory is back to normal
+            if not status['memory_warning'] and not status['memory_critical']:
+                cls._warning_shown = False
 
         return performed_cleanup
 
     @classmethod
     def _standard_cleanup(cls):
-        """Perform standard memory cleanup."""
+        """Perform standard memory cleanup.
+
+        Callers must hold cls._state_lock.
+        """
         from ..util.process import ProcessManager, Process
         from ..util.color import Color
 
@@ -228,10 +238,13 @@ class MemoryMonitor:
 
     @classmethod
     def _aggressive_cleanup(cls):
-        """Perform aggressive memory cleanup for critical situations."""
+        """Perform aggressive memory cleanup for critical situations.
+
+        Callers must hold cls._state_lock.
+        """
         from ..util.process import ProcessManager, Process
         from ..util.color import Color
-        
+
         cls._cleanup_count += 1
         
         # Force cleanup of all processes

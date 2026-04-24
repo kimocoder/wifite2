@@ -37,6 +37,8 @@ class Hostapd(Dependency):
             channel: Wireless channel (1-11 for 2.4GHz)
             password: WPA2 password (None for open network)
         """
+        from ..config.validators import validate_interface_name
+        validate_interface_name(interface)
         self.interface = interface
         self.ssid = ssid
         self.channel = channel
@@ -220,12 +222,13 @@ class Hostapd(Dependency):
 
             # Check if process is running
             if self.process.poll() is not None:
-                # Process died
+                # Process died — clean up config file
                 output = self.process.stdout()
                 log_error('Hostapd', f'Failed to start: {output}')
                 Color.pl('{!} {R}Hostapd failed to start{W}')
                 if Configuration.verbose > 0:
                     Color.pl('{!} {O}Output:{W}\n%s' % output)
+                self._remove_config_file()
                 return False
 
             self.running = True
@@ -239,6 +242,7 @@ class Hostapd(Dependency):
         except Exception as e:
             log_error('Hostapd', f'Failed to start: {e}', e)
             Color.pl('{!} {R}Failed to start hostapd:{W} %s' % str(e))
+            self._remove_config_file()
             return False
 
     def _prepare_interface(self):
@@ -287,6 +291,16 @@ class Hostapd(Dependency):
         except Exception as e:
             log_error('Hostapd', f'Error stopping hostapd: {e}', e)
 
+    def _remove_config_file(self):
+        """Remove temporary config file if it exists."""
+        try:
+            if self.config_file and os.path.exists(self.config_file):
+                os.remove(self.config_file)
+                log_debug('Hostapd', f'Removed config file: {self.config_file}')
+                self.config_file = None
+        except OSError as e:
+            log_warning('Hostapd', f'Failed to remove config file: {e}')
+
     def cleanup(self):
         """Cleanup hostapd resources."""
         try:
@@ -294,9 +308,7 @@ class Hostapd(Dependency):
             self.stop()
 
             # Remove config file
-            if self.config_file and os.path.exists(self.config_file):
-                os.remove(self.config_file)
-                log_debug('Hostapd', f'Removed config file: {self.config_file}')
+            self._remove_config_file()
 
             # Restore interface
             self._restore_interface()

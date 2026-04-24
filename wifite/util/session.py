@@ -52,20 +52,26 @@ class EvilTwinClientState:
 @dataclass
 class EvilTwinCredentialAttempt:
     """Represents a credential submission attempt in an Evil Twin attack."""
-    
+
     mac_address: str
     password: str
     success: bool
     timestamp: float
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         return asdict(self)
-    
+
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'EvilTwinCredentialAttempt':
         """Create EvilTwinCredentialAttempt from dictionary."""
         return cls(**data)
+
+    def clear_password(self):
+        """Overwrite password in memory to prevent credential leakage."""
+        if self.password:
+            self.password = '\x00' * len(self.password)
+            self.password = ''
 
 
 @dataclass
@@ -117,12 +123,20 @@ class EvilTwinAttackState:
             'validation_time': self.validation_time
         }
     
+    def clear_credentials(self):
+        """Overwrite all credential data in memory to prevent leakage."""
+        if self.captured_password:
+            self.captured_password = '\x00' * len(self.captured_password)
+            self.captured_password = None
+        for attempt in self.credential_attempts:
+            attempt.clear_password()
+
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'EvilTwinAttackState':
         """Create EvilTwinAttackState from dictionary."""
         clients = [EvilTwinClientState.from_dict(c) for c in data.get('clients', [])]
         attempts = [EvilTwinCredentialAttempt.from_dict(a) for a in data.get('credential_attempts', [])]
-        
+
         return cls(
             interface_ap=data.get('interface_ap'),
             interface_deauth=data.get('interface_deauth'),

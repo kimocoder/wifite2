@@ -170,15 +170,17 @@ class CleanupManager:
     def restore_interface(self, interface: str, original_state: dict) -> bool:
         """
         Restore a network interface to its original state.
-        
+
         Args:
             interface: Interface name
             original_state: Original state dictionary
-            
+
         Returns:
             True if successful, False otherwise
         """
         try:
+            from ..config.validators import validate_interface_name
+            validate_interface_name(interface)
             log_debug('Cleanup', f'Restoring interface {interface}')
             
             # Bring interface down
