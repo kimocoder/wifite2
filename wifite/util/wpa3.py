@@ -132,11 +132,11 @@ class WPA3Detector:
         result = {'pmf_status': None, 'sae_groups': []}
         try:
             result['pmf_status'] = WPA3Detector._parse_pmf_from_beacon(capfile, bssid)
-        except Exception:
+        except (OSError, ValueError):
             pass
         try:
             result['sae_groups'] = WPA3Detector._parse_sae_groups_from_commits(capfile, bssid)
-        except Exception:
+        except (OSError, ValueError):
             pass
         if result['pmf_status'] is None and not result['sae_groups']:
             return None
@@ -396,7 +396,7 @@ class WPA3Detector:
                 while time.monotonic() < deadline and proc.poll() is None:
                     try:
                         raw = proc.pid.stdout.readline()
-                    except Exception:
+                    except (OSError, ValueError):
                         time.sleep(0.05)
                         continue
                     if not raw:

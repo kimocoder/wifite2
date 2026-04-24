@@ -146,13 +146,17 @@ class CrackHelper:
         for tool, dependencies in cls.possible_tools:
             if missing := [dep for dep in dependencies if not Process.exists(dep.dependency_name)]:
                 missing_tools.append((tool, missing))
+            elif tool == 'john' and not John.is_wpapsk_capable():
+                missing_tools.append((tool, ['john-jumbo (wpapsk format)']))
             else:
                 available_tools.append(tool)
 
         if missing_tools:
             Color.pl('\n{!} {O}Unavailable tools (install to enable):{W}')
             for tool, deps in missing_tools:
-                dep_list = ', '.join([dep.dependency_name for dep in deps])
+                dep_list = ', '.join([
+                    d if isinstance(d, str) else d.dependency_name for d in deps
+                ])
                 Color.pl('     {R}* {R}%s {W}({O}%s{W})' % (tool, dep_list))
 
         if all_pmkid or all_sae or has_sae:

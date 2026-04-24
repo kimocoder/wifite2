@@ -158,7 +158,7 @@ class TUIController:
                     # Attempt to refresh without update
                     if self.live is not None:
                         self.live.refresh()
-                except Exception:
+                except (AttributeError, TypeError, ImportError):
                     # Complete failure - stop TUI
                     self.is_running = False
                     pass
@@ -239,7 +239,7 @@ class TUIController:
         try:
             # Store original handler
             self.resize_handler = signal.signal(signal.SIGWINCH, self._on_resize)
-        except Exception:
+        except (AttributeError, TypeError, ImportError):
             # SIGWINCH not available on all platforms (e.g., Windows)
             pass
 

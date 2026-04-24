@@ -113,10 +113,10 @@ class OutputManager:
             except ImportError:
                 # Rich library not available
                 return False
-            except Exception:
+            except (OSError, ValueError):
                 # Any other error with rich
                 return False
-        except Exception:
+        except (OSError, ValueError):
             # Catch-all for any unexpected errors
             return False
     
@@ -228,7 +228,7 @@ class OutputManager:
             if cls._controller:
                 cls._controller.stop()
                 cls._controller = None
-        except Exception:
+        except (OSError, ValueError):
             # Ignore errors during cleanup
             pass
         finally:

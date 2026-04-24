@@ -162,7 +162,7 @@ class NonBlockingInput:
         if NonBlockingInput.has_input(timeout):
             try:
                 return sys.stdin.readline().strip()
-            except Exception:
+            except (OSError, ValueError):
                 return None
         return None
 

@@ -36,7 +36,7 @@ try:
         conf as scapy_conf
     )
     SCAPY_AVAILABLE = True
-except Exception:
+except (ImportError, AttributeError):
     SCAPY_AVAILABLE = False
 
 
@@ -150,8 +150,8 @@ class ScapyWPS:
                         wps_info[bssid] = info
             
             return wps_info
-            
-        except Exception:
+
+        except (OSError, AttributeError):
             return {}
     
     @classmethod
@@ -209,15 +209,15 @@ class ScapyWPS:
             if elt.ID == 221:
                 try:
                     ie_data = bytes(elt.info) if hasattr(elt, 'info') else b''
-                    
+
                     # Check for WPS vendor ID
                     if ie_data.startswith(cls.WPS_VENDOR_ID):
                         info.wps_enabled = True
-                        
+
                         # Parse WPS attributes (TLV format after vendor ID)
                         cls._parse_wps_attributes(ie_data[4:], info)
-                        
-                except Exception:
+
+                except (AttributeError, TypeError, IndexError):
                     pass
             
             # Move to next element
@@ -277,16 +277,16 @@ class ScapyWPS:
                 elif attr_type == cls.WPS_ATTR_DEVICE_NAME:
                     try:
                         info.device_name = attr_value.decode('utf-8', errors='replace')
-                    except Exception:
+                    except (UnicodeDecodeError, AttributeError):
                         pass
-                
+
                 elif attr_type == cls.WPS_ATTR_MANUFACTURER:
                     try:
                         info.manufacturer = attr_value.decode('utf-8', errors='replace')
-                    except Exception:
+                    except (UnicodeDecodeError, AttributeError):
                         pass
-                        
-            except Exception:
+
+            except (AttributeError, TypeError, IndexError):
                 break
     
     @classmethod

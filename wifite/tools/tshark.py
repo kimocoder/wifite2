@@ -105,7 +105,7 @@ class Tshark(Dependency):
                 try:
                     from ..native.handshake import ScapyHandshake
                     return ScapyHandshake.bssids_with_handshakes(capfile, bssid)
-                except Exception:
+                except (ImportError, OSError):
                     pass
             return []
         
@@ -139,7 +139,7 @@ class Tshark(Dependency):
             try:
                 from ..native.handshake import ScapyHandshake
                 return ScapyHandshake.bssids_with_handshakes(capfile, bssid)
-            except Exception:
+            except (ImportError, OSError):
                 pass
         return []
 
@@ -190,7 +190,7 @@ class Tshark(Dependency):
                     from ..native.wps import ScapyWPS
                     ScapyWPS.update_targets(capfile, targets)
                     return
-                except Exception:
+                except (ImportError, OSError):
                     pass
             raise ValueError('Cannot detect WPS networks: Tshark does not exist and native fallback failed')
         
@@ -272,7 +272,7 @@ class Tshark(Dependency):
                 from ..native.wps import ScapyWPS
                 ScapyWPS.update_targets(capfile, targets)
                 return True
-            except Exception:
+            except (ImportError, OSError):
                 pass
         return False
     
@@ -376,7 +376,7 @@ class TsharkMonitor:
                 'bssid': fields[4] if len(fields) > 4 else '',
                 'channel': fields[5] if len(fields) > 5 else ''
             }
-        except Exception:
+        except (OSError, IOError):
             return None
     
     def stop(self):

@@ -108,7 +108,7 @@ class Reaver(Attack, Dependency):
             if self.reaver_proc and self.reaver_proc.poll() is None:
                 try:
                     self.reaver_proc.interrupt()
-                except Exception:
+                except (OSError, RuntimeError):
                     pass  # Ignore errors during cleanup
 
             # Clean up open file handle

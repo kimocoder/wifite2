@@ -194,7 +194,7 @@ class HcxDumpTool(Dependency):
                 return match.group(1)
 
             return None
-        except Exception:
+        except (OSError, RuntimeError):
             return None
 
     @staticmethod
@@ -217,7 +217,7 @@ class HcxDumpTool(Dependency):
             min_parts = [int(x) for x in min_version.split('.')]
 
             return current_parts >= min_parts
-        except Exception:
+        except ValueError:
             return False
 
 
@@ -365,7 +365,7 @@ class HcxPcapngTool(Dependency):
 
             # Check if output file was created
             return os.path.exists(output_file) and os.path.getsize(output_file) > 0
-        except Exception:
+        except (OSError, RuntimeError):
             return False
 
     @staticmethod
@@ -390,5 +390,5 @@ class HcxPcapngTool(Dependency):
                 return match.group(1)
 
             return None
-        except Exception:
+        except (OSError, RuntimeError):
             return None

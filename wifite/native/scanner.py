@@ -41,7 +41,7 @@ try:
         sniff, conf as scapy_conf
     )
     SCAPY_AVAILABLE = True
-except Exception:
+except ImportError:
     SCAPY_AVAILABLE = False
 
 
@@ -165,7 +165,7 @@ class ChannelHopper(Thread):
                 if self._on_channel_change:
                     self._on_channel_change(channel)
                     
-            except Exception:
+            except (OSError, RuntimeError):
                 pass  # Channel might not be supported
             
             # Move to next channel
@@ -310,9 +310,9 @@ class NativeScanner:
                 store=False,
                 stop_filter=lambda _: self._stop_event.is_set()
             )
-        except Exception:
+        except OSError:
             pass
-    
+
     def _packet_handler(self, pkt):
         """Process captured packet."""
         self.packets_processed += 1
@@ -369,13 +369,13 @@ class NativeScanner:
                     if not essid or essid == '\x00' * len(essid):
                         hidden = True
                         essid = '<hidden>'
-                except Exception:
+                except (UnicodeDecodeError, AttributeError):
                     pass
             
             elif elt.ID == 3:  # Channel
                 try:
                     channel = elt.info[0]
-                except Exception:
+                except (UnicodeDecodeError, AttributeError):
                     pass
             
             elif elt.ID == 48:  # RSN (WPA2/WPA3)
@@ -411,7 +411,7 @@ class NativeScanner:
         if pkt.haslayer(RadioTap):
             try:
                 power = pkt[RadioTap].dBm_AntSignal
-            except Exception:
+            except (AttributeError, TypeError):
                 pass
         
         # Update or create AP
@@ -464,7 +464,7 @@ class NativeScanner:
                     ssid = elt.info.decode('utf-8', errors='replace')
                     if ssid and ssid != '\x00' * len(ssid):
                         probed_ssid = ssid
-                except Exception:
+                except (UnicodeDecodeError, AttributeError):
                     pass
                 break
             elt = elt.payload.getlayer(Dot11Elt) if hasattr(elt.payload, 'getlayer') else None
@@ -474,7 +474,7 @@ class NativeScanner:
         if pkt.haslayer(RadioTap):
             try:
                 power = pkt[RadioTap].dBm_AntSignal
-            except Exception:
+            except (AttributeError, TypeError):
                 pass
         
         # Update client
@@ -552,7 +552,7 @@ class NativeScanner:
         if pkt.haslayer(RadioTap):
             try:
                 power = pkt[RadioTap].dBm_AntSignal
-            except Exception:
+            except (AttributeError, TypeError):
                 pass
         
         with self._lock:
@@ -647,11 +647,11 @@ class NativeScanner:
                     if 'SAE' in auth:
                         encryption = 'WPA3'
                         
-        except Exception:
-            pass
-        
+        except (AttributeError, TypeError, IndexError):
+                pass
+
         return encryption, cipher, auth, pmf
-    
+
     def _parse_wpa_ie(self, data: bytes) -> tuple:
         """
         Parse WPA Information Element.
@@ -703,11 +703,11 @@ class NativeScanner:
                         offset += 4
                 auth = ' '.join(akms)
                 
-        except Exception:
+        except (AttributeError, TypeError, IndexError):
             pass
-        
+
         return cipher, auth
-    
+
     def _check_wps_locked(self, data: bytes) -> bool:
         """Check if WPS is locked from vendor IE."""
         try:
@@ -722,10 +722,10 @@ class NativeScanner:
                     return data[offset] == 0x01
                 
                 offset += attr_len
-        except Exception:
+        except (AttributeError, TypeError, IndexError):
             pass
         return False
-    
+
     def get_targets(self) -> List[AccessPoint]:
         """Get list of discovered access points."""
         with self._lock:

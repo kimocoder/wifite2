@@ -18,7 +18,7 @@ setup(
     url='https://github.com/kimocoder/wifite2',
     packages=find_packages(exclude=['tests', 'tests.*']),
     package_data={
-        '': ['wordlist-probable.txt']
+        '': ['wordlists/*.txt']
     },
     license='GNU GPLv2',
     scripts=['bin/wifite'],

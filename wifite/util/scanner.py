@@ -235,7 +235,7 @@ class Scanner:
         # Get terminal width for adaptive layout
         try:
             term_width = self.get_terminal_width()
-        except Exception:
+        except (OSError, ValueError):
             term_width = 120
 
         # Column widths

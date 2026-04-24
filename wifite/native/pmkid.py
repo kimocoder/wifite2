@@ -43,7 +43,7 @@ try:
         sniff, sendp, conf as scapy_conf
     )
     SCAPY_AVAILABLE = True
-except Exception:
+except ImportError:
     SCAPY_AVAILABLE = False
 
 
@@ -185,7 +185,7 @@ class ScapyPMKID:
                             if elt.ID == 0:  # SSID
                                 try:
                                     detected_essid[0] = elt.info.decode('utf-8', errors='replace')
-                                except Exception:
+                                except (UnicodeDecodeError, AttributeError):
                                     pass
                                 break
                             elt = elt.payload.getlayer(Dot11Elt) if hasattr(elt.payload, 'getlayer') else None
@@ -239,7 +239,7 @@ class ScapyPMKID:
                     timeout=timeout,
                     stop_filter=lambda _: stop_event.is_set() or captured_pmkid[0] is not None
                 )
-            except Exception:
+            except (AttributeError, TypeError, IndexError):
                 pass
         
         capture = Thread(target=capture_thread)
@@ -257,7 +257,7 @@ class ScapyPMKID:
                 
                 try:
                     cls._send_auth_request(interface, bssid, client_mac)
-                except Exception:
+                except (OSError, AttributeError):
                     pass
                 
                 time.sleep(auth_interval)
@@ -310,11 +310,11 @@ class ScapyPMKID:
                             if elt.ID == 0:
                                 try:
                                     essid_cache[pkt_bssid] = elt.info.decode('utf-8', errors='replace')
-                                except Exception:
+                                except (UnicodeDecodeError, AttributeError):
                                     pass
                                 break
                             elt = elt.payload.getlayer(Dot11Elt) if hasattr(elt.payload, 'getlayer') else None
-            
+
             # Look for EAPOL
             if not pkt.haslayer(EAPOL):
                 return
@@ -360,7 +360,7 @@ class ScapyPMKID:
                 store=False,
                 timeout=duration
             )
-        except Exception:
+        except (OSError, AttributeError):
             pass
         
         return results
@@ -412,8 +412,8 @@ class ScapyPMKID:
             pmkid = cls._find_pmkid_in_key_data(key_data)
             
             return pmkid
-            
-        except Exception:
+
+        except (AttributeError, TypeError, IndexError):
             return None
     
     @classmethod
@@ -558,8 +558,8 @@ class ScapyPMKID:
             
             pmkid = rsn_data[offset:offset + 16]
             return binascii.hexlify(pmkid).decode('ascii')
-            
-        except Exception:
+
+        except (AttributeError, TypeError, IndexError):
             return None
     
     @classmethod
@@ -616,7 +616,7 @@ class ScapyPMKID:
                         line = result.to_hashcat_22000()
                     f.write(line + '\n')
             return True
-        except Exception:
+        except (OSError, IOError):
             return False
 
 
@@ -682,7 +682,7 @@ class PMKIDCapture(Thread):
                     timeout=0.5,  # Short timeout for quick channel hopping
                     stop_filter=lambda _: self._stop_event.is_set()
                 )
-            except Exception:
+            except (AttributeError, TypeError, IndexError):
                 pass
             
             # Next channel
@@ -702,11 +702,11 @@ class PMKIDCapture(Thread):
                         if elt.ID == 0:
                             try:
                                 self.essid_cache[pkt_bssid] = elt.info.decode('utf-8', errors='replace')
-                            except Exception:
+                            except (UnicodeDecodeError, AttributeError):
                                 pass
                             break
                         elt = elt.payload.getlayer(Dot11Elt) if hasattr(elt.payload, 'getlayer') else None
-        
+
         # Look for EAPOL
         if not pkt.haslayer(EAPOL):
             return
