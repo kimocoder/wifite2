@@ -20,7 +20,7 @@ Benefits:
 - Graceful fallback to external tools if native fails
 
 Requirements:
-- scapy >= 2.6.1 (already a project dependency)
+- scapy >= 2.7.1rc1 (already a project dependency)
 """
 
 try:
@@ -198,3 +198,4 @@ def print_native_status():
         print(f"\nScapy Version: {scapy_version}")
     except Exception:
         print("\nScapy: Not Installed")
+        
