@@ -217,22 +217,24 @@ class Hashcat(Dependency):
         """
         if not stdout or ':' not in stdout:
             return None
+
+        # Prefixes used by hashcat's --status output blocks (not result lines)
+        _SKIP_PREFIXES = (
+            'Session', 'Status', 'Hash', 'Time', 'Speed', 'Recovered',
+            'Progress', 'Rejected', 'Restore', 'Candidates', 'Hardware',
+            'Watchdog', 'The plugin',
+        )
+
         for line in stdout.strip().split('\n'):
             line = line.strip()
             if not line or ':' not in line:
                 continue
-            # Skip status/header lines produced by --status
-            if line.startswith('Session') or line.startswith('Status') \
-                    or line.startswith('Hash') or line.startswith('Time') \
-                    or line.startswith('Speed') or line.startswith('Recovered') \
-                    or line.startswith('Progress') or line.startswith('Rejected') \
-                    or line.startswith('Restore') or line.startswith('Candidates') \
-                    or line.startswith('Hardware') or line.startswith('Watchdog') \
-                    or line.startswith('The plugin') or 'hashcat.net' in line:
-                continue
-            # Valid result lines for mode 22000 start with 'WPA*'
+            # Valid result lines for mode 22000 always start with 'WPA*'
             if 'WPA*' in line:
                 return line
+            # Skip status/header lines produced by --status
+            if any(line.startswith(prefix) for prefix in _SKIP_PREFIXES):
+                continue
         return None
 
 

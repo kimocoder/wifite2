@@ -253,9 +253,23 @@ def _channel_to_freq(channel: int) -> int:
         return 2412 + (channel - 1) * 5
     if channel == 14:
         return 2484
-    if 36 <= channel <= 177:
-        return 5180 + (channel - 36) * 5
-    # Unknown channel – return a safe default
+    # 5 GHz channels: use a lookup for accuracy across all valid bands
+    _5ghz = {
+        # UNII-1 / UNII-2
+        36: 5180, 40: 5200, 44: 5220, 48: 5240,
+        52: 5260, 56: 5280, 60: 5300, 64: 5320,
+        # UNII-2 Extended
+        100: 5500, 104: 5520, 108: 5540, 112: 5560,
+        116: 5580, 120: 5600, 124: 5620, 128: 5640,
+        132: 5660, 136: 5680, 140: 5700, 144: 5720,
+        # UNII-3
+        149: 5745, 153: 5765, 157: 5785, 161: 5805, 165: 5825,
+        # 6 GHz (Wi-Fi 6E) – approximate
+        1: 5955, 5: 5975, 9: 5995,  # already handled above but kept for completeness
+    }
+    if channel in _5ghz:
+        return _5ghz[channel]
+    # Unknown channel – return 2412 as a safe default
     return 2412
 
 
