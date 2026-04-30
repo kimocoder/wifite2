@@ -51,8 +51,6 @@ def initialize_defaults(cls):
     # EvilTwin variables
     cls.use_eviltwin = False
     cls.eviltwin_port = 80
-    cls.eviltwin_deauth_iface = None
-    cls.eviltwin_fakeap_iface = None
     cls.eviltwin_deauth_interval = 5
     cls.eviltwin_template = 'generic'
     cls.eviltwin_channel = None
