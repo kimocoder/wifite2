@@ -1,0 +1,173 @@
+diff --git a/wifite/attack/eviltwin.py b/wifite/attack/eviltwin.py
+index 66c5e78..528b48d 100755
+--- a/wifite/attack/eviltwin.py
++++ b/wifite/attack/eviltwin.py
+@@ -68,8 +68,22 @@ class EvilTwin(Attack):
+         # Interface assignment for dual interface support
+         self.interface_assignment = None
+         
+-        self.interface_ap = interface_ap or Configuration.interface
+-        self.interface_deauth = interface_deauth or Configuration.interface
++        # Resolve interface assignments with precedence:
++        #   1. Explicit constructor args (highest)
++        #   2. Configuration.interface_primary / interface_secondary (CLI)
++        #   3. Configuration.interface (the default scan interface)
++        # In dual mode, _run_dual_interface() will re-derive these from the
++        # InterfaceAssignment built by _get_interface_assignment().
++        self.interface_ap = (
++            interface_ap
++            or Configuration.interface_primary
++            or Configuration.interface
++        )
++        self.interface_deauth = (
++            interface_deauth
++            or Configuration.interface_secondary
++            or Configuration.interface
++        )
+         
+         # Attack state management
+         self.state = AttackState.INITIALIZING
+@@ -159,10 +173,23 @@ class EvilTwin(Attack):
+         from ..util.interface_manager import InterfaceManager
+         
+         try:
+-            # Check if manual interfaces are specified in configuration
+-            if Configuration.interface_primary and Configuration.interface_secondary:
++            has_primary = bool(Configuration.interface_primary)
++            has_secondary = bool(Configuration.interface_secondary)
++
++            # Warn on partial specification — secondary alone makes no sense
++            # for Evil Twin, since the AP needs the primary interface.
++            if has_secondary and not has_primary:
++                log_warning('EvilTwin',
++                            'interface_secondary is set without interface_primary; '
++                            'cannot use dual interface mode for Evil Twin')
++                Color.pl('{!} {O}Warning: secondary interface specified without primary; '
++                         'falling back to single interface mode{W}')
++                return None
++
++            # Both interfaces specified → dual interface mode
++            if has_primary and has_secondary:
+                 log_info('EvilTwin', 'Using manually specified interfaces')
+-                
++
+                 # Get interface info for validation
+                 available_interfaces = InterfaceManager.get_available_interfaces()
+                 primary_info = next((iface for iface in available_interfaces 
+@@ -199,6 +226,13 @@ class EvilTwin(Attack):
+                 
+                 log_info('EvilTwin', f'Manual assignment validated: {assignment.get_assignment_summary()}')
+                 return assignment
++
++            # Only primary specified → single interface mode using primary as
++            # the AP/deauth iface (already resolved in __init__).
++            if has_primary and not has_secondary:
++                log_info('EvilTwin',
++                         f'Only primary interface specified ({Configuration.interface_primary}); '
++                         'running single interface mode')
+             
+             # Check if assignment is already available (from wifite instance)
+             # This would be set by the main wifite flow
+diff --git a/wifite/config/__init__.py b/wifite/config/__init__.py
+index cc980f7..b43a7ac 100644
+--- a/wifite/config/__init__.py
++++ b/wifite/config/__init__.py
+@@ -73,8 +73,6 @@ class Configuration:
+     use_eviltwin = None
+     # Evil Twin settings
+     eviltwin_port = None
+-    eviltwin_deauth_iface = None
+-    eviltwin_fakeap_iface = None
+     eviltwin_deauth_interval = None
+     eviltwin_template = None
+     eviltwin_channel = None
+diff --git a/wifite/config/defaults.py b/wifite/config/defaults.py
+index d87d8a4..a1fac73 100644
+--- a/wifite/config/defaults.py
++++ b/wifite/config/defaults.py
+@@ -51,8 +51,6 @@ def initialize_defaults(cls):
+     # EvilTwin variables
+     cls.use_eviltwin = False
+     cls.eviltwin_port = 80
+-    cls.eviltwin_deauth_iface = None
+-    cls.eviltwin_fakeap_iface = None
+     cls.eviltwin_deauth_interval = 5
+     cls.eviltwin_template = 'generic'
+     cls.eviltwin_channel = None
+diff --git a/wifite/config/parsers/eviltwin.py b/wifite/config/parsers/eviltwin.py
+index 2e68eb8..a297db2 100644
+--- a/wifite/config/parsers/eviltwin.py
++++ b/wifite/config/parsers/eviltwin.py
+@@ -14,15 +14,37 @@ def parse_eviltwin_args(cls, args):
+         # Display interface capabilities info
+         display_eviltwin_interface_info(cls)
+ 
+-    if hasattr(args, 'eviltwin_deauth_iface') and args.eviltwin_deauth_iface:
+-        cls._validate_interface_name(args.eviltwin_deauth_iface)
+-        cls.eviltwin_deauth_iface = args.eviltwin_deauth_iface
+-        Color.pl('{+} {C}option:{W} Evil Twin deauth interface: {G}%s{W}' % args.eviltwin_deauth_iface)
+-
++    # --eviltwin-fakeap-iface is an Evil Twin-scoped alias for --interface-primary.
++    # Both populate Configuration.interface_primary; specifying both with different
++    # values is a configuration error.
+     if hasattr(args, 'eviltwin_fakeap_iface') and args.eviltwin_fakeap_iface:
+         cls._validate_interface_name(args.eviltwin_fakeap_iface)
+-        cls.eviltwin_fakeap_iface = args.eviltwin_fakeap_iface
+-        Color.pl('{+} {C}option:{W} Evil Twin fake AP interface: {G}%s{W}' % args.eviltwin_fakeap_iface)
++        other = getattr(args, 'interface_primary', None)
++        if other and other != args.eviltwin_fakeap_iface:
++            Color.pl('{!} {R}Error: --eviltwin-fakeap-iface ({O}%s{R}) conflicts with '
++                     '--interface-primary ({O}%s{R}){W}'
++                     % (args.eviltwin_fakeap_iface, other))
++            raise ValueError('Conflicting interface specifications: '
++                             '--eviltwin-fakeap-iface vs --interface-primary')
++        cls.interface_primary = args.eviltwin_fakeap_iface
++        cls.dual_interface_enabled = True
++        Color.pl('{+} {C}option:{W} Evil Twin fake AP interface: {G}%s{W}'
++                 % args.eviltwin_fakeap_iface)
++
++    # --eviltwin-deauth-iface is an Evil Twin-scoped alias for --interface-secondary.
++    if hasattr(args, 'eviltwin_deauth_iface') and args.eviltwin_deauth_iface:
++        cls._validate_interface_name(args.eviltwin_deauth_iface)
++        other = getattr(args, 'interface_secondary', None)
++        if other and other != args.eviltwin_deauth_iface:
++            Color.pl('{!} {R}Error: --eviltwin-deauth-iface ({O}%s{R}) conflicts with '
++                     '--interface-secondary ({O}%s{R}){W}'
++                     % (args.eviltwin_deauth_iface, other))
++            raise ValueError('Conflicting interface specifications: '
++                             '--eviltwin-deauth-iface vs --interface-secondary')
++        cls.interface_secondary = args.eviltwin_deauth_iface
++        cls.dual_interface_enabled = True
++        Color.pl('{+} {C}option:{W} Evil Twin deauth interface: {G}%s{W}'
++                 % args.eviltwin_deauth_iface)
+ 
+     if hasattr(args, 'eviltwin_port') and args.eviltwin_port:
+         cls.eviltwin_port = args.eviltwin_port
+diff --git a/wifite/config/validators.py b/wifite/config/validators.py
+index 94cd375..525194c 100644
+--- a/wifite/config/validators.py
++++ b/wifite/config/validators.py
+@@ -48,17 +48,19 @@ def validate_eviltwin_config(cls):
+         Color.pl('{!}   - Alfa AWUS036ACH (Realtek RTL8812AU)')
+         raise RuntimeError('No AP-capable interfaces available for Evil Twin attack')
+ 
+-    # If fake AP interface is specified, validate it
+-    if cls.eviltwin_fakeap_iface:
++    # If a primary interface was specified (via --interface-primary or
++    # --eviltwin-fakeap-iface), validate it supports AP mode. Both flags
++    # populate the same Configuration.interface_primary field.
++    if cls.interface_primary:
+         found = False
+         for caps in ap_interfaces:
+-            if caps.interface == cls.eviltwin_fakeap_iface:
++            if caps.interface == cls.interface_primary:
+                 found = True
+                 break
+ 
+         if not found:
+             Color.pl('{!} {R}Error: Specified interface {O}%s{R} does not support AP mode{W}'
+-                    % cls.eviltwin_fakeap_iface)
++                    % cls.interface_primary)
+             Color.pl('{!} {O}Available AP-capable interfaces:{W}')
+             for caps in ap_interfaces:
+                 Color.pl('{!}   - {G}%s{W}' % caps.interface)
