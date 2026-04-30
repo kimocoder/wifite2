@@ -73,8 +73,6 @@ class Configuration:
     use_eviltwin = None
     # Evil Twin settings
     eviltwin_port = None
-    eviltwin_deauth_iface = None
-    eviltwin_fakeap_iface = None
     eviltwin_deauth_interval = None
     eviltwin_template = None
     eviltwin_channel = None

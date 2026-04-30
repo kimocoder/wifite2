@@ -14,15 +14,37 @@ def parse_eviltwin_args(cls, args):
         # Display interface capabilities info
         display_eviltwin_interface_info(cls)
 
-    if hasattr(args, 'eviltwin_deauth_iface') and args.eviltwin_deauth_iface:
-        cls._validate_interface_name(args.eviltwin_deauth_iface)
-        cls.eviltwin_deauth_iface = args.eviltwin_deauth_iface
-        Color.pl('{+} {C}option:{W} Evil Twin deauth interface: {G}%s{W}' % args.eviltwin_deauth_iface)
-
+    # --eviltwin-fakeap-iface is an Evil Twin-scoped alias for --interface-primary.
+    # Both populate Configuration.interface_primary; specifying both with different
+    # values is a configuration error.
     if hasattr(args, 'eviltwin_fakeap_iface') and args.eviltwin_fakeap_iface:
         cls._validate_interface_name(args.eviltwin_fakeap_iface)
-        cls.eviltwin_fakeap_iface = args.eviltwin_fakeap_iface
-        Color.pl('{+} {C}option:{W} Evil Twin fake AP interface: {G}%s{W}' % args.eviltwin_fakeap_iface)
+        other = getattr(args, 'interface_primary', None)
+        if other and other != args.eviltwin_fakeap_iface:
+            Color.pl('{!} {R}Error: --eviltwin-fakeap-iface ({O}%s{R}) conflicts with '
+                     '--interface-primary ({O}%s{R}){W}'
+                     % (args.eviltwin_fakeap_iface, other))
+            raise ValueError('Conflicting interface specifications: '
+                             '--eviltwin-fakeap-iface vs --interface-primary')
+        cls.interface_primary = args.eviltwin_fakeap_iface
+        cls.dual_interface_enabled = True
+        Color.pl('{+} {C}option:{W} Evil Twin fake AP interface: {G}%s{W}'
+                 % args.eviltwin_fakeap_iface)
+
+    # --eviltwin-deauth-iface is an Evil Twin-scoped alias for --interface-secondary.
+    if hasattr(args, 'eviltwin_deauth_iface') and args.eviltwin_deauth_iface:
+        cls._validate_interface_name(args.eviltwin_deauth_iface)
+        other = getattr(args, 'interface_secondary', None)
+        if other and other != args.eviltwin_deauth_iface:
+            Color.pl('{!} {R}Error: --eviltwin-deauth-iface ({O}%s{R}) conflicts with '
+                     '--interface-secondary ({O}%s{R}){W}'
+                     % (args.eviltwin_deauth_iface, other))
+            raise ValueError('Conflicting interface specifications: '
+                             '--eviltwin-deauth-iface vs --interface-secondary')
+        cls.interface_secondary = args.eviltwin_deauth_iface
+        cls.dual_interface_enabled = True
+        Color.pl('{+} {C}option:{W} Evil Twin deauth interface: {G}%s{W}'
+                 % args.eviltwin_deauth_iface)
 
     if hasattr(args, 'eviltwin_port') and args.eviltwin_port:
         cls.eviltwin_port = args.eviltwin_port

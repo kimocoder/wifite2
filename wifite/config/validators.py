@@ -48,17 +48,19 @@ def validate_eviltwin_config(cls):
         Color.pl('{!}   - Alfa AWUS036ACH (Realtek RTL8812AU)')
         raise RuntimeError('No AP-capable interfaces available for Evil Twin attack')
 
-    # If fake AP interface is specified, validate it
-    if cls.eviltwin_fakeap_iface:
+    # If a primary interface was specified (via --interface-primary or
+    # --eviltwin-fakeap-iface), validate it supports AP mode. Both flags
+    # populate the same Configuration.interface_primary field.
+    if cls.interface_primary:
         found = False
         for caps in ap_interfaces:
-            if caps.interface == cls.eviltwin_fakeap_iface:
+            if caps.interface == cls.interface_primary:
                 found = True
                 break
 
         if not found:
             Color.pl('{!} {R}Error: Specified interface {O}%s{R} does not support AP mode{W}'
-                    % cls.eviltwin_fakeap_iface)
+                    % cls.interface_primary)
             Color.pl('{!} {O}Available AP-capable interfaces:{W}')
             for caps in ap_interfaces:
                 Color.pl('{!}   - {G}%s{W}' % caps.interface)

@@ -68,8 +68,22 @@ class EvilTwin(Attack):
         # Interface assignment for dual interface support
         self.interface_assignment = None
         
-        self.interface_ap = interface_ap or Configuration.interface
-        self.interface_deauth = interface_deauth or Configuration.interface
+        # Resolve interface assignments with precedence:
+        #   1. Explicit constructor args (highest)
+        #   2. Configuration.interface_primary / interface_secondary (CLI)
+        #   3. Configuration.interface (the default scan interface)
+        # In dual mode, _run_dual_interface() will re-derive these from the
+        # InterfaceAssignment built by _get_interface_assignment().
+        self.interface_ap = (
+            interface_ap
+            or Configuration.interface_primary
+            or Configuration.interface
+        )
+        self.interface_deauth = (
+            interface_deauth
+            or Configuration.interface_secondary
+            or Configuration.interface
+        )
         
         # Attack state management
         self.state = AttackState.INITIALIZING
@@ -159,10 +173,23 @@ class EvilTwin(Attack):
         from ..util.interface_manager import InterfaceManager
         
         try:
-            # Check if manual interfaces are specified in configuration
-            if Configuration.interface_primary and Configuration.interface_secondary:
+            has_primary = bool(Configuration.interface_primary)
+            has_secondary = bool(Configuration.interface_secondary)
+
+            # Warn on partial specification — secondary alone makes no sense
+            # for Evil Twin, since the AP needs the primary interface.
+            if has_secondary and not has_primary:
+                log_warning('EvilTwin',
+                            'interface_secondary is set without interface_primary; '
+                            'cannot use dual interface mode for Evil Twin')
+                Color.pl('{!} {O}Warning: secondary interface specified without primary; '
+                         'falling back to single interface mode{W}')
+                return None
+
+            # Both interfaces specified → dual interface mode
+            if has_primary and has_secondary:
                 log_info('EvilTwin', 'Using manually specified interfaces')
-                
+
                 # Get interface info for validation
                 available_interfaces = InterfaceManager.get_available_interfaces()
                 primary_info = next((iface for iface in available_interfaces 
@@ -199,6 +226,13 @@ class EvilTwin(Attack):
                 
                 log_info('EvilTwin', f'Manual assignment validated: {assignment.get_assignment_summary()}')
                 return assignment
+
+            # Only primary specified → single interface mode using primary as
+            # the AP/deauth iface (already resolved in __init__).
+            if has_primary and not has_secondary:
+                log_info('EvilTwin',
+                         f'Only primary interface specified ({Configuration.interface_primary}); '
+                         'running single interface mode')
             
             # Check if assignment is already available (from wifite instance)
             # This would be set by the main wifite flow
