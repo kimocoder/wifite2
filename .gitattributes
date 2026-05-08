@@ -1,0 +1,6 @@
+# Auto detect text files and perform LF or CRLF normalization
+
+.gitattributes text eol=lf
+.gitignore text eol=lf
+
+uv.lock text eol=lf
