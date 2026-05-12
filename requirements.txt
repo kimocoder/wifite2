@@ -3,7 +3,7 @@
 chardet>=7.4.3
 requests>=2.33.1
 rich>=15.0.0
-scapy>=2.7.1rc1; python_version < '4'
+scapy>=2.6.0; python_version < '4'
 setuptools>=82.0.1
 
 # Development dependencies (optional)

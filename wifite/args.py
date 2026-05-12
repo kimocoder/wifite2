@@ -1106,6 +1106,12 @@ against the real AP and captures valid passwords.
                               dest='crack_handshake',
                               help=Color.s('Show commands to crack a captured handshake'))
 
+        commands.add_argument('--print-crack-cmd',
+                              action='store_true',
+                              dest='show_cracking_command',
+                              help=Color.s('Print the exact cracking command before running it, '
+                                          'for easy copy/pasting into a terminal (default: {G}off{W})'))
+
         commands.add_argument('--syscheck',
                               action='store_true',
                               dest='syscheck',
