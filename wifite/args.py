@@ -647,6 +647,17 @@ against the real AP and captures valid passwords.
                              'Seconds to wait before failing (default: {G}%d sec{W})' % self.config.wep_timeout))
         wep.add_argument('-wept', help=argparse.SUPPRESS, action='store', dest='wep_timeout', type=int)
 
+        wep.add_argument('--wep-fakeauth-time',
+                         action='store',
+                         dest='wep_fakeauth_time',
+                         metavar='[seconds]',
+                         type=int,
+                         help=self._verbose(
+                             'Seconds to wait for fake-authentication (default: {G}%d sec{W})'
+                             % self.config.wep_fakeauth_time))
+        wep.add_argument('-wep-fakeauth-time', help=argparse.SUPPRESS, action='store',
+                         dest='wep_fakeauth_time', type=int)
+
         wep.add_argument('--wepca',
                          action='store',
                          dest='wep_crack_at_ivs',
