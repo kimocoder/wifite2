@@ -21,7 +21,7 @@ classifiers = [
 ]
 dependencies = [
     "chardet>=7.4.3",
-    "requests>=2.34.0",
+    "requests>=2.34.1",
     "rich>=15.0.0",
     "scapy>=2.7.1rc1; python_version < '4'",
     "setuptools>=82.0.1",
