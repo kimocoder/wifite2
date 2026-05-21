@@ -6,6 +6,8 @@ on: pull_request
 
 jobs:
   review-with-sourcery:
+    # Secrets are not available for PRs from forks, so skip Sourcery in that case.
+    if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6.0.2
