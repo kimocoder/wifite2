@@ -204,7 +204,7 @@ class Process:
         stdout = p2.stdout().strip()
         stderr = p2.stderr().strip()
 
-        exist = not stdout == stderr == ''
+        exist = bool(stdout)
         if Configuration.initialized:
             Configuration.existing_commands.update({program: exist})
         return exist
