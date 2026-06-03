@@ -28,7 +28,9 @@ class TUILogger:
         Args:
             enabled: Whether logging is enabled
             debug_mode: Whether debug mode is active
-            log_file: Path to log file (default: /tmp/wifite_tui.log)
+            log_file: Path to log file (default: ~/.config/wifite/wifite_tui.log,
+                in an owner-only 0700 directory; falls back to ~ if that
+                directory can't be created)
         """
         cls._enabled = enabled
         cls._debug_mode = debug_mode

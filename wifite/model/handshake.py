@@ -147,74 +147,54 @@ class Handshake:
         else:
             return []
 
-    def hcxpcapngtool_handshakes(self):
-        """
-        Returns tuple (BSSID,None) if hcxpcapngtool can extract valid handshake data.
-        Supports both .cap and .pcapng capture files.
-        """
-        if not Process.exists('hcxpcapngtool'):
-            return []
-
-        import tempfile
-        
-        # Create a temporary hash file to test if hcxpcapngtool can extract data
-        hash_file = None
-        try:
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.22000', delete=False) as tmp:
-                hash_file = tmp.name
-            
-            command = [
-                'hcxpcapngtool',
-                '-o', hash_file,
-                self.capfile
-            ]
-            
-            proc = Process(command, devnull=False)
-            
-            # Check if hash file was created and has content
-            if os.path.exists(hash_file) and os.path.getsize(hash_file) > 0:
-                # Successfully extracted handshake data
-                result = [(self.bssid, None)] if self.bssid else [(None, self.essid)]
-                
-                # Clean up temp file
-                try:
-                    os.remove(hash_file)
-                except OSError:
-                    pass
-                
-                return result
-            else:
-                # No valid handshake data found
-                try:
-                    if os.path.exists(hash_file):
-                        os.remove(hash_file)
-                except OSError:
-                    pass
-                return []
-                
-        except Exception:
-            # If anything goes wrong, clean up and return empty
-            try:
-                if hash_file and os.path.exists(hash_file):
-                    os.remove(hash_file)
-            except (OSError, NameError):
-                pass
-            return []
-
     def analyze(self):
         """Prints analysis of handshake capfile"""
         self.divine_bssid_and_essid()
 
         if Tshark.exists():
-            Handshake.print_pairs(self.tshark_handshakes(), 'tshark')
+            self._print_tshark_analysis()
 
         if Process.exists('cowpatty'):
             Handshake.print_pairs(self.cowpatty_handshakes(), 'cowpatty')
 
         Handshake.print_pairs(self.aircrack_handshakes(), 'aircrack')
-        
-        if Process.exists('hcxpcapngtool'):
-            Handshake.print_pairs(self.hcxpcapngtool_handshakes(), 'hcxpcapng')
+
+    def _print_tshark_analysis(self):
+        """
+        Print tshark verdict for this capfile.
+
+        On a full 4-way handshake, emits the standard 'contains a valid handshake'
+        line. Otherwise inspects the EAPOL frames tshark *did* see and reports
+        which messages are present and which are missing, so the user can tell
+        the difference between "no EAPOL at all" and "M1+M2+M3 but no M4
+        (still crackable by hashcat/cowpatty)".
+        """
+        # Single tshark parse yields both the full-handshake verdict and, when
+        # absent, the partial-4-way breakdown — no need to read the file twice.
+        bssids, summary = Tshark.eapol_analysis(self.capfile, bssid=self.bssid)
+        if bssids:
+            Handshake.print_pairs([(bssid, None) for bssid in bssids], 'tshark')
+            return
+
+        tool_str = '{C}%s{W}: ' % 'tshark'.rjust(8)
+
+        if not summary:
+            Color.pl('{!} %s.cap file contains {O}no EAPOL frames{W} '
+                     '({R}no handshake to crack{W})' % tool_str)
+            return
+
+        for bssid, msgs in summary.items():
+            found = sorted(msgs)
+            missing = [m for m in (1, 2, 3, 4) if m not in msgs]
+            found_str = ', '.join('M%d' % m for m in found)
+            missing_str = ', '.join('M%d' % m for m in missing)
+            crackable = 2 in msgs and (1 in msgs or 3 in msgs)
+            verdict = ('{G}crackable partial{W}'
+                       if crackable else
+                       '{R}not crackable{W}')
+            Color.pl('{!} %s.cap file has {O}partial 4-way{W} for ({O}%s{W}): '
+                     'found {C}%s{W}, missing {R}%s{W} — %s'
+                     % (tool_str, bssid.upper(), found_str, missing_str, verdict))
 
     def strip(self, outfile=None):
         # XXX: This method might break aircrack-ng, use at own risk.

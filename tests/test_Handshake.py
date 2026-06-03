@@ -63,7 +63,10 @@ class TestHandshake(unittest.TestCase):
     def testHandshakeCowpatty(self):
         print("\nTesting handshake with cowpatty...")
         hs_file = self.getFile('handshake_exists.cap')
-        hs = Handshake(hs_file, bssid='A4:2B:8C:16:6B:3A')
+        # cowpatty -c needs an ESSID, so pass it explicitly. (tshark/aircrack
+        # tests don't need this — only cowpatty enforces it.)
+        hs = Handshake(hs_file, bssid='A4:2B:8C:16:6B:3A',
+                       essid='Test Router Please Ignore')
         assert (len(hs.cowpatty_handshakes()) > 0), f'Expected len>0 but got len({len(hs.cowpatty_handshakes())})'
 
     @pytest.mark.timeout(15)
