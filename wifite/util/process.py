@@ -200,11 +200,7 @@ class Process:
         if Configuration.initialized and program in Configuration.existing_commands:
             return Configuration.existing_commands[program]
 
-        p2 = Process(['which', program])
-        stdout = p2.stdout().strip()
-        stderr = p2.stderr().strip()
-
-        exist = not stdout == stderr == ''
+        exist = shutil.which(program) is not None
         if Configuration.initialized:
             Configuration.existing_commands.update({program: exist})
         return exist
