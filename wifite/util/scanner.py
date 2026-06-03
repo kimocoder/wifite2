@@ -300,6 +300,66 @@ class Scanner:
         import shutil
         return shutil.get_terminal_size(fallback=(24, 80)).columns
 
+    def _diagnose_no_targets(self):
+        """Print actionable diagnostics when a scan finds zero targets.
+
+        The bare "issues with your wifi card" message can't tell the three
+        common root causes apart, so we probe them explicitly:
+          * the card/driver captured nothing in monitor mode (RX counter ~0) —
+            a driver/monitor-mode problem, not a network one;
+          * APs exist but were removed by an encryption/type filter;
+          * the scan only covered 2.4 GHz (5 GHz APs need -5 / --band).
+
+        Best-effort: never raises.
+        """
+        import os
+        iface = Configuration.interface
+        Color.pl('\n{!} {O}Scan diagnostics:{W}')
+
+        # 1. Did the monitor interface actually receive any frames? In monitor
+        #    mode the kernel bumps rx_packets for every captured frame, so a
+        #    near-zero count is a strong sign the card isn't really capturing.
+        rx = None
+        driver = None
+        if iface:
+            try:
+                with open('/sys/class/net/%s/statistics/rx_packets' % iface) as fh:
+                    rx = int(fh.read().strip())
+            except (OSError, ValueError):
+                rx = None
+            try:
+                driver = os.path.basename(
+                    os.path.realpath('/sys/class/net/%s/device/driver' % iface))
+            except OSError:
+                driver = None
+
+        if rx is not None:
+            Color.pl('    {C}Interface:{W} %s%s  {C}frames received:{W} %d' % (
+                iface, (' {D}(%s){W}' % driver) if driver else '', rx))
+            if rx < 10:
+                Color.pl('    {R}→ The card received ~no frames in monitor mode.{W}')
+                Color.pl('    {O}This is almost always a driver/monitor-mode problem, '
+                         'not a network issue:{W}')
+                Color.pl('    {O}  - Verify monitor mode + injection: {C}aireplay-ng --test %s{W}' % iface)
+                Color.pl('    {O}  - Some USB chipsets (rtw88/rtl8xxxu) have flaky monitor '
+                         'mode; try a different adapter.{W}')
+                Color.pl('    {O}  - Check {C}dmesg{O} for mac80211 / USB errors.{W}')
+            else:
+                Color.pl('    {G}→ The card IS receiving frames{W} — so the cause is '
+                         'filtering or band, not the driver:')
+
+        # 2. Band coverage (default scan is 2.4 GHz only).
+        if not (Configuration.all_bands or Configuration.five_ghz):
+            Color.pl('    {O}  - Scanning {C}2.4 GHz only{O} (default); for 5 GHz APs add '
+                     '{C}-5{O} or {C}--band abg{W}.')
+
+        # 3. Active encryption/type filter (< 5 means a specific filter is on).
+        enc = getattr(Configuration, 'encryption_filter', None)
+        if enc and len(enc) < 5:
+            Color.pl('    {O}  - Type filter active: {C}%s{O}; other AP types are hidden — '
+                     'drop the filter to see all.{W}' % '/'.join(enc))
+        Color.pl('')
+
     def select_targets(self):
         """
         Returns list(target)
@@ -316,10 +376,8 @@ class Scanner:
             if self.err_msg is not None:
                 Color.pl(self.err_msg)
 
-            # TODO Print a more-helpful reason for failure.
-            # 1. Link to wireless drivers wiki,
-            # 2. How to check if your device supports monitor mode,
-            # 3. Provide airodump-ng command being executed.
+            self._diagnose_no_targets()
+
             raise Exception('No targets found.'
                             + ' You may need to wait longer,'
                             + ' or you may have issues with your wifi card')
