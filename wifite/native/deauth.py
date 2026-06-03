@@ -351,10 +351,13 @@ class ContinuousDeauth(Thread):
                     self.packets_sent += sent
                     self.bursts_sent += 1
                     self.last_burst_time = time.time()
-                    
-            except Exception:
-                pass
-            
+
+            except Exception as e:
+                # Best-effort burst loop: keep running, but leave a trace so a
+                # persistent failure isn't completely invisible.
+                from ..util.logger import log_debug
+                log_debug('ScapyDeauth', 'Deauth burst failed: %s' % e)
+
             # Wait for next burst
             self._stop_event.wait(timeout=self.interval)
     

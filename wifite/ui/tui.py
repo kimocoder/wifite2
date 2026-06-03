@@ -152,16 +152,16 @@ class TUIController:
         if self.should_update():
             try:
                 self.live.update(renderable, refresh=True)
-            except Exception as e:
+            except Exception:
                 # If update fails, try to recover or fail gracefully
                 try:
                     # Attempt to refresh without update
                     if self.live is not None:
                         self.live.refresh()
-                except (AttributeError, TypeError, ImportError):
-                    # Complete failure - stop TUI
+                except Exception:
+                    # Complete failure — stop TUI so the caller can fall back
+                    # to classic output instead of hammering a broken Live.
                     self.is_running = False
-                    pass
 
     def __enter__(self):
         """

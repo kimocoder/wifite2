@@ -237,8 +237,8 @@ class AttackOWE(Attack):
                                 if client.station not in clients_seen:
                                     clients_seen.add(client.station)
                                     Color.pl('{+} {G}New client:{W} %s' % client.station)
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        log_debug('AttackOWE', 'Client tracking error: %s' % e)
 
                     # Deauth to trigger re-association
                     if deauth_timer.ended() and len(clients_seen) > 0:

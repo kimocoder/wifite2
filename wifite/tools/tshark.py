@@ -116,9 +116,8 @@ class Tshark(Dependency):
             '-n',
             '-Y', 'eapol'
         ]
-        tshark = Process(command, devnull=False)
-
-        target_client_msg_nums = Tshark._build_target_client_handshake_map(tshark.stdout(), bssid=bssid)
+        with Process(command, devnull=False) as tshark:
+            target_client_msg_nums = Tshark._build_target_client_handshake_map(tshark.stdout(), bssid=bssid)
 
         bssids = set()
         for (target_client, num) in list(target_client_msg_nums.items()):
@@ -127,6 +126,74 @@ class Tshark(Dependency):
                 bssids.add(this_bssid)
 
         return list(bssids)
+
+    @staticmethod
+    def _build_eapol_summary(output, bssid=None):
+        """Build a per-AP map of which 4-way messages appear in tshark output.
+
+        Returns dict mapping bssid (lowercase) -> set of int msg numbers in
+        {1,2,3,4}.
+        """
+        summary = {}
+        for line in output.split('\n'):
+            src, dst, index, total = Tshark._extract_src_dst_index_total(line)
+            if src is None:
+                continue
+            index = int(index)
+            total = int(total)
+            if total != 4:
+                continue
+            # Odd indexes (1, 3) are AP→client; even (2, 4) are client→AP.
+            target = src if index % 2 == 1 else dst
+            if bssid is not None and bssid.lower() != target.lower():
+                continue
+            summary.setdefault(target.lower(), set()).add(index)
+        return summary
+
+    @classmethod
+    def eapol_message_summary(cls, capfile, bssid=None):
+        """
+        Inspect EAPOL traffic and return a per-AP map of which 4-way messages
+        were observed.
+
+        Returns:
+            dict mapping bssid (lowercase) -> set of int msg numbers in {1,2,3,4}.
+            Empty dict if tshark isn't available or no EAPOL frames are present.
+        """
+        if not cls.exists():
+            return {}
+
+        command = ['tshark', '-r', capfile, '-n', '-Y', 'eapol']
+        with Process(command, devnull=False) as tshark:
+            output = tshark.stdout()
+        return cls._build_eapol_summary(output, bssid=bssid)
+
+    @classmethod
+    def eapol_analysis(cls, capfile, bssid=None):
+        """Run tshark once and derive both EAPOL verdicts from a single parse.
+
+        Combines the work of bssids_with_handshakes() and
+        eapol_message_summary() so the capfile is only read once when the caller
+        needs both (e.g. handshake analysis that falls back to a partial-4-way
+        report when no complete handshake is present).
+
+        Returns:
+            (bssids, summary) tuple where `bssids` is the list of APs with a
+            complete sequential 4-way handshake and `summary` is the per-AP map
+            of observed message numbers (see eapol_message_summary). Both are
+            empty if tshark is unavailable or no EAPOL frames are present.
+        """
+        if not cls.exists():
+            return [], {}
+
+        command = ['tshark', '-r', capfile, '-n', '-Y', 'eapol']
+        with Process(command, devnull=False) as tshark:
+            output = tshark.stdout()
+
+        handshake_map = cls._build_target_client_handshake_map(output, bssid=bssid)
+        bssids = list({key.split(',')[0] for key, num in handshake_map.items() if num == 4})
+        summary = cls._build_eapol_summary(output, bssid=bssid)
+        return bssids, summary
 
     @classmethod
     def bssids_with_handshakes_native(cls, capfile, bssid=None):

@@ -70,8 +70,11 @@ class JohnCracker:
                 # Progress line: "0g 0:00:00:03 13% (ETA: ...) 0g/s 500p/s ..."
                 if re.match(r'\d+g\s+\d+:\d+:\d+:\d+', line):
                     self._parse_progress(line)
-        except Exception:
-            pass
+        except Exception as e:
+            # Reader thread is best-effort (progress display only); log so a
+            # crash here doesn't silently stop progress updates without a trace.
+            from ..util.logger import log_debug
+            log_debug('John', 'Progress reader thread stopped: %s' % e)
 
     def _parse_progress(self, line):
         """Update internal status from a john stderr progress line."""
