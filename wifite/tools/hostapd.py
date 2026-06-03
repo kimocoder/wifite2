@@ -42,7 +42,10 @@ class Hostapd(Dependency):
         self.interface = interface
         self.ssid = ssid
         self.channel = channel
-        self.password = password or "temporarypassword123"
+        # None/empty password => OPEN network. The Evil Twin captive portal
+        # requires an open AP so victims can associate without a PSK; only
+        # create a WPA2-PSK AP when a real passphrase is supplied.
+        self.password = password or None
 
         self.config_file = None
         self.process = None
@@ -122,8 +125,12 @@ class Hostapd(Dependency):
         # Basic settings
         config.append(f'interface={self.interface}')
         config.append('driver=nl80211')
-        config.append(f'ssid={self.ssid}')
-        config.append(f'channel={self.channel}')
+        # SSID comes from the air (target beacon) and is attacker-influenceable.
+        # 802.11 SSIDs are arbitrary bytes; a raw `ssid=<value>` line with an
+        # embedded newline would inject attacker-controlled hostapd directives
+        # (which run as root). _format_ssid_directive() prevents that.
+        config.append(self._format_ssid_directive())
+        config.append(f'channel={int(self.channel)}')
 
         # Hardware mode (g = 2.4GHz)
         config.append('hw_mode=g')
@@ -132,14 +139,17 @@ class Hostapd(Dependency):
         config.append('ieee80211n=1')
         config.append('wmm_enabled=1')
 
-        # Authentication
+        # Authentication (Open System)
         config.append('auth_algs=1')
 
-        # WPA2 settings
-        config.append('wpa=2')
-        config.append('wpa_key_mgmt=WPA-PSK')
-        config.append('rsn_pairwise=CCMP')
-        config.append(f'wpa_passphrase={self.password}')
+        if self.password:
+            # WPA2-PSK protected AP (only when an explicit passphrase is given)
+            config.append('wpa=2')
+            config.append('wpa_key_mgmt=WPA-PSK')
+            config.append('rsn_pairwise=CCMP')
+            config.append(f'wpa_passphrase={self.password}')
+        # else: OPEN network — emit no wpa/passphrase lines so clients can
+        # associate freely and reach the captive portal.
 
         # Logging
         config.append('logger_syslog=-1')
@@ -152,6 +162,28 @@ class Hostapd(Dependency):
         config.append('macaddr_acl=0')
 
         return '\n'.join(config) + '\n'
+
+    def _format_ssid_directive(self) -> str:
+        """Build a safe hostapd SSID directive for an untrusted SSID.
+
+        802.11 SSIDs are arbitrary 0-32 byte values, so a raw ``ssid=<value>``
+        line can break (or be injected into) the line-based hostapd config —
+        e.g. an SSID containing a newline could append attacker-controlled
+        directives that run as root.
+
+        Strategy:
+          * Plain printable-ASCII SSIDs use the readable ``ssid=<value>`` form.
+          * Anything containing control characters (newline/CR/etc.) or
+            non-ASCII bytes is emitted as ``ssid2=<hex>``, which hostapd parses
+            as raw bytes regardless of content — injection-proof.
+        The value is also clamped to the 32-byte 802.11 limit.
+        """
+        ssid_bytes = (self.ssid or '').encode('utf-8', errors='surrogateescape')[:32]
+        # Printable ASCII only (0x20-0x7e) is safe in a raw ssid= line; this
+        # excludes newline (0x0a) and carriage return (0x0d) by construction.
+        if ssid_bytes and all(0x20 <= b <= 0x7e for b in ssid_bytes):
+            return 'ssid=' + ssid_bytes.decode('ascii')
+        return 'ssid2=' + ssid_bytes.hex()
 
     def create_config_file(self) -> str:
         """

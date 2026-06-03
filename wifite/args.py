@@ -531,6 +531,13 @@ against the real AP and captures valid passwords.
                           type=int,
                           help=self._verbose('Seconds between deauth bursts (default: {G}5{W})'))
 
+        group.add_argument('--eviltwin-timeout',
+                          action='store',
+                          dest='eviltwin_timeout',
+                          metavar='[seconds]',
+                          type=int,
+                          help=self._verbose('Give up after N seconds (default: {G}0{W} = run until success/interrupt)'))
+
         group.add_argument('--eviltwin-template',
                           action='store',
                           dest='eviltwin_template',

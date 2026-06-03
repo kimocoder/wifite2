@@ -74,6 +74,7 @@ class Configuration:
     # Evil Twin settings
     eviltwin_port = None
     eviltwin_deauth_interval = None
+    eviltwin_timeout = None
     eviltwin_template = None
     eviltwin_channel = None
     eviltwin_validate_credentials = None

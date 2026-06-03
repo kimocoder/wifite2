@@ -67,7 +67,11 @@ class Dnsmasq(Dependency):
 
         # Interface to listen on
         config.append(f'interface={self.interface}')
-        
+        # Never bind loopback. Without this dnsmasq still binds 127.0.0.1:53 by
+        # default, which collides with a host resolver (systemd-resolved /
+        # another dnsmasq) and makes startup fail with "Address already in use".
+        config.append('except-interface=lo')
+
         # Don't read /etc/resolv.conf or /etc/hosts
         config.append('no-resolv')
         config.append('no-hosts')
@@ -197,12 +201,14 @@ class Dnsmasq(Dependency):
 
             # Check if process is running
             if self.process.poll() is not None:
-                # Process died — clean up temp files
-                output = self.process.stdout()
-                log_error('Dnsmasq', f'Failed to start: {output}')
+                # Process died — dnsmasq reports startup errors on STDERR
+                # (e.g. "failed to create listening socket ... Address already
+                # in use"), so surface both streams to make failures diagnosable.
+                out, err = self.process.get_output()
+                detail = (err or '').strip() or (out or '').strip() or '(no output)'
+                log_error('Dnsmasq', f'Failed to start: {detail}')
                 Color.pl('{!} {R}Dnsmasq failed to start{W}')
-                if Configuration.verbose > 0:
-                    Color.pl('{!} {O}Output:{W}\n%s' % output)
+                Color.pl('{!} {O}%s{W}' % detail)
                 self._remove_temp_files()
                 return False
 

@@ -52,6 +52,7 @@ def initialize_defaults(cls):
     cls.use_eviltwin = False
     cls.eviltwin_port = 80
     cls.eviltwin_deauth_interval = 5
+    cls.eviltwin_timeout = 0  # Seconds before giving up (0 = run until success/interrupt)
     cls.eviltwin_template = 'generic'
     cls.eviltwin_channel = None
     cls.eviltwin_validate_credentials = True

@@ -35,11 +35,17 @@ class TestHostapdConfiguration(unittest.TestCase):
         self.assertEqual(hostapd.password, 'testpassword')
         self.assertFalse(hostapd.running)
     
-    def test_hostapd_default_password(self):
-        """Test hostapd uses default password when none provided."""
+    def test_hostapd_open_network_when_no_password(self):
+        """With no password, the AP must be OPEN (captive portal requirement)."""
         hostapd = Hostapd('wlan0', 'TestNetwork', 6)
-        
-        self.assertEqual(hostapd.password, 'temporarypassword123')
+
+        # No passphrase is stored, and the generated config must not enable WPA2
+        # (otherwise clients couldn't associate to reach the portal).
+        self.assertIsNone(hostapd.password)
+        config = hostapd.generate_config()
+        self.assertNotIn('wpa=2', config)
+        self.assertNotIn('wpa_passphrase', config)
+        self.assertIn('auth_algs=1', config)
     
     def test_hostapd_config_generation(self):
         """Test hostapd configuration file generation."""
@@ -66,8 +72,29 @@ class TestHostapdConfiguration(unittest.TestCase):
         """Test hostapd handles special characters in SSID."""
         hostapd = Hostapd('wlan0', 'Test Network 2.4GHz', 6, 'pass123')
         config = hostapd.generate_config()
-        
+
         self.assertIn('ssid=Test Network 2.4GHz', config)
+
+    def test_hostapd_ssid_newline_injection_neutralized(self):
+        """A newline in the SSID must not inject hostapd directives."""
+        # Malicious SSID attempting to append a directive on a new config line.
+        malicious = 'Evil\nmacaddr_acl=1\nctrl_interface=/tmp/x'
+        hostapd = Hostapd('wlan0', malicious, 6, 'pass123')
+        config = hostapd.generate_config()
+
+        # The injected directives must NOT appear as standalone config lines.
+        lines = config.split('\n')
+        self.assertNotIn('ctrl_interface=/tmp/x', lines)
+        # The SSID line must be hex-encoded (ssid2=) rather than a raw ssid=.
+        self.assertTrue(any(line.startswith('ssid2=') for line in lines))
+        self.assertFalse(any(line.startswith('ssid=Evil') for line in lines))
+
+    def test_hostapd_ssid_non_ascii_hex_encoded(self):
+        """Non-ASCII SSIDs are emitted as ssid2=<hex> (hostapd-safe)."""
+        hostapd = Hostapd('wlan0', 'Café📶', 6, 'pass123')
+        config = hostapd.generate_config()
+        lines = config.split('\n')
+        self.assertTrue(any(line.startswith('ssid2=') for line in lines))
     
     def test_hostapd_config_file_creation(self):
         """Test hostapd creates configuration file."""

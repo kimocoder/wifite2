@@ -54,6 +54,10 @@ def parse_eviltwin_args(cls, args):
         cls.eviltwin_deauth_interval = args.eviltwin_deauth_interval
         Color.pl('{+} {C}option:{W} Evil Twin deauth interval: {G}%d seconds{W}' % args.eviltwin_deauth_interval)
 
+    if hasattr(args, 'eviltwin_timeout') and args.eviltwin_timeout is not None:
+        cls.eviltwin_timeout = args.eviltwin_timeout
+        Color.pl('{+} {C}option:{W} Evil Twin timeout: {G}%d seconds{W}' % args.eviltwin_timeout)
+
     if hasattr(args, 'eviltwin_template') and args.eviltwin_template:
         cls.eviltwin_template = args.eviltwin_template
         Color.pl('{+} {C}option:{W} Evil Twin portal template: {G}%s{W}' % args.eviltwin_template)

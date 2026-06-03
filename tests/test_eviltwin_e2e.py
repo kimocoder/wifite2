@@ -28,9 +28,9 @@ from wifite.config import Configuration
 # Set required Configuration attributes before importing other modules
 Configuration.wpa_attack_timeout = 600
 Configuration.interface = 'wlan0'
-Configuration.evil_twin_timeout = 0
-Configuration.evil_twin_portal_template = 'generic'
-Configuration.evil_twin_deauth_interval = 5
+Configuration.eviltwin_timeout = 0
+Configuration.eviltwin_template = 'generic'
+Configuration.eviltwin_deauth_interval = 5
 
 from wifite.attack.eviltwin import EvilTwin, AttackState
 from wifite.model.target import Target
@@ -47,7 +47,7 @@ class TestRealRouterScenarios(unittest.TestCase):
     def setUp(self):
         """Set up test fixtures."""
         Configuration.interface = 'wlan0'
-        Configuration.evil_twin_timeout = 0
+        Configuration.eviltwin_timeout = 0
     
     def test_wpa2_personal_router_scenario(self):
         """Test scenario: WPA2-Personal router with standard settings."""
@@ -593,7 +593,7 @@ class TestCompleteAttackLifecycle(unittest.TestCase):
         self.mock_target.wps = False
         
         Configuration.interface = 'wlan0'
-        Configuration.evil_twin_timeout = 0
+        Configuration.eviltwin_timeout = 0
     
     @patch('wifite.attack.eviltwin.Color')
     @patch('wifite.attack.eviltwin.input')
