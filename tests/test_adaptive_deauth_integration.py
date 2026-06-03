@@ -30,7 +30,7 @@ class TestAdaptiveDeauthIntegration(unittest.TestCase):
         """Test that adaptive deauth manager is initialized on attack creation."""
         # Set up Configuration mock with all required attributes
         mock_config.interface = 'wlan0'
-        mock_config.evil_twin_deauth_interval = 5.0
+        mock_config.eviltwin_deauth_interval = 5.0
         mock_config.wpa_attack_timeout = 60
         
         from wifite.attack.eviltwin import EvilTwin

@@ -173,6 +173,38 @@ class CredentialHandler:
             log_error('CredentialHandler', f'Error handling submission: {e}', e)
             return False, 'An error occurred. Please try again.'
     
+    def check_and_record(self, ssid: str, password: str, client_ip: str) -> Tuple[bool, str]:
+        """
+        Gate a submission inline: validate input format and enforce per-client
+        rate limiting, recording the attempt.
+
+        Unlike submit_credentials(), this does NOT enqueue the submission for
+        async validation — it is meant to be called synchronously from the
+        portal POST path as a lightweight admission check before the real
+        credential callback runs.
+
+        Args:
+            ssid: Network SSID
+            password: Network password
+            client_ip: IP address of submitting client
+
+        Returns:
+            Tuple of (accepted, message). When accepted is False, message
+            explains why (bad input or rate limited).
+        """
+        validation_error = self._validate_input(ssid, password)
+        if validation_error:
+            log_warning('CredentialHandler', f'Invalid input from {client_ip}: {validation_error}')
+            return False, validation_error
+
+        if not self._check_rate_limit(client_ip):
+            log_warning('CredentialHandler', f'Rate limit exceeded for {client_ip}')
+            return False, 'Too many attempts. Please wait before trying again.'
+
+        self.total_submissions += 1
+        self._update_client_attempts(client_ip)
+        return True, 'OK'
+
     def _validate_input(self, ssid: str, password: str) -> Optional[str]:
         """
         Validate input format.

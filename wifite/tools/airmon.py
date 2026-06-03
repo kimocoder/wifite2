@@ -455,6 +455,54 @@ class Airmon(Dependency):
         Color.pl('{+}{W} Done !')
 
     @staticmethod
+    def put_interface_down(interface):
+        """Bring an interface down (e.g. before changing mode/channel)."""
+        Color.p('{!}{W} Putting interface {R}%s{W} {O}down{W}...\n' % interface)
+        Ip.down(interface)
+        Color.pl('{+}{W} Done !')
+
+    @staticmethod
+    def set_interface_mode(interface, mode_name):
+        """Set an interface's 802.11 mode (e.g. 'managed', 'monitor').
+
+        The interface must be down to change type, so we toggle it down→set→up.
+        """
+        log_debug('Airmon', f'Setting {interface} to {mode_name} mode')
+        Ip.down(interface)
+        Iw.mode(interface, mode_name)
+        Ip.up(interface)
+        return True
+
+    @staticmethod
+    def get_interface_mode(interface):
+        """Return the current 802.11 mode of an interface, or None.
+
+        Parses `iw dev <iface> info` (e.g. 'type managed' / 'type monitor').
+        """
+        out, _err = Process.call(f'iw dev {interface} info')
+        if match := re.search(r'^\s*type\s+(\w+)', out or '', re.MULTILINE):
+            return match.group(1)
+        return None
+
+    @staticmethod
+    def set_interface_channel(interface, channel):
+        """Tune an interface to a channel via `iw dev <iface> set channel`."""
+        log_debug('Airmon', f'Setting {interface} to channel {channel}')
+        Process.call(f'iw dev {interface} set channel {int(channel)}')
+        return True
+
+    @staticmethod
+    def get_interface_channel(interface):
+        """Return the current channel of an interface as int, or None.
+
+        Parses `iw dev <iface> info` (e.g. 'channel 6 (2437 MHz)').
+        """
+        out, _err = Process.call(f'iw dev {interface} info')
+        if match := re.search(r'^\s*channel\s+(\d+)', out or '', re.MULTILINE):
+            return int(match.group(1))
+        return None
+
+    @staticmethod
     def start_network_manager():
         Color.p('{!} {O}start {R}NetworkManager{O}...')
 

@@ -7,6 +7,7 @@ Template system for captive portal.
 Provides template rendering with support for multiple portal styles.
 """
 
+import html
 import os
 from typing import Dict, Any, Optional
 
@@ -136,12 +137,15 @@ class TemplateRenderer:
         # Add custom variables
         variables.update(self.custom_vars)
         
-        # Substitute variables
+        # Substitute variables. Values (notably the target SSID, which comes
+        # from the air and is attacker-influenceable) are HTML-escaped to
+        # prevent attribute/markup injection into the served portal pages and
+        # to render correctly for SSIDs containing & < > " '.
         result = template
         for key, value in variables.items():
             placeholder = '{{' + key + '}}'
-            result = result.replace(placeholder, str(value))
-        
+            result = result.replace(placeholder, html.escape(str(value), quote=True))
+
         return result
     
     def _get_builtin_login_template(self) -> str:

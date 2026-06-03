@@ -10,13 +10,14 @@ Serves login pages and handles credential submissions for Evil Twin attacks.
 import os
 import threading
 import time
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import HTTPServer, ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import parse_qs, urlparse
 from typing import Optional, Callable, Dict, Any
 import socket
 
 from ...util.color import Color
 from ...util.logger import log_info, log_error, log_warning, log_debug
+from .credential_handler import CredentialHandler
 
 
 class PortalRequestHandler(BaseHTTPRequestHandler):
@@ -27,6 +28,14 @@ class PortalRequestHandler(BaseHTTPRequestHandler):
     credential_callback = None
     request_log_callback = None
     server_instance = None
+    credential_handler = None
+
+    # Per-connection socket timeout (seconds). Without this a client that opens
+    # a connection and never finishes its request would hold its handler thread
+    # indefinitely; with ThreadingHTTPServer that's one thread per stalled
+    # client, and the timeout reaps them. BaseHTTPRequestHandler honors this in
+    # handle_one_request().
+    timeout = 30
     
     def log_message(self, format, *args):
         """Override to use our logging system."""
@@ -86,9 +95,18 @@ class PortalRequestHandler(BaseHTTPRequestHandler):
                 self._send_error_response(404, 'Not Found')
                 return
             
-            # Read POST data with size limit to prevent memory exhaustion
+            # Read POST data with bounds checking to prevent memory exhaustion.
             MAX_POST_SIZE = 8192  # 8KB — plenty for form credentials
-            content_length = int(self.headers.get('Content-Length', 0))
+            try:
+                content_length = int(self.headers.get('Content-Length', 0))
+            except (TypeError, ValueError):
+                content_length = -1
+            # A missing/non-numeric or negative Content-Length is malformed; a
+            # negative value would otherwise make rfile.read(-1) drain until EOF.
+            if content_length < 0:
+                log_warning('Portal', f'Rejected POST with invalid Content-Length from {client_ip}')
+                self._send_error_response(400, 'Bad Request')
+                return
             if content_length > MAX_POST_SIZE:
                 log_warning('Portal', f'Rejected oversized POST ({content_length} bytes) from {client_ip}')
                 self._send_error_response(413, 'Request Entity Too Large')
@@ -103,7 +121,17 @@ class PortalRequestHandler(BaseHTTPRequestHandler):
             password = form_data.get('password', [''])[0]
             
             log_info('Portal', f'Credential submission from {client_ip}: SSID={ssid}')
-            
+
+            # Admission gate: server-side input validation + per-client rate
+            # limiting before the (potentially expensive) credential callback.
+            if self.credential_handler is not None:
+                accepted, message = self.credential_handler.check_and_record(
+                    ssid, password, client_ip)
+                if not accepted:
+                    log_warning('Portal', f'Submission rejected from {client_ip}: {message}')
+                    self._redirect_to_error()
+                    return
+
             # Validate credentials via callback
             if self.credential_callback:
                 try:
@@ -386,7 +414,8 @@ class PortalServer:
     Optimized for fast response times and low memory usage.
     """
     
-    def __init__(self, host=None, port=80, template_renderer=None):
+    def __init__(self, host=None, port=80, template_renderer=None,
+                 credential_handler=None):
         """
         Initialize portal server.
 
@@ -396,6 +425,9 @@ class PortalServer:
                   when binding on all interfaces is intentionally required.
             port: Port to listen on (default: 80)
             template_renderer: Optional template renderer for custom pages
+            credential_handler: Optional CredentialHandler providing server-side
+                  input validation and per-client rate limiting. Defaults to a
+                  fresh handler so these protections are always active.
         """
         # Default to the standard evil-twin AP IP rather than all interfaces.
         # This prevents the portal from being reachable on unrelated interfaces
@@ -405,6 +437,8 @@ class PortalServer:
         self.template_renderer = template_renderer
         self.credential_callback = None
         self.request_log_callback = None
+        # Always-on admission control (input validation + rate limiting).
+        self.credential_handler = credential_handler or CredentialHandler()
         
         self.server = None
         self.server_thread = None
@@ -454,12 +488,23 @@ class PortalServer:
             
             # Set class variables for request handler
             PortalRequestHandler.template_renderer = self.template_renderer
-            PortalRequestHandler.credential_callback = self.credential_callback
-            PortalRequestHandler.request_log_callback = self.request_log_callback
+            # Wrap function callbacks in staticmethod: assigning a plain function
+            # to a handler CLASS attribute would otherwise turn it into a bound
+            # method (injecting the handler instance as an extra first arg).
+            # Bound methods and None pass through unchanged.
+            PortalRequestHandler.credential_callback = (
+                staticmethod(self.credential_callback) if self.credential_callback else None)
+            PortalRequestHandler.request_log_callback = (
+                staticmethod(self.request_log_callback) if self.request_log_callback else None)
             PortalRequestHandler.server_instance = self
+            PortalRequestHandler.credential_handler = self.credential_handler
             
             # Create HTTP server
-            self.server = HTTPServer((self.host, self.port), PortalRequestHandler)
+            # ThreadingHTTPServer handles each client in its own thread, so one
+            # slow/stalled client can't block the captive portal for everyone
+            # else. daemon_threads=True (set by ThreadingHTTPServer) lets the
+            # process exit without waiting on in-flight request threads.
+            self.server = ThreadingHTTPServer((self.host, self.port), PortalRequestHandler)
             
             # Start server in background thread
             self.server_thread = threading.Thread(target=self._run_server, daemon=True)
@@ -800,10 +845,26 @@ class PortalServer:
         """
         return self._static_cache.get(filename)
     
+    def __enter__(self):
+        """Context-manager entry: start the server."""
+        self.start()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context-manager exit: stop the server."""
+        self.stop()
+        return False
+
     def __del__(self):
-        """Cleanup on deletion."""
+        """Release in-memory caches on GC.
+
+        Deliberately does NOT perform network/thread teardown here — calling
+        server.shutdown()/join() at GC time (especially during interpreter
+        shutdown) is fragile and can hang or raise. Lifecycle is managed
+        explicitly via stop() or the context manager; the serve_forever thread
+        is a daemon, so it never blocks process exit.
+        """
         try:
-            self.stop()
             self._template_cache.clear()
             self._static_cache.clear()
         except Exception:
