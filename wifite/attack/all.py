@@ -96,6 +96,23 @@ class AttackAll:
                 Color.pl('{+} {D}Session updated: target {C}%s{D} marked as {R}failed{W}' % target.bssid)
             return True
 
+        # --wpa3-only: restrict attacks to WPA3-SAE networks. Unlike --wpa3
+        # (a discovery filter), this is enforced at attack time, so a non-WPA3
+        # target that still reaches this point (e.g. selected by BSSID, or when
+        # no discovery filter was set) is skipped — WPA2-only / WEP / OWE
+        # targets are never attacked under this mode.
+        if Configuration.wpa3_only:
+            is_wpa3_target = target.primary_encryption == 'WPA3' or (
+                hasattr(target, 'wpa3_info') and target.wpa3_info and
+                getattr(target.wpa3_info, 'has_wpa3', False))
+            if not is_wpa3_target:
+                Color.pl('{!} {O}Skipping {C}%s{O}: {C}--wpa3-only{O} is set and '
+                         'target is not WPA3-SAE{W}' % (target.essid or target.bssid))
+                if session and session_mgr:
+                    session_mgr.mark_target_failed(session, target.bssid, "Not WPA3 (--wpa3-only)")
+                    session_mgr.save_session(session)
+                return True
+
         attacks = []
 
         if Configuration.use_eviltwin:
@@ -131,7 +148,10 @@ class AttackAll:
                 attacks.append(AttackWPA3SAE(target))
 
                 # For transition mode, also try standard WPA2 attacks as fallback
-                if hasattr(target, 'wpa3_info') and target.wpa3_info and target.wpa3_info.get('is_transition'):
+                # (unless --force-sae asked us to skip WPA2 and attack SAE directly).
+                if not Configuration.wpa3_force_sae and \
+                        hasattr(target, 'wpa3_info') and target.wpa3_info and \
+                        target.wpa3_info.get('is_transition'):
                     if not Configuration.wps_only and not Configuration.use_pmkid_only:
                         # Add PMKID and WPA attacks as fallback for transition mode
                         if not Configuration.dont_use_pmkid:

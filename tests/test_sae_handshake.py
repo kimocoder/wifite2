@@ -118,19 +118,35 @@ class TestSAEHandshake(unittest.TestCase):
     @patch('wifite.model.sae_handshake.Tshark')
     @patch('wifite.model.sae_handshake.Process')
     def test_validate_with_tshark_success(self, mock_process_class, mock_tshark):
-        """Test validation with tshark when handshake is valid."""
+        """A complete handshake has both a Commit (seq 1) and Confirm (seq 2)."""
         # Mock Tshark.exists to return True
         mock_tshark.exists.return_value = True
-        
-        # Mock process execution with valid output
+
+        # Mock process output: auth-sequence numbers (1=Commit, 2=Confirm).
         mock_proc = Mock()
-        mock_proc.stdout.return_value = 'frame1\nframe2\n'
+        mock_proc.stdout.return_value = '1\n1\n2\n2\n'
         mock_process_class.return_value = mock_proc
-        
+
         hs = SAEHandshake(self.capfile, self.bssid, self.essid)
         result = hs._validate_with_tshark()
-        
+
         self.assertTrue(result)
+
+    @patch('wifite.model.sae_handshake.Tshark')
+    @patch('wifite.model.sae_handshake.Process')
+    def test_validate_with_tshark_commits_only(self, mock_process_class, mock_tshark):
+        """Two Commits with no Confirm must NOT count as a complete handshake."""
+        mock_tshark.exists.return_value = True
+
+        # Only Commit (seq 1) frames — no Confirm (seq 2).
+        mock_proc = Mock()
+        mock_proc.stdout.return_value = '1\n1\n'
+        mock_process_class.return_value = mock_proc
+
+        hs = SAEHandshake(self.capfile, self.bssid, self.essid)
+        result = hs._validate_with_tshark()
+
+        self.assertFalse(result)
 
     @patch('wifite.model.sae_handshake.Tshark')
     @patch('wifite.model.sae_handshake.Process')

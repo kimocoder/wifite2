@@ -29,8 +29,11 @@ class WPA3ToolChecker:
     """
 
     # Minimum required versions
+    # hcxdumptool must be 7.x: the HcxDumpTool wrapper emits 7.x-only capture
+    # syntax (-w output, --rds=1, channel band-suffixes like 1a/6a), so a 6.x
+    # binary would pass an older gate and then fail at runtime.
     MIN_VERSIONS = {
-        'hcxdumptool': (6, 0, 0),
+        'hcxdumptool': (7, 0, 0),
         'hcxpcapngtool': (1, 0, 0),
         'hashcat': (6, 0, 0),
         'tshark': (3, 0, 0)

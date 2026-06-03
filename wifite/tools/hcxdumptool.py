@@ -73,6 +73,14 @@ class HcxDumpTool(Dependency):
         self.pid = None
         self.proc = None
 
+        # Baseline size of the empty capture (pcapng Section Header / Interface
+        # Description blocks are written the instant capture starts). Recorded
+        # in __enter__ so has_captured_data()/has_new_data() can tell a
+        # header-only file apart from one that actually contains frames.
+        self._baseline_size = None
+        # High-water mark of file size seen by has_new_data().
+        self._last_data_size = 0
+
     def __enter__(self):
         """
         Start hcxdumptool capture process.
@@ -131,6 +139,15 @@ class HcxDumpTool(Dependency):
         # Give it a moment to start
         time.sleep(1)
 
+        # Record the header-only size now that the file exists, so subsequent
+        # data checks measure growth beyond the pcapng header rather than
+        # treating the always-present header as "captured data".
+        try:
+            self._baseline_size = os.path.getsize(self.output_file) \
+                if os.path.exists(self.output_file) else 0
+        except OSError:
+            self._baseline_size = 0
+
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
@@ -163,8 +180,36 @@ class HcxDumpTool(Dependency):
         return self.output_file
 
     def has_captured_data(self) -> bool:
-        """Check if any data has been captured."""
-        return os.path.exists(self.output_file) and os.path.getsize(self.output_file) > 0
+        """Return True only when actual packet data exists beyond the header.
+
+        A fresh pcapng file is non-empty the instant capture starts (the
+        Section Header / Interface Description blocks are written immediately),
+        so a bare ``getsize() > 0`` check is always true and meaningless. We
+        compare against the header-only baseline recorded at start instead.
+        """
+        try:
+            current = os.path.getsize(self.output_file)
+        except OSError:
+            return False
+        baseline = self._baseline_size if self._baseline_size is not None else 0
+        return current > baseline
+
+    def has_new_data(self) -> bool:
+        """Return True only when new packet data was written since the last call.
+
+        Lets polling capture loops skip the expensive handshake validation
+        (which spawns tshark / hcxpcapngtool / aircrack) when the capture file
+        hasn't grown — i.e. there are no new frames worth re-evaluating.
+        """
+        try:
+            current = os.path.getsize(self.output_file)
+        except OSError:
+            return False
+        baseline = self._baseline_size if self._baseline_size is not None else 0
+        if current > baseline and current > self._last_data_size:
+            self._last_data_size = current
+            return True
+        return False
 
     @staticmethod
     def exists() -> bool:
