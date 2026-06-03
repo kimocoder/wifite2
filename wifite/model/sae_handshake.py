@@ -111,20 +111,22 @@ class SAEHandshake:
 
     def _validate_with_tshark(self) -> bool:
         """
-        Validate SAE handshake using tshark with optimized filtering.
+        Validate SAE handshake using tshark.
 
-        Optimizations:
-        - Uses efficient BPF-style filters to reduce processing
-        - Streams output to avoid loading entire capture into memory
-        - Early termination once minimum frames are found
+        A complete SAE handshake must contain BOTH:
+          - an SAE Commit  (authentication transaction sequence 1), and
+          - an SAE Confirm (authentication transaction sequence 2).
+
+        Merely observing two SAE authentication frames is not sufficient —
+        two retransmitted Commits (or a Commit from each side with no
+        Confirm) would otherwise be misreported as complete. We therefore
+        inspect the auth-sequence numbers and require both 1 and 2 to appear.
 
         Returns:
-            True if tshark finds SAE commit and confirm frames
+            True if both an SAE Commit and an SAE Confirm are observed.
         """
         try:
-            # Check for SAE authentication frames
-            # SAE uses authentication frame type (0x0b) with auth algorithm 3
-            # Build efficient filter string
+            # SAE uses authentication frame type (0x0b) with auth algorithm 3.
             filter_str = 'wlan.fc.type_subtype == 0x0b && wlan.fixed.auth.alg == 3'
             if self.bssid:
                 # Add BSSID filter for efficiency
@@ -135,18 +137,28 @@ class SAEHandshake:
                 '-r', self.capfile,
                 '-Y', filter_str,
                 '-T', 'fields',
-                '-e', 'wlan.fixed.auth.sae.group',
-                '-e', 'frame.number',
-                '-c', '2'  # Stop after finding 2 frames (optimization)
+                '-e', 'wlan.fixed.auth.seq',
+                # Bound the work — SAE auth frames are few, and we early-exit
+                # as soon as both a Commit and a Confirm have been seen.
+                '-c', '50',
             ]
 
             proc = Process(command, devnull=False)
             output = proc.stdout()
 
-            # Count frames - need at least 2 (commit and confirm)
-            # Use generator expression for memory efficiency
-            frame_count = sum(1 for line in output.split('\n') if line.strip())
-            return frame_count >= 2
+            seen_seqs = set()
+            for line in output.split('\n'):
+                seq = line.strip()
+                if not seq:
+                    continue
+                # Be defensive about extra fields/separators per line.
+                seq = seq.split('\t')[0].split(',')[0].strip()
+                if seq in ('1', '2'):
+                    seen_seqs.add(seq)
+                    if '1' in seen_seqs and '2' in seen_seqs:
+                        return True
+
+            return False
 
         except Exception:
             return False

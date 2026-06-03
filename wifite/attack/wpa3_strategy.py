@@ -117,6 +117,14 @@ class WPA3AttackStrategy:
         Returns:
             True if downgrade attack is possible, False otherwise
         """
+        from wifite.config import Configuration
+        # User overrides: --no-downgrade disables the downgrade path outright,
+        # and --force-sae (attack SAE directly, skip WPA2) also implies no
+        # downgrade since a downgrade fundamentally captures a WPA2 handshake.
+        if getattr(Configuration, 'wpa3_no_downgrade', False) or \
+                getattr(Configuration, 'wpa3_force_sae', False):
+            return False
+
         # Downgrade requires transition mode (both WPA2 and WPA3 support)
         return wpa3_info.get('is_transition', False)
 

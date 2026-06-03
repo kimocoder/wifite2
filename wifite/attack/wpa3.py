@@ -341,7 +341,6 @@ class AttackWPA3SAE(Attack):
             return False  # Let it fall through to passive
         handshake = self.capture_sae_handshake()
         if handshake:
-            Color.pl('{+} {G}SAE handshake captured successfully{W}')
             self._finalize_sae_success(handshake, key=None)
             return True
         Color.pl('{!} {O}SAE handshake capture failed{W}')
@@ -373,21 +372,49 @@ class AttackWPA3SAE(Attack):
             self.view.add_log('Starting passive capture - final fallback')
         handshake = self.passive_capture()
         if handshake:
-            Color.pl('{+} {G}SAE handshake captured passively{W}')
             self._finalize_sae_success(handshake, key=None)
             return True
         return False
 
     def _finalize_sae_success(self, handshake, key):
-        """Wrap a captured SAE handshake in CrackResultSAE and set success.
+        """Record a captured SAE handshake as a CrackResultSAE.
 
         `handshake` is an SAEHandshake object (has .capfile / .bssid / .essid).
-        `key` is the cracked PSK if known, else None.
+        `key` is the recovered PSK if known, else None.
+
+        When `key` is None we still save the capture (for records / later
+        analysis) but we must NOT present it as a crackable win — see
+        _warn_sae_not_offline_crackable for why.
         """
         self.crack_result = CrackResultSAE(
             handshake.bssid, handshake.essid, handshake.capfile, key)
         self.crack_result.dump()
         self.success = True
+        if key is None:
+            self._warn_sae_not_offline_crackable()
+
+    def _warn_sae_not_offline_crackable(self):
+        """Honest caveat: a captured SAE handshake is NOT offline-crackable.
+
+        Unlike a WPA2 4-way handshake, WPA3-SAE (Dragonfly) is a PAKE
+        designed to resist offline dictionary attacks. Capturing the SAE
+        exchange does not let hashcat/aircrack recover the password the way
+        a WPA2 capture does — there is no hashcat mode that cracks a captured
+        SAE handshake. We keep the capture, but we tell the user the truth
+        instead of implying the network was owned.
+        """
+        Color.pl('{!} {O}SAE handshake captured and saved — but note:{W}')
+        Color.pl('{!} {O}WPA3-SAE (Dragonfly) resists offline dictionary attacks.{W}')
+        Color.pl('{!} {O}A captured SAE handshake {R}cannot be cracked offline{O} '
+                 'like a WPA2 handshake.{W}')
+        Color.pl('{!} {O}Offline password recovery is only feasible via:{W}')
+        Color.pl('    {C}-{W} Transition-mode {C}downgrade{W} to WPA2 '
+                 '(captures a crackable 4-way handshake)')
+        Color.pl('    {C}-{W} A successful {C}Dragonblood timing{W} partition '
+                 '(only MODP groups 22/23/24)')
+        if self.view:
+            self.view.add_log('SAE handshake captured (NOT offline-crackable — '
+                              'WPA3-SAE resists dictionary attacks)')
 
     def _active_probe_for_vulnerable_groups(self):
         """
@@ -791,9 +818,17 @@ class AttackWPA3SAE(Attack):
                 return None
             
             self.clients = []
-            
-            # Set timeout for downgrade attempt (30 seconds as per requirements)
-            downgrade_timeout = Timer(30)
+
+            # Set timeout for the downgrade attempt. Honour --wpa3-timeout when
+            # the user set it; otherwise keep a short 30s window — the downgrade
+            # is a fast first attempt that falls back to SAE capture, so it
+            # shouldn't occupy the full wpa_attack_timeout (300s) by default.
+            timeout_value = Configuration.wpa3_attack_timeout or 30
+            downgrade_timeout = Timer(timeout_value)
+            # Warn once if no clients appear partway through (the downgrade
+            # needs active clients). Half the window, floored so short timeouts
+            # still produce a warning.
+            no_clients_warn_after = max(5, timeout_value // 2)
             deauth_timer = Timer(Configuration.wpa_deauth_timeout)
             sae_detected = False
             deauth_attempts = 0
@@ -811,7 +846,7 @@ class AttackWPA3SAE(Attack):
                 
                 # Calculate progress percentage
                 elapsed = downgrade_timeout.running_time()
-                total_time = 30  # 30 second timeout
+                total_time = timeout_value
                 progress_pct = min(100, int((elapsed / total_time) * 100))
                 
                 # Update TUI view if available
@@ -848,9 +883,11 @@ class AttackWPA3SAE(Attack):
                     Color.pattack('WPA3', self.target, 'Downgrade',
                                  'Waiting for clients... (%s)' % downgrade_timeout)
                     
-                    # Show warning after some time with no clients
-                    if not no_clients_warning_shown and downgrade_timeout.running_time() > 30:
-                        Color.pl('\n{!} {O}No clients detected after 30 seconds{W}')
+                    # Show warning once we're partway through with no clients
+                    if not no_clients_warning_shown and \
+                            downgrade_timeout.running_time() >= no_clients_warn_after:
+                        Color.pl('\n{!} {O}No clients detected after %d seconds{W}'
+                                 % no_clients_warn_after)
                         Color.pl('{!} {O}Downgrade requires active clients to succeed{W}')
                         if self.view:
                             self.view.add_log('Warning: No clients detected')
@@ -899,7 +936,7 @@ class AttackWPA3SAE(Attack):
                 # After deauth, clients should reconnect with WPA2
                 # Check hcxdumptool capture (pcapng format)
                 try:
-                    if hcxdump and hcxdump.has_captured_data():
+                    if hcxdump and hcxdump.has_new_data():
                         handshake = Handshake(hcxdump.get_output_file(),
                                              bssid=self.target.bssid,
                                              essid=self.target.essid)
@@ -1082,7 +1119,7 @@ class AttackWPA3SAE(Attack):
                 
                 # Check if we've captured data
                 try:
-                    if hcxdump.has_captured_data():
+                    if hcxdump.has_new_data():
                         # Create SAEHandshake object
                         sae_hs = SAEHandshake(
                             hcxdump.get_output_file(),
@@ -1253,7 +1290,7 @@ class AttackWPA3SAE(Attack):
                 
                 # Check if we've captured data
                 try:
-                    if hcxdump.has_captured_data():
+                    if hcxdump.has_new_data():
                         # Create SAEHandshake object
                         sae_hs = SAEHandshake(
                             hcxdump.get_output_file(),
