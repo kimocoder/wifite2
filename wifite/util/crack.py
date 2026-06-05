@@ -18,7 +18,22 @@ from ..util.process import Process
 from ..util.sae_crack import SAECracker
 
 
-# TODO: Bring back the 'print' option, for easy copy/pasting. Just one-liners people can paste into terminal.
+def print_cracking_command(tool_name, command_parts):
+    """
+    Print the exact shell command that would be run for cracking,
+    so users can copy-paste it into a terminal.
+
+    Used by cracking helpers that need a consistently formatted command line.
+
+    Args:
+        tool_name:     Human-readable label for the tool (e.g. 'aircrack-ng').
+        command_parts: List of strings forming the shell command (argv style).
+    """
+    import shlex
+    from ..util.color import Color
+    cmd_str = ' '.join(shlex.quote(str(p)) for p in command_parts)
+    Color.pl('{+} {C}[crack-cmd]{W} {G}%s{W}: {W}%s' % (tool_name, cmd_str))
+
 
 def decode_hex_essid_if_needed(essid):
     """
@@ -383,6 +398,9 @@ class CrackHelper:
             Color.pl('{!} {R}Error: {O}%s{W}' % e)
             return None
 
+        # show_command is True when verbose or when --print-crack-cmd is set
+        show_cmd = Configuration.show_cracking_command or Configuration.verbose > 0
+
         wordlists_to_try = Configuration.wordlists if Configuration.wordlists else [Configuration.wordlist]
 
         for wordlist in wordlists_to_try:
@@ -390,13 +408,13 @@ class CrackHelper:
             Color.pl('{+} Trying wordlist: {C}%s{W}' % wordlist_name)
 
             if tool == 'aircrack':
-                key = Aircrack.crack_handshake(handshake, show_command=True, wordlist=wordlist)
+                key = Aircrack.crack_handshake(handshake, show_command=show_cmd, wordlist=wordlist)
             elif tool == 'hashcat':
-                key = Hashcat.crack_handshake(handshake, target_is_wpa3_sae=False, show_command=True, wordlist=wordlist)
+                key = Hashcat.crack_handshake(handshake, target_is_wpa3_sae=False, show_command=show_cmd, wordlist=wordlist)
             elif tool == 'john':
-                key = John.crack_handshake(handshake, show_command=True, wordlist=wordlist)
+                key = John.crack_handshake(handshake, show_command=show_cmd, wordlist=wordlist)
             elif tool == 'cowpatty':
-                key = Cowpatty.crack_handshake(handshake, show_command=True, wordlist=wordlist)
+                key = Cowpatty.crack_handshake(handshake, show_command=show_cmd, wordlist=wordlist)
 
             if key is not None:
                 return CrackResultWPA(hs['bssid'], hs['essid'], hs['filename'], key)
@@ -408,12 +426,15 @@ class CrackHelper:
         if tool != 'hashcat':
             Color.pl('{!} {O}Note: PMKID hashes can only be cracked using {C}hashcat{W}')
 
+        # show_command is True when verbose or when --print-crack-cmd is set
+        show_cmd = Configuration.show_cracking_command or Configuration.verbose > 0
+
         wordlists_to_try = Configuration.wordlists if Configuration.wordlists else [Configuration.wordlist]
 
         for wordlist in wordlists_to_try:
             wordlist_name = os.path.basename(wordlist)
             Color.pl('{+} Trying wordlist: {C}%s{W}' % wordlist_name)
-            key2 = Hashcat.crack_pmkid(hs['filename'], verbose=True, wordlist=wordlist)
+            key2 = Hashcat.crack_pmkid(hs['filename'], verbose=show_cmd, wordlist=wordlist)
             if key2 is not None:
                 return CrackResultPMKID(hs['bssid'], hs['essid'], hs['filename'], key2)
 
@@ -425,6 +446,9 @@ class CrackHelper:
         if tool != 'hashcat':
             Color.pl('{!} {O}Note: WPA3-SAE handshakes can only be cracked using {C}hashcat{W}')
             return None
+
+        # show_command is True when verbose or when --print-crack-cmd is set
+        show_cmd = Configuration.show_cracking_command or Configuration.verbose > 0
 
         # Create SAEHandshake object
         sae_handshake = SAEHandshake(
@@ -441,8 +465,8 @@ class CrackHelper:
             key = SAECracker.crack_sae_handshake(
                 sae_handshake,
                 wordlist=wordlist,
-                show_command=True,
-                verbose=True
+                show_command=show_cmd,
+                verbose=show_cmd
             )
             if key is not None:
                 return CrackResultSAE(hs['bssid'], hs['essid'], hs['filename'], key)

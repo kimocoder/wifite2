@@ -53,6 +53,7 @@ class Configuration:
     random_mac = None
     random_mac_vendor = None
     require_fakeauth = None
+    show_cracking_command = False
     scan_time = None
     show_bssids = None
     show_cracked = None
@@ -98,6 +99,7 @@ class Configuration:
     wep_attacks = None
     wep_crack_at_ivs = None
     wep_filter = None
+    wep_fakeauth_time = 5
     wep_keep_ivs = None
     wep_pps = None
     wep_restart_aircrack = None
@@ -217,6 +219,8 @@ class Configuration:
             cls.check_handshake = args.check_handshake
         if args.crack_handshake:
             cls.crack_handshake = True
+        if hasattr(args, 'show_cracking_command') and args.show_cracking_command:
+            cls.show_cracking_command = True
         if args.update_db:
             cls.update_db = True
         if hasattr(args, 'syscheck') and args.syscheck:
