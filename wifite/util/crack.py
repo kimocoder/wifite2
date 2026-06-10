@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 import os
 from json import loads
@@ -252,7 +251,7 @@ class CrackHelper:
                     continue
                 
                 # Extract parts: name is first, bssid and date are last two
-                name = parts[0]
+                parts[0]
                 date = parts[-1]
                 bssid = parts[-2]
                 # Everything in between is the ESSID (may contain underscores)
@@ -335,7 +334,7 @@ class CrackHelper:
         selection = []
         for choice in choices.split(','):
             if '-' in choice:
-                first, last = [int(x) for x in choice.split('-')]
+                first, last = (int(x) for x in choice.split('-'))
                 for index in range(first, last + 1):
                     selection.append(handshakes[index - 1])
             elif choice.strip().lower() == 'all':

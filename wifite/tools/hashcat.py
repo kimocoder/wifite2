@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 from .dependency import Dependency
 from ..config import Configuration
@@ -7,7 +6,6 @@ from ..util.process import Process
 from ..util.color import Color
 from ..util.logger import log_debug, log_info, log_warning, log_error
 import os
-import re
 import threading
 
 class HashcatCracker:
@@ -465,7 +463,6 @@ class HcxPcapngTool(Dependency):
                 
                 # Also include tshark check for WPA3
                 if is_wpa3_sae:
-                    from .tshark import Tshark
                     tshark_check_cmd = ['tshark', '-r', handshake_obj.capfile, '-Y', 'wlan.fc.type_subtype == 0x0b'] # Authentication frames
                     tshark_process = Process(tshark_check_cmd)
                     tshark_stdout, _ = tshark_process.get_output()
@@ -493,7 +490,6 @@ class HcxPcapngTool(Dependency):
                         Color.pl('{!} {O}Cleaned up temporary hash file after error{W}')
                 except OSError as cleanup_err:
                     log_debug('HcxPcapngTool', f'Failed to cleanup hash file: {str(cleanup_err)}')
-                    pass
             raise
 
     @staticmethod
@@ -549,7 +545,6 @@ class HcxPcapngTool(Dependency):
                         Color.pl('{!} {O}Cleaned up temporary john file after error{W}')
                 except OSError as cleanup_err:
                     log_debug('HcxPcapngTool', f'Failed to cleanup john file: {str(cleanup_err)}')
-                    pass
             raise
 
     def get_pmkid_hash(self, pcapng_file):
@@ -563,7 +558,7 @@ class HcxPcapngTool(Dependency):
         if not os.path.exists(self.pmkid_file):
             return None
 
-        with open(self.pmkid_file, 'r') as f:
+        with open(self.pmkid_file) as f:
             output = f.read()
             # Each line looks like:
             # hash*bssid*station*essid
@@ -628,7 +623,7 @@ class HcxPcapngTool(Dependency):
 
         pmkids = []
         try:
-            with open(temp_hash_file, 'r') as f:
+            with open(temp_hash_file) as f:
                 for line in f:
                     line = line.strip()
 

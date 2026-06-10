@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 Scapy-based WPS (Wi-Fi Protected Setup) detection.
@@ -27,8 +26,6 @@ WPS Information Elements:
 """
 
 import os
-from typing import Optional, List, Dict, Set
-from collections import defaultdict
 
 try:
     from scapy.all import (
@@ -100,7 +97,7 @@ class ScapyWPS:
         return SCAPY_AVAILABLE
     
     @classmethod
-    def detect_wps(cls, capfile: str) -> Dict[str, WPSInfo]:
+    def detect_wps(cls, capfile: str) -> dict[str, WPSInfo]:
         """
         Detect WPS-enabled networks from capture file.
         
@@ -155,7 +152,7 @@ class ScapyWPS:
             return {}
     
     @classmethod
-    def update_targets(cls, capfile: str, targets: List) -> None:
+    def update_targets(cls, capfile: str, targets: list) -> None:
         """
         Update target list with WPS information from capture.
         
@@ -188,7 +185,7 @@ class ScapyWPS:
                         target.wps = 1  # UNLOCKED
     
     @classmethod
-    def _parse_wps_ie(cls, pkt, bssid: str) -> Optional[WPSInfo]:
+    def _parse_wps_ie(cls, pkt, bssid: str) -> WPSInfo | None:
         """
         Parse WPS information element from packet.
         
@@ -290,7 +287,7 @@ class ScapyWPS:
                 break
     
     @classmethod
-    def get_wps_status(cls, capfile: str, bssid: str) -> Optional[WPSInfo]:
+    def get_wps_status(cls, capfile: str, bssid: str) -> WPSInfo | None:
         """
         Get WPS status for specific BSSID.
         
@@ -305,7 +302,7 @@ class ScapyWPS:
         return all_wps.get(bssid.upper())
     
     @classmethod
-    def is_wps_locked(cls, capfile: str, bssid: str) -> Optional[bool]:
+    def is_wps_locked(cls, capfile: str, bssid: str) -> bool | None:
         """
         Check if WPS is locked for specific BSSID.
         
@@ -323,12 +320,12 @@ class ScapyWPS:
 
 
 # Convenience functions
-def detect_wps(capfile: str) -> Dict[str, WPSInfo]:
+def detect_wps(capfile: str) -> dict[str, WPSInfo]:
     """Detect WPS-enabled networks from capture file."""
     return ScapyWPS.detect_wps(capfile)
 
 
-def update_targets(capfile: str, targets: List) -> None:
+def update_targets(capfile: str, targets: list) -> None:
     """Update targets with WPS information."""
     return ScapyWPS.update_targets(capfile, targets)
 

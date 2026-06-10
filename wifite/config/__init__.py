@@ -1,8 +1,6 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 import os
-import re
 from ..util.color import Color
 from ..tools.macchanger import Macchanger
 
@@ -348,11 +346,11 @@ class Configuration:
                 try:
                     file_path = os.path.join(cls.temp_dir, f)
                     os.remove(file_path)
-                except (OSError, IOError):
+                except OSError:
                     pass  # Ignore errors during cleanup
             try:
                 os.rmdir(cls.temp_dir)
-            except (OSError, IOError):
+            except OSError:
                 pass  # Ignore errors during cleanup
 
     @classmethod
@@ -381,7 +379,6 @@ class Configuration:
 
         # Clean up managed interfaces
         try:
-            from ..util.interface_manager import InterfaceManager
             from ..util.logger import log_info, log_debug
 
             # Check if we have an interface manager instance to clean up
@@ -433,4 +430,4 @@ class Configuration:
 
 if __name__ == '__main__':
     Configuration.initialize(False)
-    print((Configuration.dump()))
+    print(Configuration.dump())

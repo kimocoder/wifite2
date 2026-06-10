@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 """OUI manufacturer database loading logic."""
 
 import os
@@ -17,7 +16,7 @@ def load_manufacturers(cls):
         mfr_file = 'ieee-oui.txt'
     if os.path.exists(mfr_file):
         cls.manufacturers = {}
-        with open(mfr_file, 'r', encoding='utf-8') as f:
+        with open(mfr_file, encoding='utf-8') as f:
             for line in f:
                 if not re.match(r'^\w', line):
                     continue

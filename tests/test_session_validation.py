@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 Tests for session loading and validation logic.
@@ -10,7 +9,6 @@ import tempfile
 import os
 import shutil
 import json
-from unittest.mock import Mock, MagicMock, patch
 
 
 class TestSessionValidation(unittest.TestCase):

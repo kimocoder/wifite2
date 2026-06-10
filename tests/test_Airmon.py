@@ -1,10 +1,7 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
-import sys
 import unittest
 from wifite.tools.airmon import Airmon
 
-sys.path.insert(0, '..')
 
 
 class TestAirmon(unittest.TestCase):

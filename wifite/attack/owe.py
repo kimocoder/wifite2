@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 OWE (Opportunistic Wireless Encryption) Attack Module
@@ -35,7 +34,7 @@ class AttackOWE(Attack):
     """
 
     def __init__(self, target):
-        super(AttackOWE, self).__init__(target)
+        super().__init__(target)
         self.success = False
         self.crack_result = None
 
@@ -149,7 +148,7 @@ class AttackOWE(Attack):
                           output_file_prefix='owe_downgrade') as airodump:
 
                 try:
-                    airodump_target = self.wait_for_target(airodump)
+                    self.wait_for_target(airodump)
                 except Exception as e:
                     Color.pl('{!} {R}Target not found: %s{W}' % str(e))
                     return False

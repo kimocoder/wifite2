@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 Tests for Evil Twin session management integration.
@@ -9,12 +8,10 @@ import unittest
 import tempfile
 import shutil
 import os
-from unittest.mock import Mock, MagicMock
+from unittest.mock import Mock
 
 from wifite.util.session import (
     SessionManager,
-    SessionState,
-    TargetState,
     EvilTwinAttackState,
     EvilTwinClientState,
     EvilTwinCredentialAttempt

@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 Cleanup utilities for Evil Twin attacks.
@@ -15,7 +14,6 @@ import os
 import re
 import signal
 import subprocess
-from typing import List, Optional, Tuple
 
 from .process import Process
 from .color import Color
@@ -70,7 +68,7 @@ class CleanupManager:
         self.interfaces_to_restore.append((interface, original_state))
         log_debug('Cleanup', f'Registered interface for cleanup: {interface}')
     
-    def register_iptables_rule(self, table: str, chain: str, rule: List[str]):
+    def register_iptables_rule(self, table: str, chain: str, rule: list[str]):
         """
         Register an iptables rule for removal.
         
@@ -221,7 +219,7 @@ class CleanupManager:
         
         self.interfaces_to_restore = []
     
-    def remove_iptables_rule(self, table: str, chain: str, rule: List[str]) -> bool:
+    def remove_iptables_rule(self, table: str, chain: str, rule: list[str]) -> bool:
         """
         Remove an iptables rule.
         
@@ -331,7 +329,7 @@ class CleanupManager:
             log_info('Cleanup', 'Cleanup completed successfully')
             return True
     
-    def get_errors(self) -> List[str]:
+    def get_errors(self) -> list[str]:
         """
         Get list of cleanup errors.
         
@@ -341,7 +339,7 @@ class CleanupManager:
         return self.cleanup_errors.copy()
 
 
-def kill_orphaned_processes() -> List[Tuple[str, str]]:
+def kill_orphaned_processes() -> list[tuple[str, str]]:
     """
     Find and kill orphaned processes from previous Evil Twin attacks.
     
@@ -400,7 +398,7 @@ def kill_orphaned_processes() -> List[Tuple[str, str]]:
     return killed_processes
 
 
-def check_conflicting_processes() -> List[Tuple[str, str]]:
+def check_conflicting_processes() -> list[tuple[str, str]]:
     """
     Check for processes that may conflict with Evil Twin attack.
     

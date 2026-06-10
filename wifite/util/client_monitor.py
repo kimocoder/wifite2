@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 Client monitoring system for Evil Twin attacks.
@@ -13,9 +12,8 @@ import os
 import time
 import re
 from threading import Thread, Lock
-from typing import Dict, List, Optional, Callable
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime
 
 
 @dataclass
@@ -27,7 +25,7 @@ class AttackStatistics:
     and attack duration.
     """
     start_time: float = field(default_factory=time.time)
-    end_time: Optional[float] = None
+    end_time: float | None = None
     
     # Client statistics
     total_clients_connected: int = 0
@@ -40,9 +38,9 @@ class AttackStatistics:
     failed_attempts: int = 0
     
     # Timing statistics
-    first_client_time: Optional[float] = None
-    first_credential_time: Optional[float] = None
-    success_time: Optional[float] = None
+    first_client_time: float | None = None
+    first_credential_time: float | None = None
+    success_time: float | None = None
     
     def record_client_connect(self, mac_address: str):
         """Record a client connection."""
@@ -93,7 +91,7 @@ class AttackStatistics:
         end = self.end_time or time.time()
         return end - self.start_time
     
-    def get_time_to_first_client(self) -> Optional[float]:
+    def get_time_to_first_client(self) -> float | None:
         """
         Get time until first client connected.
         
@@ -104,7 +102,7 @@ class AttackStatistics:
             return None
         return self.first_client_time - self.start_time
     
-    def get_time_to_first_credential(self) -> Optional[float]:
+    def get_time_to_first_credential(self) -> float | None:
         """
         Get time until first credential attempt.
         
@@ -115,7 +113,7 @@ class AttackStatistics:
             return None
         return self.first_credential_time - self.start_time
     
-    def get_time_to_success(self) -> Optional[float]:
+    def get_time_to_success(self) -> float | None:
         """
         Get time until successful credential capture.
         
@@ -180,12 +178,12 @@ class ClientConnection:
     credential submission status.
     """
     mac_address: str
-    ip_address: Optional[str] = None
-    hostname: Optional[str] = None
+    ip_address: str | None = None
+    hostname: str | None = None
     connect_time: float = field(default_factory=time.time)
-    disconnect_time: Optional[float] = None
+    disconnect_time: float | None = None
     credential_submitted: bool = False
-    credential_valid: Optional[bool] = None
+    credential_valid: bool | None = None
     last_seen: float = field(default_factory=time.time)
     
     def is_connected(self) -> bool:
@@ -226,13 +224,13 @@ class ClientMonitor(Thread):
         self.dnsmasq_log_path = dnsmasq_log_path
         
         # Client tracking
-        self.clients: Dict[str, ClientConnection] = {}
+        self.clients: dict[str, ClientConnection] = {}
         self.clients_lock = Lock()
         
         # Callbacks
-        self.on_client_connect: Optional[Callable[[ClientConnection], None]] = None
-        self.on_client_disconnect: Optional[Callable[[ClientConnection], None]] = None
-        self.on_client_dhcp: Optional[Callable[[ClientConnection], None]] = None
+        self.on_client_connect: Callable[[ClientConnection], None] | None = None
+        self.on_client_disconnect: Callable[[ClientConnection], None] | None = None
+        self.on_client_dhcp: Callable[[ClientConnection], None] | None = None
         
         # Monitoring state
         self.running = False
@@ -273,7 +271,7 @@ class ClientMonitor(Thread):
     def _monitor_hostapd_log(self):
         """Monitor hostapd log for client events."""
         try:
-            with open(self.hostapd_log_path, 'r') as f:
+            with open(self.hostapd_log_path) as f:
                 # Seek to last position
                 f.seek(self.hostapd_file_pos)
                 
@@ -349,7 +347,7 @@ class ClientMonitor(Thread):
     def _monitor_dnsmasq_log(self):
         """Monitor dnsmasq log for DHCP leases."""
         try:
-            with open(self.dnsmasq_log_path, 'r') as f:
+            with open(self.dnsmasq_log_path) as f:
                 # Seek to last position
                 f.seek(self.dnsmasq_file_pos)
                 
@@ -459,7 +457,7 @@ class ClientMonitor(Thread):
                         from ..util.logger import log_error
                         log_error('ClientMonitor', f'Error in disconnect callback: {e}', e)
     
-    def _handle_client_dhcp(self, mac: str, ip: str, hostname: Optional[str]):
+    def _handle_client_dhcp(self, mac: str, ip: str, hostname: str | None):
         """Handle DHCP lease event."""
         with self.clients_lock:
             if mac in self.clients:
@@ -499,7 +497,7 @@ class ClientMonitor(Thread):
             for mac in to_remove:
                 del self.clients[mac]
     
-    def get_connected_clients(self) -> List[ClientConnection]:
+    def get_connected_clients(self) -> list[ClientConnection]:
         """
         Get list of currently connected clients.
         
@@ -509,7 +507,7 @@ class ClientMonitor(Thread):
         with self.clients_lock:
             return [client for client in self.clients.values() if client.is_connected()]
     
-    def get_all_clients(self) -> List[ClientConnection]:
+    def get_all_clients(self) -> list[ClientConnection]:
         """
         Get list of all clients (connected and disconnected).
         
@@ -519,7 +517,7 @@ class ClientMonitor(Thread):
         with self.clients_lock:
             return list(self.clients.values())
     
-    def get_client(self, mac: str) -> Optional[ClientConnection]:
+    def get_client(self, mac: str) -> ClientConnection | None:
         """
         Get client by MAC address.
         

@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 Centralized logging utility for wifite2.
@@ -8,10 +7,8 @@ Provides consistent logging across all modules with proper exception handling.
 
 import os
 import sys
-import time
 import traceback
 from datetime import datetime
-from typing import Optional
 
 
 class Logger:
@@ -48,7 +45,7 @@ class Logger:
         return cls._instance
     
     @classmethod
-    def initialize(cls, log_file: Optional[str] = None, verbose: int = 0, enabled: bool = True):
+    def initialize(cls, log_file: str | None = None, verbose: int = 0, enabled: bool = True):
         """
         Initialize the logger with configuration.
         
@@ -85,7 +82,7 @@ class Logger:
                     f.write(f"\n{'='*80}\n")
                     f.write(f"Wifite2 Log - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
                     f.write(f"{'='*80}\n")
-            except (OSError, IOError) as e:
+            except OSError as e:
                 print(f"Warning: Could not create log file {log_file}: {e}", file=sys.stderr)
                 cls._log_file = None
     
@@ -211,7 +208,7 @@ class Logger:
         try:
             with open(cls._log_file, 'a') as f:
                 f.write(formatted_message + '\n')
-        except (OSError, IOError) as e:
+        except OSError as e:
             # Can't log to file, print to stderr as fallback
             print(f"Log file write error: {e}", file=sys.stderr)
     
@@ -252,7 +249,7 @@ class Logger:
             print(formatted, file=sys.stderr)
     
     @classmethod
-    def error(cls, module: str, message: str, exc: Optional[Exception] = None):
+    def error(cls, module: str, message: str, exc: Exception | None = None):
         """
         Log error message with optional exception.
         
@@ -283,11 +280,11 @@ class Logger:
                         f.write("  Traceback:\n")
                         for line in traceback.format_tb(exc.__traceback__):
                             f.write(f"    {line}")
-                except (OSError, IOError):
+                except OSError:
                     pass
     
     @classmethod
-    def critical(cls, module: str, message: str, exc: Optional[Exception] = None):
+    def critical(cls, module: str, message: str, exc: Exception | None = None):
         """
         Log critical error message.
         
@@ -312,7 +309,7 @@ class Logger:
                     with open(cls._log_file, 'a') as f:
                         f.write("  Traceback:\n")
                         traceback.print_exc(file=f)
-                except (OSError, IOError):
+                except OSError:
                     pass
             
             # Print traceback to stderr if verbose
@@ -352,12 +349,12 @@ def log_warning(module: str, message: str):
     Logger.warning(module, message)
 
 
-def log_error(module: str, message: str, exc: Optional[Exception] = None):
+def log_error(module: str, message: str, exc: Exception | None = None):
     """Log error message."""
     Logger.error(module, message, exc)
 
 
-def log_critical(module: str, message: str, exc: Optional[Exception] = None):
+def log_critical(module: str, message: str, exc: Exception | None = None):
     """Log critical error."""
     Logger.critical(module, message, exc)
 

@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 Native beacon frame generator for creating fake APs.
@@ -23,12 +22,11 @@ as it provides full AP functionality including association handling.
 import time
 import secrets
 from threading import Thread, Event
-from typing import Optional, List
 
 try:
     from scapy.all import (
         RadioTap, Dot11, Dot11Beacon, Dot11Elt, Dot11ProbeResp,
-        sendp, sniff, conf as scapy_conf
+        sendp, sniff
     )
     SCAPY_AVAILABLE = True
 except ImportError:
@@ -62,7 +60,7 @@ class BeaconGenerator(Thread):
     def __init__(self,
                  interface: str,
                  essid: str,
-                 bssid: Optional[str] = None,
+                 bssid: str | None = None,
                  channel: int = 6,
                  encryption: str = 'WPA2',
                  beacon_interval: int = DEFAULT_BEACON_INTERVAL,

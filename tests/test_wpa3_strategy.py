@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 Unit tests for WPA3AttackStrategy class.
@@ -9,11 +8,8 @@ Tests strategy selection, priority, downgrade eligibility, and PMF handling.
 
 import unittest
 from unittest.mock import Mock
-import sys
-import os
 
 # Add parent directory to path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from wifite.attack.wpa3_strategy import WPA3AttackStrategy
 from wifite.util.wpa3 import WPA3Detector

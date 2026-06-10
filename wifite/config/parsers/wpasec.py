@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 """WPA-SEC upload and TUI argument parsers."""
 
 from ...util.color import Color

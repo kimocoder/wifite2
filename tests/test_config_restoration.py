@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 Tests for configuration restoration from session.
@@ -8,8 +7,7 @@ Tests for configuration restoration from session.
 import unittest
 import tempfile
 import shutil
-import os
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 from wifite.util.session import SessionManager, SessionState, TargetState
 
 
@@ -258,7 +256,7 @@ class TestConfigurationRestoration(unittest.TestCase):
             )
             
             # Restore configuration
-            result = self.session_mgr.restore_configuration(session, self.config)
+            self.session_mgr.restore_configuration(session, self.config)
         
         # Original values should be preserved when not in session
         self.assertEqual(self.config.wordlist, original_wordlist)

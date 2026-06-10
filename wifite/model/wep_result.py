@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 from ..util.color import Color
 from .result import CrackResult
@@ -12,7 +11,7 @@ class CrackResultWEP(CrackResult):
         self.essid = essid
         self.hex_key = hex_key
         self.ascii_key = ascii_key
-        super(CrackResultWEP, self).__init__()
+        super().__init__()
 
     def dump(self):
         if self.essid:

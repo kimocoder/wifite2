@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 """Evil Twin-specific argument parser and interface info helpers."""
 
 from ...util.color import Color

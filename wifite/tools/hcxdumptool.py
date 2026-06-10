@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 hcxdumptool Wrapper
@@ -307,9 +306,9 @@ class HcxDumpToolPassive:
         command = [
             'hcxdumptool',
             '-i', self.interface,
-            #'--rds=3',  # Passive mode with PMKID capture
-            '-w', self.output_file
-            #'--enable_status=15'  # Enable all status messages
+            '--rds=3',  # Passive mode with PMKID capture
+            '-w', self.output_file,
+            '--enable_status=15'  # Enable all status messages
         ]
 
         # Start the process

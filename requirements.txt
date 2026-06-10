@@ -1,6 +1,7 @@
 # Core dependencies for wifite2
 # These should match pyproject.toml [project.dependencies]
 chardet>=7.4.3
+psutil>=7.0.0
 requests>=2.34.2
 rich>=15.0.0
 scapy>=2.7.1rc1; python_version < '4'

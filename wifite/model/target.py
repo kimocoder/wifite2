@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 from ..util.color import Color
 from ..config import Configuration
@@ -465,4 +464,4 @@ if __name__ == '__main__':
     t = Target(fields)
     t.clients.append('asdf')
     t.clients.append('asdf')
-    print((t.to_str()))
+    print(t.to_str())

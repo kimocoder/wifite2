@@ -1,22 +1,21 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 from ..model.attack import Attack
-from ..tools.aircrack import Aircrack
-from ..tools.hashcat import Hashcat, HashcatCracker, HcxDumpTool, HcxPcapngTool
+from ..tools.hashcat import Hashcat, HashcatCracker, HcxPcapngTool
 from ..tools.airodump import Airodump
 from ..tools.aireplay import Aireplay
 from ..config import Configuration
 from ..util.color import Color
 from ..util.timer import Timer
 from ..util.output import OutputManager
-from ..util.logger import log_debug, log_info, log_warning, log_error
+from ..util.logger import log_info
 from ..model.handshake import Handshake
 from ..model.wpa_result import CrackResultWPA
 from ..util.wpasec_uploader import WpaSecUploader
 import time
 import os
 import re
+import subprocess
 from shutil import copy
 from contextlib import contextmanager
 
@@ -28,7 +27,7 @@ class AttackWPA(Attack):
     RETRY_DELAY_SECONDS = 2
 
     def __init__(self, target):
-        super(AttackWPA, self).__init__(target)
+        super().__init__(target)
         self.clients = []
         self.crack_result = None
         self.success = False
@@ -119,7 +118,7 @@ class AttackWPA(Attack):
         Tries to bring the interface back to a working state.
         """
         from ..tools.airmon import Airmon
-        from ..util.logger import log_info, log_warning, log_error
+        from ..util.logger import log_info, log_error
         
         log_info('AttackWPA', 'Attempting interface recovery')
         Color.pl('{!} {O}Attempting interface recovery...{W}')
@@ -182,7 +181,6 @@ class AttackWPA(Attack):
             max_retries = self.MAX_RETRY_ATTEMPTS
         
         self._retry_count = 0
-        last_exception = None
         
         while self._retry_count < max_retries:
             try:
@@ -193,12 +191,11 @@ class AttackWPA(Attack):
                     if self._recovered_from_error and self._retry_count > 0:
                         log_info('AttackWPA', f'{operation_name} succeeded after {self._retry_count} retry(s)')
                         if self.view:
-                            self.view.add_log(f'Operation succeeded after recovery')
+                            self.view.add_log('Operation succeeded after recovery')
                     
                     return result
                     
             except (OSError, subprocess.CalledProcessError, MemoryError) as e:
-                last_exception = e
                 self._retry_count += 1
                 
                 if self._retry_count < max_retries:
@@ -715,7 +712,7 @@ class AttackWPA(Attack):
                     max_cap_size = 50 * 1024 * 1024  # 50MB limit
                     if file_size > max_cap_size:
                         Color.pl('\n{!} {O}Warning: Capture file is large (%d MB), may cause memory issues{W}' % (file_size // (1024*1024)))
-                except (OSError, IOError):
+                except OSError:
                     pass
                 
                 copy(cap_file, temp_file)
@@ -1134,7 +1131,7 @@ class AttackWPA(Attack):
                         Color.pl('\n{!} {O}Warning: Capture file is large (%d MB), may cause memory issues{W}' % (file_size // (1024*1024)))
                         if self.view:
                             self.view.add_log(f'Warning: Large capture file ({file_size // (1024*1024)} MB)')
-                except (OSError, IOError):
+                except OSError:
                     pass
                 
                 # Convert pcapng to hashcat format for validation
@@ -1278,7 +1275,7 @@ class AttackWPA(Attack):
                 if self.view:
                     self.view.refresh_if_needed()
                     self.view.update_progress({
-                        'status': f'Listening for handshake [HCX]',
+                        'status': 'Listening for handshake [HCX]',
                         'metrics': {
                             'Mode': 'HCX (hcxdumptool)',
                             'Interface': Configuration.interface,
@@ -1493,7 +1490,7 @@ class AttackWPA(Attack):
                     max_cap_size = 50 * 1024 * 1024  # 50MB limit
                     if file_size > max_cap_size:
                         Color.pl('\n{!} {O}Warning: Capture file is large (%d MB), may cause memory issues{W}' % (file_size // (1024*1024)))
-                except (OSError, IOError):
+                except OSError:
                     pass
 
                 copy(cap_file, temp_file)

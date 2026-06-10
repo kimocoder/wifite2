@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 Retry logic with exponential backoff for network operations.
@@ -12,13 +11,13 @@ import time
 import secrets
 _sysrng = secrets.SystemRandom()
 from functools import wraps
-from typing import Callable, Optional, Tuple, Type, Union, Any
+from collections.abc import Callable
 
 
 class RetryExhausted(Exception):
     """Raised when all retry attempts are exhausted."""
 
-    def __init__(self, message: str, last_exception: Optional[Exception] = None,
+    def __init__(self, message: str, last_exception: Exception | None = None,
                  attempts: int = 0):
         super().__init__(message)
         self.last_exception = last_exception
@@ -89,9 +88,9 @@ class RetryConfig:
     def __init__(self,
                  max_attempts: int = 3,
                  backoff_func: Callable[[int], float] = None,
-                 retry_exceptions: Tuple[Type[Exception], ...] = (Exception,),
-                 on_retry: Optional[Callable[[int, Exception], None]] = None,
-                 on_failure: Optional[Callable[[int, Exception], None]] = None):
+                 retry_exceptions: tuple[type[Exception], ...] = (Exception,),
+                 on_retry: Callable[[int, Exception], None] | None = None,
+                 on_failure: Callable[[int, Exception], None] | None = None):
         """
         Initialize retry configuration.
 
@@ -109,10 +108,10 @@ class RetryConfig:
         self.on_failure = on_failure
 
 
-def retry_with_backoff(config: Optional[RetryConfig] = None,
+def retry_with_backoff(config: RetryConfig | None = None,
                        max_attempts: int = 3,
                        backoff_func: Callable[[int], float] = None,
-                       retry_exceptions: Tuple[Type[Exception], ...] = (Exception,)):
+                       retry_exceptions: tuple[type[Exception], ...] = (Exception,)):
     """
     Decorator to retry a function with backoff on failure.
 
@@ -194,13 +193,13 @@ class RetryContext:
     def __init__(self,
                  max_attempts: int = 3,
                  backoff_func: Callable[[int], float] = None,
-                 on_retry: Optional[Callable[[int, Exception], None]] = None):
+                 on_retry: Callable[[int, Exception], None] | None = None):
         self.max_attempts = max_attempts
         self.backoff_func = backoff_func or exponential_backoff
         self.on_retry = on_retry
 
         self.attempt = 0
-        self.last_exception: Optional[Exception] = None
+        self.last_exception: Exception | None = None
         self.succeeded = False
 
     def __enter__(self):

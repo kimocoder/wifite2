@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 Comprehensive system check for wifite2.
@@ -21,7 +20,6 @@ import os
 import re
 import subprocess
 import shutil
-from typing import Optional, List, Dict, Tuple
 from dataclasses import dataclass, field
 from enum import Enum
 
@@ -41,8 +39,8 @@ class CheckResult:
     name: str
     status: CheckStatus
     message: str
-    details: Optional[str] = None
-    fix_hint: Optional[str] = None
+    details: str | None = None
+    fix_hint: str | None = None
 
 
 @dataclass
@@ -58,11 +56,11 @@ class InterfaceCheckResult:
     supports_monitor: bool = False
     supports_ap: bool = False
     supports_injection: bool = False
-    monitor_tested: Optional[bool] = None  # None = not tested
+    monitor_tested: bool | None = None  # None = not tested
     bands_24ghz: bool = False
     bands_5ghz: bool = False
-    channels_24: List[int] = field(default_factory=list)
-    channels_5: List[int] = field(default_factory=list)
+    channels_24: list[int] = field(default_factory=list)
+    channels_5: list[int] = field(default_factory=list)
 
 
 @dataclass
@@ -70,13 +68,13 @@ class ToolCheckResult:
     """Result of a tool dependency check."""
     name: str
     found: bool
-    path: Optional[str] = None
-    version: Optional[str] = None
-    min_version: Optional[str] = None
+    path: str | None = None
+    version: str | None = None
+    min_version: str | None = None
     version_ok: bool = True
     required: bool = False
     category: str = 'misc'
-    native_alt: Optional[str] = None  # Description of native alternative
+    native_alt: str | None = None  # Description of native alternative
 
 
 class SystemCheck:
@@ -95,16 +93,16 @@ class SystemCheck:
         """
         self.verbose = verbose
         self.run_smoke_test = run_smoke_test
-        self.tool_results: List[ToolCheckResult] = []
-        self.interface_results: List[InterfaceCheckResult] = []
-        self.env_results: List[CheckResult] = []
-        self.attack_readiness: Dict[str, CheckStatus] = {}
+        self.tool_results: list[ToolCheckResult] = []
+        self.interface_results: list[InterfaceCheckResult] = []
+        self.env_results: list[CheckResult] = []
+        self.attack_readiness: dict[str, CheckStatus] = {}
 
     # ================================================================
     # Environment Checks
     # ================================================================
 
-    def check_environment(self) -> List[CheckResult]:
+    def check_environment(self) -> list[CheckResult]:
         """Check OS, kernel, and runtime environment."""
         results = []
 
@@ -213,7 +211,7 @@ class SystemCheck:
     # Tool / Dependency Checks
     # ================================================================
 
-    def check_tools(self) -> List[ToolCheckResult]:
+    def check_tools(self) -> list[ToolCheckResult]:
         """Check all tool dependencies with versions."""
         from ..tools.dependency import Dependency
 
@@ -280,7 +278,7 @@ class SystemCheck:
         self.tool_results = results
         return results
 
-    def _get_tool_version(self, name: str) -> Optional[str]:
+    def _get_tool_version(self, name: str) -> str | None:
         """Try to get version string for a tool."""
         if name == 'airmon-ng':
             if shutil.which(name):
@@ -337,7 +335,7 @@ class SystemCheck:
     # Interface Checks
     # ================================================================
 
-    def check_interfaces(self) -> List[InterfaceCheckResult]:
+    def check_interfaces(self) -> list[InterfaceCheckResult]:
         """Check all wireless interfaces and their capabilities."""
         results = []
 
@@ -374,12 +372,13 @@ class SystemCheck:
             try:
                 driver_link = os.readlink(f'/sys/class/net/{iface}/device/driver')
                 result.driver = os.path.basename(driver_link)
-            except (OSError, IOError):
+            except OSError:
                 pass
 
             # Chipset (from airmon or driver map)
             try:
                 from ..tools.airmon import Airmon
+                from ..util.interface_manager import InterfaceManager
                 info = Airmon.get_iface_info(iface)
                 if info and info.chipset:
                     result.chipset = info.chipset
@@ -390,9 +389,9 @@ class SystemCheck:
 
             # MAC address
             try:
-                with open(f'/sys/class/net/{iface}/address', 'r') as f:
+                with open(f'/sys/class/net/{iface}/address') as f:
                     result.mac = f.read().strip().upper()
-            except (IOError, OSError):
+            except OSError:
                 pass
 
             # Current mode
@@ -412,9 +411,9 @@ class SystemCheck:
 
             # Interface up/down
             try:
-                with open(f'/sys/class/net/{iface}/operstate', 'r') as f:
+                with open(f'/sys/class/net/{iface}/operstate') as f:
                     result.is_up = f.read().strip().lower() in ('up', 'unknown')
-            except (IOError, OSError):
+            except OSError:
                 pass
 
             # Supported modes and bands from iw phy info
@@ -539,7 +538,7 @@ class SystemCheck:
     # Attack Readiness Assessment
     # ================================================================
 
-    def assess_attack_readiness(self) -> Dict[str, CheckStatus]:
+    def assess_attack_readiness(self) -> dict[str, CheckStatus]:
         """Determine which attack types are available based on checks."""
         readiness = {}
 
@@ -774,15 +773,15 @@ class SystemCheck:
             # Smoke test result
             if iface.monitor_tested is not None:
                 if iface.monitor_tested:
-                    Color.pl(f'    Monitor test: {{G}}PASS{{W}} (entered and exited monitor mode)')
+                    Color.pl('    Monitor test: {G}PASS{W} (entered and exited monitor mode)')
                 else:
-                    Color.pl(f'    Monitor test: {{R}}FAIL{{W}} (could not enter monitor mode)')
+                    Color.pl('    Monitor test: {R}FAIL{W} (could not enter monitor mode)')
 
             # Driver warnings
             if iface.driver in ('iwlwifi',):
-                Color.pl(f'    {{O}}⚠ Intel driver — no packet injection support{{W}}')
+                Color.pl('    {O}⚠ Intel driver — no packet injection support{W}')
             if iface.driver in ('brcmfmac',):
-                Color.pl(f'    {{O}}⚠ Broadcom FullMAC — limited injection support{{W}}')
+                Color.pl('    {O}⚠ Broadcom FullMAC — limited injection support{W}')
 
             Color.pl('')  # Blank line between interfaces
 

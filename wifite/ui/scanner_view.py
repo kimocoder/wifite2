@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 Scanner View for wifite2 TUI.
@@ -7,7 +6,6 @@ Displays real-time scanning interface with target list and statistics.
 """
 
 import time
-from typing import List, Optional
 from rich.layout import Layout
 from rich.panel import Panel
 from rich.table import Table
@@ -35,7 +33,7 @@ class ScannerView:
         self.max_visible_targets = 50  # Limit displayed targets for performance
         self.session = session  # Store session for resume status display
 
-    def update_targets(self, targets: List, decloaking: bool = False):
+    def update_targets(self, targets: list, decloaking: bool = False):
         """
         Update target list and refresh display.
 
@@ -100,7 +98,7 @@ class ScannerView:
             
             # Add session progress info
             summary = self.session.get_progress_summary()
-            header.append(f" | Progress: ", style="white")
+            header.append(" | Progress: ", style="white")
             header.append(f"{summary['completed']}", style="green")
             header.append("/", style="white")
             header.append(f"{summary['total']}", style="cyan")
@@ -113,7 +111,7 @@ class ScannerView:
                 age_str = f"{int(age_hours)}h"
             else:
                 age_str = f"{int(age_hours / 24)}d"
-            header.append(f" | Age: ", style="white")
+            header.append(" | Age: ", style="white")
             header.append(age_str, style="yellow")
         else:
             header.append("- Scanning", style="bold yellow")
@@ -121,17 +119,17 @@ class ScannerView:
         if self.decloaking:
             header.append(" & decloaking", style="yellow")
         header.append(f" {minutes:02d}:{seconds:02d} | ", style="white")
-        header.append(f"Targets: ", style="white")
+        header.append("Targets: ", style="white")
         header.append(f"{len(self.targets)}", style="bold green")
-        header.append(f" | WEP: ", style="white")
+        header.append(" | WEP: ", style="white")
         header.append(f"{wep_count}", style="red")
-        header.append(f" | WPA: ", style="white")
+        header.append(" | WPA: ", style="white")
         header.append(f"{wpa_count}", style="yellow")
-        header.append(f" | WPA3: ", style="white")
+        header.append(" | WPA3: ", style="white")
         header.append(f"{wpa3_count}", style="magenta")
-        header.append(f" | WPS: ", style="white")
+        header.append(" | WPS: ", style="white")
         header.append(f"{wps_count}", style="cyan")
-        header.append(f" | Clients: ", style="white")
+        header.append(" | Clients: ", style="white")
         header.append(f"{client_count}", style="green")
 
         # Honeypot stats
@@ -139,7 +137,7 @@ class ScannerView:
         if Configuration.detect_honeypots:
             hp_count = sum(1 for t in self.targets if getattr(t, 'honeypot_score', 0) >= 50)
             if hp_count > 0:
-                header.append(f" | Honeypots: ", style="white")
+                header.append(" | Honeypots: ", style="white")
                 header.append(f"{hp_count}", style="red bold")
 
         return Panel(
@@ -413,7 +411,7 @@ class ScannerView:
             padding=(0, 1)
         )
 
-    def handle_input(self, key: str) -> Optional[str]:
+    def handle_input(self, key: str) -> str | None:
         """
         Handle keyboard input during scanning.
 
@@ -450,7 +448,6 @@ class ScannerView:
     def stop(self):
         """Stop the scanner view and clean up."""
         # Any cleanup needed when stopping the view
-        pass
 
     def _calculate_max_visible_targets(self) -> int:
         """

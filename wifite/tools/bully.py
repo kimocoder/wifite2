@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 from .dependency import Dependency
 from .airodump import Airodump
@@ -136,7 +135,7 @@ class Bully(Attack, Dependency):
                 self.target = self.wait_for_target(airodump)
             except subprocess.CalledProcessError as e:
                 self.pattack('{R}Failed: {O}Bully command error: %s{W}' % e, newline=True)
-            except (OSError, IOError) as e:
+            except OSError as e:
                 self.pattack('{R}Failed: {O}System I/O error: %s{W}' % e, newline=True)
             except ValueError as e:
                 self.pattack('{R}Failed: {O}Invalid target data: %s{W}' % e, newline=True)

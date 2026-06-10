@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 from ..util.color import Color
 from .result import CrackResult
@@ -14,7 +13,7 @@ class CrackResultSAE(CrackResult):
         self.essid = essid
         self.handshake_file = handshake_file
         self.key = key
-        super(CrackResultSAE, self).__init__()
+        super().__init__()
 
     def dump(self):
         if self.essid:

@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 Tests for wifite2 improvements:
@@ -14,11 +13,9 @@ import os
 import sys
 import ast
 import unittest
-from unittest.mock import Mock, patch, MagicMock
-from dataclasses import dataclass
+from unittest.mock import Mock, patch
 
 # Add parent directory to path for imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 
 class TestMemoryMonitor(unittest.TestCase):
@@ -26,7 +23,7 @@ class TestMemoryMonitor(unittest.TestCase):
     
     def test_memory_module_imports(self):
         """Test that memory module imports correctly."""
-        from wifite.util.memory import MemoryMonitor, InfiniteModeMonitor
+        from wifite.util.memory import MemoryMonitor
         self.assertTrue(hasattr(MemoryMonitor, 'get_memory_usage_mb'))
         self.assertTrue(hasattr(MemoryMonitor, 'periodic_check'))
         self.assertTrue(hasattr(MemoryMonitor, 'force_cleanup'))
@@ -159,7 +156,6 @@ class TestNativePMKIDIntegration(unittest.TestCase):
     def test_native_pmkid_module_import(self):
         """Test that native PMKID module can be imported."""
         try:
-            from wifite.native.pmkid import ScapyPMKID, PMKIDResult
             imported = True
         except ImportError:
             imported = False
@@ -205,7 +201,6 @@ class TestNativeScannerIntegration(unittest.TestCase):
     def test_native_scanner_module_import(self):
         """Test that native scanner module can be imported."""
         try:
-            from wifite.native.scanner import NativeScanner, AccessPoint, ChannelHopper
             imported = True
         except ImportError:
             imported = False
@@ -283,7 +278,7 @@ class TestSyntaxValidation(unittest.TestCase):
         if not os.path.exists(filepath):
             return True  # Skip if file doesn't exist
         
-        with open(filepath, 'r') as f:
+        with open(filepath) as f:
             source = f.read()
         
         try:

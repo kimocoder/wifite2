@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 WPA3-SAE Attack Strategy Selection Module
@@ -9,7 +8,7 @@ for WPA3-SAE networks based on target capabilities, including transition
 mode detection, PMF status, and Dragonblood vulnerability indicators.
 """
 
-from typing import Dict, Any, Optional
+from typing import Any
 from wifite.util.wpa3 import WPA3Detector
 
 
@@ -54,7 +53,7 @@ class WPA3AttackStrategy:
     }
 
     @staticmethod
-    def select_strategy(target, wpa3_info: Dict[str, Any]) -> Optional[str]:
+    def select_strategy(target, wpa3_info: dict[str, Any]) -> str | None:
         """
         Select best attack strategy based on target capabilities.
 
@@ -102,7 +101,7 @@ class WPA3AttackStrategy:
         return WPA3AttackStrategy.PASSIVE
 
     @staticmethod
-    def can_use_downgrade(wpa3_info: Dict[str, Any]) -> bool:
+    def can_use_downgrade(wpa3_info: dict[str, Any]) -> bool:
         """
         Check if downgrade attack is possible.
 
@@ -129,7 +128,7 @@ class WPA3AttackStrategy:
         return wpa3_info.get('is_transition', False)
 
     @staticmethod
-    def can_use_deauth(wpa3_info: Dict[str, Any]) -> bool:
+    def can_use_deauth(wpa3_info: dict[str, Any]) -> bool:
         """
         Check if deauth attacks will work (PMF not required).
 
@@ -150,7 +149,7 @@ class WPA3AttackStrategy:
         return pmf_status != WPA3Detector.PMF_REQUIRED
 
     @staticmethod
-    def should_use_dragonblood(wpa3_info: Dict[str, Any]) -> bool:
+    def should_use_dragonblood(wpa3_info: dict[str, Any]) -> bool:
         """
         Check if Dragonblood exploitation should be attempted.
 
@@ -200,7 +199,7 @@ class WPA3AttackStrategy:
         )
 
     @staticmethod
-    def get_attack_priority(wpa3_info: Dict[str, Any]) -> int:
+    def get_attack_priority(wpa3_info: dict[str, Any]) -> int:
         """
         Get attack priority score for target.
 
@@ -236,7 +235,7 @@ class WPA3AttackStrategy:
             return 50  # Medium priority - standard SAE capture
 
     @staticmethod
-    def format_strategy_display(strategy: str, wpa3_info: Dict[str, Any]) -> str:
+    def format_strategy_display(strategy: str, wpa3_info: dict[str, Any]) -> str:
         """
         Format strategy information for display to user.
 

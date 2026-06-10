@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 from ..util.color import Color
 from .result import CrackResult
@@ -12,7 +11,7 @@ class CrackResultPMKID(CrackResult):
         self.essid = essid
         self.pmkid_file = pmkid_file
         self.key = key
-        super(CrackResultPMKID, self).__init__()
+        super().__init__()
 
     def dump(self):
         if self.essid:
@@ -53,4 +52,4 @@ if __name__ == '__main__':
     print('\n')
     w.dump()
     w.save()
-    print((w.__dict__['bssid']))
+    print(w.__dict__['bssid'])

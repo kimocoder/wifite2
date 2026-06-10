@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 import subprocess
 from enum import Enum
@@ -12,7 +11,7 @@ from .owe import AttackOWE
 from ..config import Configuration
 from ..model.target import WPSState
 from ..util.color import Color
-from ..util.logger import log_info, log_debug
+from ..util.logger import log_info
 from ..util.wpa3_tools import WPA3ToolChecker
 from ..util.memory import MemoryMonitor, get_infinite_monitor
 
@@ -48,7 +47,7 @@ class AttackAll:
         targets_remaining = len(targets)
         for index, target in enumerate(targets, start=1):
             if Configuration.attack_max != 0 and index > Configuration.attack_max:
-                print(("Attacked %d targets, stopping because of the --first flag" % Configuration.attack_max))
+                print("Attacked %d targets, stopping because of the --first flag" % Configuration.attack_max)
                 break
             attacked_targets += 1
             targets_remaining -= 1
@@ -216,7 +215,7 @@ class AttackAll:
                 if result:
                     attack_successful = True
                     break  # Attack was successful, stop other attacks.
-            except (OSError, IOError) as e:
+            except OSError as e:
                 # File system or process errors
                 Color.pl('\r {!} {R}System Error{W}: %s' % str(e))
                 continue

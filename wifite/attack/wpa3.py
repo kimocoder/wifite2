@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 WPA3-SAE Attack Module
@@ -19,10 +18,9 @@ from ..util.color import Color
 from ..util.logger import log_info, log_debug
 from ..util.timer import Timer
 from ..util.output import OutputManager
-from ..util.wpa3 import WPA3Detector, WPA3Info
+from ..util.wpa3 import WPA3Detector
 from ..util.wpa3_tools import WPA3ToolChecker
 from ..attack.wpa3_strategy import WPA3AttackStrategy
-from ..model.handshake import Handshake
 from ..model.sae_result import CrackResultSAE
 from ..model.wpa_result import CrackResultWPA
 from contextlib import contextmanager
@@ -42,7 +40,7 @@ class AttackWPA3SAE(Attack):
     """
 
     def __init__(self, target):
-        super(AttackWPA3SAE, self).__init__(target)
+        super().__init__(target)
         self.clients = []
         self.crack_result = None
         self.success = False
@@ -626,7 +624,7 @@ class AttackWPA3SAE(Attack):
         """
         candidates = []
         try:
-            with open(wordlist_path, 'r', errors='replace') as fh:
+            with open(wordlist_path, errors='replace') as fh:
                 for line in fh:
                     word = line.rstrip('\n\r')
                     if 8 <= len(word) <= 63:
@@ -830,7 +828,6 @@ class AttackWPA3SAE(Attack):
             # still produce a warning.
             no_clients_warn_after = max(5, timeout_value // 2)
             deauth_timer = Timer(Configuration.wpa_deauth_timeout)
-            sae_detected = False
             deauth_attempts = 0
             max_deauth_attempts = 10
             no_clients_warning_shown = False
@@ -874,7 +871,7 @@ class AttackWPA3SAE(Attack):
                     airodump_target = self.wait_for_target(airodump, timeout=1)
                     if airodump_target:
                         self.clients = airodump_target.clients
-                except Exception as e:
+                except Exception:
                     # Target temporarily lost, continue
                     pass
                 
@@ -918,7 +915,6 @@ class AttackWPA3SAE(Attack):
                     if deauth_success:
                         deauth_attempts += 1
                         deauth_timer = Timer(Configuration.wpa_deauth_timeout)
-                        sae_detected = True
                     
                     # Check if we've exceeded max deauth attempts
                     if deauth_attempts >= max_deauth_attempts:
@@ -950,7 +946,7 @@ class AttackWPA3SAE(Attack):
                             return handshake
                         else:
                             handshake = None
-                except Exception as e:
+                except Exception:
                     # Error checking handshake, continue
                     handshake = None
                 

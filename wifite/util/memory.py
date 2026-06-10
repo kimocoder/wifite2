@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 Memory monitoring and cleanup utilities for wifite2.
@@ -12,7 +11,7 @@ import gc
 import os
 import time
 import threading
-from typing import Optional, Dict, Any
+from typing import Any
 from ..config import Configuration
 
 
@@ -62,13 +61,13 @@ class MemoryMonitor:
 
         try:
             # Fallback to /proc on Linux
-            with open(f'/proc/{os.getpid()}/status', 'r') as f:
+            with open(f'/proc/{os.getpid()}/status') as f:
                 for line in f:
                     if line.startswith('VmRSS:'):
                         # VmRSS is in kB
                         kb = int(line.split()[1])
                         return kb / 1024
-        except (FileNotFoundError, IOError, ValueError):
+        except (FileNotFoundError, OSError, ValueError):
             pass
 
         return -1
@@ -85,7 +84,7 @@ class MemoryMonitor:
             proc_fd_dir = f'/proc/{os.getpid()}/fd'
             if os.path.exists(proc_fd_dir):
                 return len(os.listdir(proc_fd_dir))
-        except (OSError, IOError):
+        except OSError:
             pass
         return -1
 
@@ -104,7 +103,7 @@ class MemoryMonitor:
             return (-1, -1)
 
     @classmethod
-    def check_memory_status(cls) -> Dict[str, Any]:
+    def check_memory_status(cls) -> dict[str, Any]:
         """
         Check current memory and resource status.
 
@@ -306,7 +305,7 @@ class MemoryMonitor:
         cls._aggressive_cleanup()
     
     @classmethod
-    def get_stats(cls) -> Dict[str, Any]:
+    def get_stats(cls) -> dict[str, Any]:
         """
         Get cleanup statistics.
         
@@ -351,7 +350,7 @@ class InfiniteModeMonitor:
         if self.targets_attacked % 10 == 0:
             MemoryMonitor.force_cleanup()
     
-    def get_session_stats(self) -> Dict[str, Any]:
+    def get_session_stats(self) -> dict[str, Any]:
         """Get session statistics."""
         elapsed = time.time() - self.start_time
         memory_stats = MemoryMonitor.get_stats()
@@ -365,7 +364,7 @@ class InfiniteModeMonitor:
 
 
 # Global infinite mode monitor instance
-_infinite_monitor: Optional[InfiniteModeMonitor] = None
+_infinite_monitor: InfiniteModeMonitor | None = None
 
 
 def get_infinite_monitor() -> InfiniteModeMonitor:

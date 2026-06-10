@@ -1,13 +1,10 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
-import sys
 import unittest
 from unittest.mock import patch, MagicMock
 
 import pytest
 
-sys.path.insert(0, '..')
 
 from wifite.tools.hcxdumptool import HcxDumpTool, HcxDumpToolPassive
 from wifite.config import Configuration

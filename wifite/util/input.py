@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 Keyboard input handling for wifite2 TUI.
@@ -10,7 +9,6 @@ import sys
 import select
 import termios
 import tty
-from typing import Optional
 
 
 class KeyboardInput:
@@ -33,7 +31,7 @@ class KeyboardInput:
             termios.tcsetattr(self.fd, termios.TCSADRAIN, self.old_settings)
         return False
 
-    def get_key(self, timeout: float = 0.0) -> Optional[str]:
+    def get_key(self, timeout: float = 0.0) -> str | None:
         """
         Get a single keypress with optional timeout.
 
@@ -149,7 +147,7 @@ class NonBlockingInput:
         return bool(ready)
 
     @staticmethod
-    def read_line(timeout: float = 0.0) -> Optional[str]:
+    def read_line(timeout: float = 0.0) -> str | None:
         """
         Read a line of input with optional timeout.
 

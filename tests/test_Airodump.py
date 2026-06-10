@@ -1,11 +1,8 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
-import sys
 from wifite.tools.airodump import Airodump
 import unittest
 
-sys.path.insert(0, '..')
 
 
 class TestAirodump(unittest.TestCase):

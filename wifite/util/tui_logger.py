@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 TUI logging and debugging utilities for wifite2.
@@ -8,7 +7,6 @@ Provides logging capabilities for TUI events and errors.
 
 import os
 import stat
-import time
 from datetime import datetime
 
 

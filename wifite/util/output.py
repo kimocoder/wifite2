@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 Output abstraction layer for wifite2
@@ -66,7 +65,7 @@ class OutputManager:
             else:  # classic
                 cls._mode = 'classic'
                 return False
-        except Exception as e:
+        except Exception:
             # Any unexpected error - fall back to classic mode
             cls._mode = 'classic'
             cls._controller = None

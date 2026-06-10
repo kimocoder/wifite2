@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 Scapy-based deauthentication frame injection.
@@ -35,9 +34,8 @@ Reason Codes:
 """
 
 import time
-import random
 from threading import Thread, Event
-from typing import Optional, List, Tuple, Callable
+from collections.abc import Callable
 
 try:
     from scapy.all import (
@@ -83,11 +81,11 @@ class ScapyDeauth:
     def deauth(cls, 
                interface: str, 
                bssid: str, 
-               client_mac: Optional[str] = None,
+               client_mac: str | None = None,
                count: int = 5,
                reason: int = None,
                include_disassoc: bool = True,
-               verbose: bool = False) -> Tuple[bool, int]:
+               verbose: bool = False) -> tuple[bool, int]:
         """
         Send deauthentication frames to a target.
         
@@ -172,17 +170,17 @@ class ScapyDeauth:
             scapy_conf.verb = old_verbose
             return True, len(packets)
             
-        except Exception as e:
+        except Exception:
             return False, 0
     
     @classmethod
     def deauth_with_callback(cls,
                              interface: str,
                              bssid: str,
-                             client_mac: Optional[str] = None,
+                             client_mac: str | None = None,
                              count: int = 5,
-                             callback: Optional[Callable[[int], None]] = None,
-                             inter: float = 0.1) -> Tuple[bool, int]:
+                             callback: Callable[[int], None] | None = None,
+                             inter: float = 0.1) -> tuple[bool, int]:
         """
         Send deauth frames with per-packet callback.
         
@@ -239,14 +237,14 @@ class ScapyDeauth:
             
             return True, packets_sent
             
-        except Exception as e:
+        except Exception:
             return False, packets_sent
     
     @classmethod
     def continuous(cls,
                    interface: str,
                    bssid: str,
-                   client_mac: Optional[str] = None,
+                   client_mac: str | None = None,
                    interval: float = 0.5,
                    burst_count: int = 5) -> 'ContinuousDeauth':
         """
@@ -282,7 +280,7 @@ class ContinuousDeauth(Thread):
     def __init__(self,
                  interface: str,
                  bssid: str,
-                 client_mac: Optional[str] = None,
+                 client_mac: str | None = None,
                  interval: float = 0.5,
                  burst_count: int = 5):
         """
@@ -323,7 +321,7 @@ class ContinuousDeauth(Thread):
             return
         
         self.start_time = time.time()
-        target = self.client_mac or ScapyDeauth.BROADCAST
+        self.client_mac or ScapyDeauth.BROADCAST
         
         while not self._stop_event.is_set():
             # Check if paused
@@ -413,8 +411,8 @@ class ContinuousDeauth(Thread):
 
 def deauth(interface: str, 
            bssid: str, 
-           client_mac: Optional[str] = None,
-           count: int = 5) -> Tuple[bool, int]:
+           client_mac: str | None = None,
+           count: int = 5) -> tuple[bool, int]:
     """
     Convenience function: send deauth packets.
     

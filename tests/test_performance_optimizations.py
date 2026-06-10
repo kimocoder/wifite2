@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 Tests for Evil Twin performance optimizations (task 13.3).
@@ -9,9 +8,6 @@ Tests verify that optimizations work correctly without breaking functionality.
 
 import unittest
 import time
-import tempfile
-import os
-from unittest.mock import Mock, patch, MagicMock
 
 
 class TestPortalCaching(unittest.TestCase):

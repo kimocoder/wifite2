@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 Dnsmasq tool wrapper for DHCP and DNS services.
@@ -9,7 +8,6 @@ Used by Evil Twin attack to provide network services to connected clients.
 import os
 import time
 import tempfile
-from typing import Optional, List
 
 from .dependency import Dependency
 from ..config import Configuration
@@ -253,7 +251,7 @@ class Dnsmasq(Dependency):
         except Exception as e:
             log_warning('Dnsmasq', f'Failed to setup routing: {e}')
     
-    def _get_internet_interface(self) -> Optional[str]:
+    def _get_internet_interface(self) -> str | None:
         """
         Get the interface with internet connectivity.
         
@@ -371,7 +369,7 @@ class Dnsmasq(Dependency):
         
         return self.process.poll() is None
     
-    def get_leases(self) -> List[dict]:
+    def get_leases(self) -> list[dict]:
         """
         Get list of DHCP leases.
         
@@ -384,7 +382,7 @@ class Dnsmasq(Dependency):
             if not self.lease_file or not os.path.exists(self.lease_file):
                 return leases
             
-            with open(self.lease_file, 'r') as f:
+            with open(self.lease_file) as f:
                 for line in f:
                     line = line.strip()
                     if not line:
@@ -408,7 +406,7 @@ class Dnsmasq(Dependency):
             log_debug('Dnsmasq', f'Failed to get leases: {e}')
             return []
     
-    def get_connected_clients(self) -> List[str]:
+    def get_connected_clients(self) -> list[str]:
         """
         Get list of connected client MAC addresses.
         
@@ -418,7 +416,7 @@ class Dnsmasq(Dependency):
         leases = self.get_leases()
         return [lease['mac'] for lease in leases]
     
-    def get_client_info(self, mac_address: str) -> Optional[dict]:
+    def get_client_info(self, mac_address: str) -> dict | None:
         """
         Get information about a specific client.
         

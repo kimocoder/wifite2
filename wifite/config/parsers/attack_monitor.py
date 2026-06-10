@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 """Wireless attack monitoring argument parser."""
 
 from ...util.color import Color

@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 WPA3 Tool Detection and Version Checking
@@ -9,7 +8,6 @@ for WPA3-SAE attack capabilities.
 """
 
 import re
-from typing import Dict, Optional, Tuple, List
 
 from ..util.color import Color
 from ..util.process import Process
@@ -48,7 +46,7 @@ class WPA3ToolChecker:
     }
 
     @staticmethod
-    def check_all_tools() -> Dict[str, Dict[str, any]]:
+    def check_all_tools() -> dict[str, dict[str, any]]:
         """
         Check all WPA3-related tools.
 
@@ -81,7 +79,7 @@ class WPA3ToolChecker:
         return results
 
     @staticmethod
-    def check_tool(tool_name: str, required: bool = True) -> Dict[str, any]:
+    def check_tool(tool_name: str, required: bool = True) -> dict[str, any]:
         """
         Check if a specific tool is available and meets version requirements.
 
@@ -121,7 +119,7 @@ class WPA3ToolChecker:
         }
 
     @staticmethod
-    def get_tool_version(tool_name: str) -> Tuple[Optional[Tuple[int, ...]], Optional[str]]:
+    def get_tool_version(tool_name: str) -> tuple[tuple[int, ...] | None, str | None]:
         """
         Get version of a tool.
 
@@ -150,7 +148,7 @@ class WPA3ToolChecker:
             return None, None
 
     @staticmethod
-    def _parse_version(output: str, tool_name: str) -> Tuple[Optional[Tuple[int, ...]], Optional[str]]:
+    def _parse_version(output: str, tool_name: str) -> tuple[tuple[int, ...] | None, str | None]:
         """
         Parse version string from tool output.
 
@@ -247,12 +245,12 @@ class WPA3ToolChecker:
             Color.pl('\n{!} {R}Missing required tools:{W}')
             for tool in missing_required:
                 url = WPA3ToolChecker.INSTALL_URLS.get(tool, 'N/A')
-                Color.pl(f'    {tool}: {C}{url}{W}')
+                Color.pl('    %s: {C}%s{W}' % (tool, url))
 
         if outdated_tools:
             Color.pl('\n{!} {O}Outdated tools (may cause issues):{W}')
             for tool, current, minimum in outdated_tools:
-                Color.pl(f'    {tool}: {O}v{current}{W} (minimum: {C}v{minimum}{W})')
+                Color.pl('    %s: {O}v%s{W} (minimum: {C}v%s{W})' % (tool, current, minimum))
 
         if all_available and not outdated_tools:
             Color.pl('\n{+} {G}All WPA3 tools are available and up to date!{W}')
@@ -262,7 +260,7 @@ class WPA3ToolChecker:
             Color.pl('\n{!} {R}WPA3 attacks will not be available until required tools are installed{W}')
 
     @staticmethod
-    def get_missing_tools() -> List[str]:
+    def get_missing_tools() -> list[str]:
         """
         Get list of missing required tools.
 

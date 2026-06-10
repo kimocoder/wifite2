@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 End-to-end simulation tests for Evil Twin attack.
@@ -12,12 +11,10 @@ Tests realistic scenarios including:
 """
 
 import unittest
-import tempfile
-import shutil
 import os
 import time
 import sys
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 
 # Mock sys.argv to prevent argparse from reading test arguments
 original_argv = sys.argv
@@ -32,7 +29,7 @@ Configuration.eviltwin_timeout = 0
 Configuration.eviltwin_template = 'generic'
 Configuration.eviltwin_deauth_interval = 5
 
-from wifite.attack.eviltwin import EvilTwin, AttackState
+from wifite.attack.eviltwin import EvilTwin
 from wifite.model.target import Target
 from wifite.attack.portal.templates import TemplateRenderer
 from wifite.util.credential_validator import CredentialValidator
@@ -265,7 +262,7 @@ class TestPasswordFormatValidation(unittest.TestCase):
         try:
             self.assertTrue(os.path.exists(config_file))
             
-            with open(config_file, 'r') as f:
+            with open(config_file) as f:
                 content = f.read()
             
             self.assertIn('psk="Password123"', content)
@@ -289,7 +286,7 @@ class TestPasswordFormatValidation(unittest.TestCase):
                 try:
                     self.assertTrue(os.path.exists(config_file))
                     
-                    with open(config_file, 'r') as f:
+                    with open(config_file) as f:
                         content = f.read()
                     
                     self.assertIn(f'psk="{password}"', content)
@@ -312,7 +309,7 @@ class TestPasswordFormatValidation(unittest.TestCase):
                 try:
                     self.assertTrue(os.path.exists(config_file))
                     
-                    with open(config_file, 'r') as f:
+                    with open(config_file) as f:
                         content = f.read()
                     
                     # Password should be in config
@@ -329,7 +326,7 @@ class TestPasswordFormatValidation(unittest.TestCase):
         try:
             self.assertTrue(os.path.exists(config_file))
             
-            with open(config_file, 'r') as f:
+            with open(config_file) as f:
                 content = f.read()
             
             self.assertIn('psk="12345678"', content)
@@ -345,7 +342,7 @@ class TestPasswordFormatValidation(unittest.TestCase):
         try:
             self.assertTrue(os.path.exists(config_file))
             
-            with open(config_file, 'r') as f:
+            with open(config_file) as f:
                 content = f.read()
             
             self.assertIn(f'psk="{password}"', content)
@@ -361,7 +358,7 @@ class TestPasswordFormatValidation(unittest.TestCase):
         try:
             self.assertTrue(os.path.exists(config_file))
             
-            with open(config_file, 'r') as f:
+            with open(config_file) as f:
                 content = f.read()
             
             self.assertIn('psk="My Password 123"', content)
@@ -377,7 +374,7 @@ class TestPasswordFormatValidation(unittest.TestCase):
         try:
             self.assertTrue(os.path.exists(config_file))
             
-            with open(config_file, 'r') as f:
+            with open(config_file) as f:
                 content = f.read()
             
             # Password should be in config (may be escaped)

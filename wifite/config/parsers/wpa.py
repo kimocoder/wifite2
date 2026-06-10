@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 """WPA/WPA2/WPA3-specific argument parser."""
 
 import os

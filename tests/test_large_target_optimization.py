@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 Tests for large target list optimization.
@@ -7,7 +6,6 @@ Verifies that rendering is optimized for performance with many targets.
 """
 
 import unittest
-from unittest.mock import Mock
 
 
 class MockTarget:

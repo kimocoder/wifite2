@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 Tests for native Python implementations.
@@ -12,12 +11,9 @@ Tests the wifite.native module components:
 - NativeInterface: Interface management
 """
 
-import os
-import sys
 import pytest
 
 # Add parent directory to path for imports
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
 class TestNativeMac:
@@ -422,7 +418,6 @@ class TestIntegrationWithExistingTools:
     
     def test_dependency_native_alternative_check(self):
         """Test dependency native alternative checking."""
-        from wifite.tools.dependency import Dependency
         from wifite.tools.macchanger import Macchanger
         from wifite.tools.tshark import Tshark
         

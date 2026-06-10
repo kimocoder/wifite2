@@ -1,18 +1,14 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 Reusable UI components for wifite2 TUI.
 Provides common visual elements used across different views.
 """
 
-from typing import List, Optional
 from rich.panel import Panel
-from rich.progress import Progress, BarColumn, TextColumn, TimeRemainingColumn
 from rich.table import Table
 from rich.text import Text
 from rich.console import Group
-from rich.style import Style
 
 
 class SignalStrengthBar:
@@ -115,7 +111,7 @@ class ProgressPanel:
         progress_percent: float,
         status_message: str,
         metrics: dict,
-        total_time: Optional[int] = None
+        total_time: int | None = None
     ) -> Panel:
         """
         Render attack progress panel with status and metrics.
@@ -136,9 +132,9 @@ class ProgressPanel:
 
         # Create header
         header = Text()
-        header.append(f"Attack: ", style="bold")
+        header.append("Attack: ", style="bold")
         header.append(f"{attack_type}\n", style="cyan")
-        header.append(f"Elapsed: ", style="bold")
+        header.append("Elapsed: ", style="bold")
         header.append(f"{elapsed_str}", style="white")
 
         if total_time:
@@ -208,7 +204,7 @@ class LogPanel:
             max_entries: Maximum number of log entries to keep
         """
         self.max_entries = max_entries
-        self.logs: List[str] = []
+        self.logs: list[str] = []
         self.auto_scroll = True
 
     def add_log(self, message: str):
@@ -304,7 +300,7 @@ class HelpOverlay:
         )
 
     @staticmethod
-    def _get_shortcuts(context: str) -> List[tuple]:
+    def _get_shortcuts(context: str) -> list[tuple]:
         """
         Get keyboard shortcuts for the given context.
 

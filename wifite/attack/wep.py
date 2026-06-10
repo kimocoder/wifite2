@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 import subprocess
 import time
@@ -12,7 +11,7 @@ from ..tools.aireplay import Aireplay, WEPAttackType
 from ..tools.airodump import Airodump
 from ..tools.ip import Ip
 from ..util.color import Color
-from ..util.logger import log_debug, log_info, log_warning
+from ..util.logger import log_info
 from ..util.output import OutputManager
 
 
@@ -24,7 +23,7 @@ class AttackWEP(Attack):
     fakeauth_wait = 5  # TODO: Configuration?
 
     def __init__(self, target):
-        super(AttackWEP, self).__init__(target)
+        super().__init__(target)
         self.crack_result = None
         self.success = False
         
@@ -281,7 +280,7 @@ class AttackWEP(Attack):
                     self.success = False
                     return self.success
 
-            except (OSError, IOError) as e:
+            except OSError as e:
                 Color.pl('\r {!} {R}File System Error{W}: %s' % str(e))
                 continue
             except subprocess.CalledProcessError as e:

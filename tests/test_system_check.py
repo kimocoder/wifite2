@@ -1,15 +1,11 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """Tests for the comprehensive --syscheck system check module."""
 
-import os
-import sys
 import unittest
-from unittest.mock import patch, MagicMock, PropertyMock
+from unittest.mock import patch, MagicMock
 
 # Ensure project root is on path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from wifite.util.system_check import (
     SystemCheck, CheckStatus, CheckResult, InterfaceCheckResult,
@@ -182,7 +178,7 @@ class TestSystemCheckTools(unittest.TestCase):
         mock_run.return_value = MagicMock(stdout='1.0.0', stderr='', returncode=0)
 
         results = self.checker.check_tools()
-        categories = set(t.category for t in results)
+        categories = {t.category for t in results}
         # Should have at least core, wps, cracking, wpa3, eviltwin
         self.assertIn('core', categories)
         self.assertIn('wps', categories)

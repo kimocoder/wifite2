@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 Tests for cleanup utilities.
@@ -8,11 +7,9 @@ Tests for cleanup utilities.
 import unittest
 import tempfile
 import os
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 
 # Add parent directory to path
-import sys
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from wifite.util.cleanup import CleanupManager, kill_orphaned_processes, check_conflicting_processes
 

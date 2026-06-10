@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 Custom exception classes for interface-related errors.
@@ -55,7 +54,7 @@ class InterfaceNotFoundError(InterfaceError):
         """
         if message is None:
             if interface_name:
-                message = f"Interface not found or not available"
+                message = "Interface not found or not available"
             else:
                 message = "No wireless interfaces found on system"
         

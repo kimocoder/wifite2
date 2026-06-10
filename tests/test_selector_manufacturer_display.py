@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 Test for manufacturer display in selector view.
@@ -9,7 +8,7 @@ when --showm flag is used.
 """
 
 import unittest
-from unittest.mock import Mock, MagicMock, patch
+from unittest.mock import Mock, patch
 
 
 class TestSelectorManufacturerDisplay(unittest.TestCase):
