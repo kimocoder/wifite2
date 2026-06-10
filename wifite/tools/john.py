@@ -206,7 +206,18 @@ class John(Dependency):
             )
             combined = result.stdout + result.stderr
             if 'wpapsk-opencl' in combined:
-                return 'wpapsk-opencl'
+                # Verify OpenCL devices are actually available (not just compiled in)
+                try:
+                    opencl_result = subprocess.run(
+                        ['john', '--list=opencl-devices'],
+                        capture_output=True, text=True, timeout=10
+                    )
+                    opencl_out = opencl_result.stdout + opencl_result.stderr
+                    if 'No OpenCL-capable' not in opencl_out and \
+                       'Error: No' not in opencl_out:
+                        return 'wpapsk-opencl'
+                except Exception:
+                    pass
             if 'wpapsk-cuda' in combined:
                 return 'wpapsk-cuda'
         except Exception:

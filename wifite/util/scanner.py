@@ -376,6 +376,12 @@ class Scanner:
 
             self._diagnose_no_targets()
 
+            # In infinite mode, keep scanning instead of crashing
+            if Configuration.infinite_mode:
+                from ..util.logger import log_warning
+                log_warning('Scanner', 'No targets found yet in infinite mode, continuing scan cycle')
+                return []
+
             raise Exception('No targets found.'
                             + ' You may need to wait longer,'
                             + ' or you may have issues with your wifi card')
