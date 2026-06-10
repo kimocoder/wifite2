@@ -486,7 +486,7 @@ class WpaSecUploader:
                             Color.pl('{!} {O}File preserved at: {C}%s{W}' % capfile)
                             log_warning('WpaSecUploader', f'Failed to remove capture file: {str(e)}')
                             if view:
-                                view.add_log(f"Warning: Could not remove capture file")
+                                view.add_log("Warning: Could not remove capture file")
                     else:
                         Color.pl('{+} {O}Capture file removed by upload tool{W}')
                         log_info('WpaSecUploader', 'Capture file already removed by wlancap2wpasec tool')
@@ -546,7 +546,7 @@ class WpaSecUploader:
             Color.pl('{!} {O}Capture file preserved at: {C}%s{W}' % capfile)
             log_error('WpaSecUploader', f'=== Upload ERROR at {datetime.now().strftime("%Y-%m-%d %H:%M:%S")} ===')
             log_error('WpaSecUploader', f'Target: {essid} ({bssid})')
-            log_error('WpaSecUploader', f'Error type: File system error (OSError)', e)
+            log_error('WpaSecUploader', 'Error type: File system error (OSError)', e)
             log_debug('WpaSecUploader', f'Capture file preserved at: {capfile}')
             return False
         except Exception as e:

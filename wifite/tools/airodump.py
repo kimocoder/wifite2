@@ -241,7 +241,6 @@ class Airodump(Dependency):
     def get_targets_from_csv(csv_filename):
         """Returns list of Target objects parsed from CSV file."""
         targets2 = []
-        import csv
 
         # Detect encoding from first 4KB sample to avoid reading entire file twice
         try:

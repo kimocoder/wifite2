@@ -253,7 +253,7 @@ class Process:
             log_info('Process', f'Process created successfully (PID: {self.pid.pid})')
         except OSError as e:
             if e.errno == 24:  # Too many open files
-                log_error('Process', f'Too many open files (errno 24), triggering emergency cleanup', e)
+                log_error('Process', 'Too many open files (errno 24), triggering emergency cleanup', e)
                 if Configuration.verbose > 0:
                     Color.pl('{!} {O}Too many open files, triggering emergency cleanup{W}')
                 ProcessManager().cleanup_all()

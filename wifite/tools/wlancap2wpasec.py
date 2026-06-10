@@ -5,7 +5,6 @@ import os
 import re
 from .dependency import Dependency
 from ..util.process import Process
-from ..util.color import Color
 
 
 class Wlancap2wpasec(Dependency):

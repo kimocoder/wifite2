@@ -12,7 +12,7 @@ import time
 import secrets
 _sysrng = secrets.SystemRandom()
 from functools import wraps
-from typing import Callable, Optional, Tuple, Type, Union, Any
+from typing import Callable, Optional, Tuple, Type
 
 
 class RetryExhausted(Exception):

@@ -10,7 +10,7 @@ configuration, IP assignment, and cleanup.
 
 import os
 import re
-from typing import Optional, List, Tuple, Dict
+from typing import Optional, List, Dict
 from dataclasses import dataclass
 
 from ..tools.iw import Iw
@@ -771,12 +771,12 @@ class InterfaceManager:
             # Don't restore to AP mode (security consideration)
             if original_mode == 'AP':
                 original_mode = 'managed'
-                log_debug('InterfaceManager', f'Changing AP mode to managed for safety')
+                log_debug('InterfaceManager', 'Changing AP mode to managed for safety')
             
             # Don't restore to unknown mode (invalid)
             if original_mode == 'unknown':
                 original_mode = 'managed'
-                log_debug('InterfaceManager', f'Changing unknown mode to managed for safety')
+                log_debug('InterfaceManager', 'Changing unknown mode to managed for safety')
             
             # Set mode
             return self.set_interface_mode(interface, original_mode)
@@ -858,7 +858,7 @@ class InterfaceManager:
                 # Task 11.4: Log detailed error information and recovery attempts
                 log_error('InterfaceManager', f'Error during cleanup: Failed to bring {interface} down', e)
                 log_warning('InterfaceManager', f'System error: {str(e)}')
-                log_info('InterfaceManager', f'Recovery attempt: Continuing with restoration despite error')
+                log_info('InterfaceManager', 'Recovery attempt: Continuing with restoration despite error')
                 recovery_attempts.append(f'bring_down: {str(e)}')
                 success = False
             
@@ -871,7 +871,7 @@ class InterfaceManager:
                 # Task 11.4: Log detailed error information
                 log_warning('InterfaceManager', f'Error during cleanup: Failed to flush IP addresses on {interface}', e)
                 log_warning('InterfaceManager', f'System error: {str(e)}')
-                log_info('InterfaceManager', f'Recovery attempt: Continuing (non-critical error)')
+                log_info('InterfaceManager', 'Recovery attempt: Continuing (non-critical error)')
                 recovery_attempts.append(f'flush_ip: {str(e)}')
                 # Not critical, continue
             
@@ -879,11 +879,11 @@ class InterfaceManager:
             original_mode = state.original_mode
             if original_mode == 'AP':
                 original_mode = 'managed'  # Don't restore to AP mode
-                log_info('InterfaceManager', f'Security measure: Changing AP mode to managed for safety')
+                log_info('InterfaceManager', 'Security measure: Changing AP mode to managed for safety')
             
             if original_mode == 'unknown':
                 original_mode = 'managed'  # Don't restore to unknown mode
-                log_info('InterfaceManager', f'Safety measure: Changing unknown mode to managed')
+                log_info('InterfaceManager', 'Safety measure: Changing unknown mode to managed')
             
             try:
                 log_info('InterfaceManager', f'Cleanup step: Restoring {interface} to {original_mode} mode')
@@ -924,7 +924,7 @@ class InterfaceManager:
                 # Task 11.4: Log detailed error information and recovery attempts
                 log_error('InterfaceManager', f'Error during cleanup: Failed to restore mode for {interface}', e)
                 log_warning('InterfaceManager', f'System error: {str(e)}')
-                log_info('InterfaceManager', f'Recovery attempt: Trying to set to managed mode as fallback')
+                log_info('InterfaceManager', 'Recovery attempt: Trying to set to managed mode as fallback')
                 recovery_attempts.append(f'restore_mode: {str(e)}')
                 
                 # Try fallback to managed mode
@@ -1548,7 +1548,6 @@ class InterfaceManager:
             True if monitor mode can be enabled, False otherwise
         """
         from ..tools.ip import Ip
-        from ..tools.iw import Iw
         import time
         
         try:

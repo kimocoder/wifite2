@@ -144,7 +144,7 @@ class TestCleanupManager(unittest.TestCase):
         self.assertIn('error1', errors)
         self.assertIn('error2', errors)
     
-    @patch('wifite.util.cleanup.subprocess.run')
+    @patch('wifite.util.process.subprocess.run')
     def test_remove_iptables_rule(self, mock_run):
         """Test removing an iptables rule."""
         mock_run.return_value = Mock(returncode=0)
@@ -155,7 +155,7 @@ class TestCleanupManager(unittest.TestCase):
         self.assertTrue(result)
         mock_run.assert_called_once()
     
-    @patch('wifite.util.cleanup.subprocess.run')
+    @patch('wifite.util.process.subprocess.run')
     def test_check_conflicting_processes(self, mock_run):
         """Test checking for conflicting processes."""
         # Mock pgrep returning PIDs
@@ -166,7 +166,7 @@ class TestCleanupManager(unittest.TestCase):
         # Should find some processes
         self.assertIsInstance(conflicting, list)
     
-    @patch('wifite.util.cleanup.subprocess.run')
+    @patch('wifite.util.process.subprocess.run')
     def test_kill_orphaned_processes(self, mock_run):
         """Test killing orphaned processes."""
         # Mock pgrep returning PIDs

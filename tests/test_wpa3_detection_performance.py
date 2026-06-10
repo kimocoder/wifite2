@@ -9,7 +9,6 @@ and efficient parsing.
 """
 
 import unittest
-import time
 from wifite.model.target import Target
 from wifite.util.wpa3 import WPA3Detector
 
@@ -57,104 +56,105 @@ class TestWPA3DetectionPerformance(unittest.TestCase):
             ''
         ]
 
-    def test_cache_performance_improvement(self):
-        """Benchmark cache performance improvement."""
-        target = Target(self.wpa3_transition_fields)
-        iterations = 1000
-        
-        # Measure time without cache (fresh detection each time)
-        start_time = time.time()
-        for _ in range(iterations):
-            WPA3Detector.detect_wpa3_capability(target, use_cache=False)
-        no_cache_time = time.time() - start_time
-        
-        # Set cache once
-        wpa3_info_dict = WPA3Detector.detect_wpa3_capability(target, use_cache=False)
-        from wifite.util.wpa3 import WPA3Info
-        target.wpa3_info = WPA3Info.from_dict(wpa3_info_dict)
-        
-        # Measure time with cache
-        start_time = time.time()
-        for _ in range(iterations):
-            WPA3Detector.detect_wpa3_capability(target, use_cache=True)
-        cache_time = time.time() - start_time
-        
-        # Cache should be significantly faster
-        speedup = no_cache_time / cache_time if cache_time > 0 else float('inf')
-        
-        print(f"\nCache Performance Benchmark ({iterations} iterations):")
-        print(f"  Without cache: {no_cache_time:.4f}s")
-        print(f"  With cache:    {cache_time:.4f}s")
-        print(f"  Speedup:       {speedup:.2f}x")
-        
-        # Cache should be at least 2x faster
-        self.assertGreater(speedup, 2.0, 
-                          f"Cache speedup {speedup:.2f}x is less than expected 2x")
+    def test_cache_short_circuits_detection(self):
+        """Cached detection returns the stored result without recomputing.
 
-    def test_early_return_performance(self):
-        """Benchmark early return optimization for WPA2-only targets."""
-        wpa2_target = Target(self.wpa2_only_fields)
-        wpa3_target = Target(self.wpa3_transition_fields)
-        iterations = 1000
-        
-        # Measure WPA2-only detection (should be faster with early return)
-        start_time = time.time()
-        for _ in range(iterations):
-            WPA3Detector.detect_wpa3_capability(wpa2_target, use_cache=False)
-        wpa2_time = time.time() - start_time
-        
-        # Measure WPA3 detection (full processing)
-        start_time = time.time()
-        for _ in range(iterations):
-            WPA3Detector.detect_wpa3_capability(wpa3_target, use_cache=False)
-        wpa3_time = time.time() - start_time
-        
-        print(f"\nEarly Return Benchmark ({iterations} iterations):")
-        print(f"  WPA2-only (early return): {wpa2_time:.4f}s")
-        print(f"  WPA3 (full processing):   {wpa3_time:.4f}s")
-        print(f"  Ratio:                    {wpa3_time/wpa2_time:.2f}x")
-        
-        # WPA2-only should be faster or similar (early return optimization)
-        # Allow some variance due to system load
-        self.assertLessEqual(wpa2_time, wpa3_time * 1.5,
-                            "WPA2-only detection should benefit from early return")
-
-    def test_helper_method_cache_usage(self):
-        """Benchmark helper methods using cache vs fresh detection."""
-        target = Target(self.wpa3_transition_fields)
-        iterations = 1000
-        
-        # Without cache - helper methods trigger full detection
-        start_time = time.time()
-        for _ in range(iterations):
-            target.wpa3_info = None  # Clear cache
-            WPA3Detector.identify_transition_mode(target)
-            WPA3Detector.check_pmf_status(target)
-            WPA3Detector.get_supported_sae_groups(target)
-        no_cache_time = time.time() - start_time
-        
-        # With cache - helper methods use cached data
-        wpa3_info_dict = WPA3Detector.detect_wpa3_capability(target, use_cache=False)
+        Behavioural check (deterministic, not timing-based): when a target
+        already carries a ``wpa3_info`` cache, ``use_cache=True`` must return
+        that cached value verbatim, while ``use_cache=False`` must ignore the
+        cache and recompute from the target's encryption fields. We prove this
+        by seeding the cache with a sentinel that deliberately disagrees with
+        what the fields would produce.
+        """
         from wifite.util.wpa3 import WPA3Info
-        target.wpa3_info = WPA3Info.from_dict(wpa3_info_dict)
-        
-        start_time = time.time()
-        for _ in range(iterations):
-            WPA3Detector.identify_transition_mode(target)
-            WPA3Detector.check_pmf_status(target)
-            WPA3Detector.get_supported_sae_groups(target)
-        cache_time = time.time() - start_time
-        
-        speedup = no_cache_time / cache_time if cache_time > 0 else float('inf')
-        
-        print(f"\nHelper Method Cache Benchmark ({iterations} iterations):")
-        print(f"  Without cache: {no_cache_time:.4f}s")
-        print(f"  With cache:    {cache_time:.4f}s")
-        print(f"  Speedup:       {speedup:.2f}x")
-        
-        # Cache should provide significant speedup
-        self.assertGreater(speedup, 2.0,
-                          f"Helper method cache speedup {speedup:.2f}x is less than expected")
+
+        target = Target(self.wpa3_transition_fields)
+
+        # What a fresh (uncached) detection derives from the fields.
+        fresh = WPA3Detector.detect_wpa3_capability(target, use_cache=False)
+        self.assertTrue(fresh['has_wpa3'],
+                        'Fixture should detect WPA3 from the encryption fields')
+
+        # Seed the cache with a sentinel that disagrees with the fields, so a
+        # cache hit is distinguishable from a recompute.
+        sentinel = WPA3Info.from_dict({
+            'has_wpa3': False,
+            'has_wpa2': True,
+            'is_transition': False,
+            'pmf_status': WPA3Detector.PMF_DISABLED,
+            'sae_groups': [],
+            'dragonblood_vulnerable': False,
+        })
+        target.wpa3_info = sentinel
+
+        # Cache hit: must return the sentinel, proving detection was skipped.
+        cached = WPA3Detector.detect_wpa3_capability(target, use_cache=True)
+        self.assertEqual(cached, sentinel.to_dict(),
+                         'Cached path must return the stored wpa3_info verbatim')
+        self.assertFalse(cached['has_wpa3'],
+                         'Cached path must not recompute from the fields')
+
+        # Cache bypass: must recompute and match the fresh detection.
+        recomputed = WPA3Detector.detect_wpa3_capability(target, use_cache=False)
+        self.assertEqual(recomputed, fresh,
+                         'use_cache=False must ignore the cache and recompute')
+        self.assertTrue(recomputed['has_wpa3'])
+
+    def test_early_return_for_wpa2_only(self):
+        """WPA2-only targets take the early-return branch (no WPA3 work).
+
+        Behavioural check (deterministic): a target whose fields advertise no
+        WPA3/SAE must short-circuit to the WPA2-only result shape, while a
+        WPA3 transition target must go through full detection. This exercises
+        the same early-return optimisation the old benchmark targeted, without
+        asserting on wall-clock time.
+        """
+        wpa2 = WPA3Detector.detect_wpa3_capability(
+            Target(self.wpa2_only_fields), use_cache=False)
+        wpa3 = WPA3Detector.detect_wpa3_capability(
+            Target(self.wpa3_transition_fields), use_cache=False)
+
+        # Early-return branch: WPA2-only, not transition, no SAE groups.
+        self.assertFalse(wpa2['has_wpa3'])
+        self.assertFalse(wpa2['is_transition'])
+        self.assertEqual(wpa2['sae_groups'], [])
+        self.assertFalse(wpa2['dragonblood_vulnerable'])
+
+        # Full-detection branch still flags WPA3.
+        self.assertTrue(wpa3['has_wpa3'])
+
+    def test_helper_methods_use_cache(self):
+        """Helper methods read cached wpa3_info instead of recomputing.
+
+        Deterministic check: seed the cache with a sentinel that disagrees
+        with the target's fields, then confirm each helper returns the cached
+        value. Clearing the cache makes them recompute from the fields.
+        """
+        from wifite.util.wpa3 import WPA3Info
+
+        target = Target(self.wpa3_transition_fields)
+
+        sentinel = WPA3Info.from_dict({
+            'has_wpa3': True,
+            'has_wpa2': True,
+            'is_transition': False,            # disagrees with the fields
+            'pmf_status': WPA3Detector.PMF_REQUIRED,
+            'sae_groups': [21],                # not the default [19]
+            'dragonblood_vulnerable': False,
+        })
+        target.wpa3_info = sentinel
+
+        # Cache hit: helpers return the sentinel's values.
+        self.assertEqual(WPA3Detector.identify_transition_mode(target),
+                         sentinel.is_transition)
+        self.assertEqual(WPA3Detector.check_pmf_status(target),
+                         sentinel.pmf_status)
+        self.assertEqual(WPA3Detector.get_supported_sae_groups(target),
+                         sentinel.sae_groups)
+
+        # Cache cleared: helpers recompute from the fields (transition mode).
+        target.wpa3_info = None
+        self.assertTrue(WPA3Detector.identify_transition_mode(target))
 
 
 if __name__ == '__main__':

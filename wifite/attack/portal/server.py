@@ -10,7 +10,7 @@ Serves login pages and handles credential submissions for Evil Twin attacks.
 import os
 import threading
 import time
-from http.server import HTTPServer, ThreadingHTTPServer, BaseHTTPRequestHandler
+from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import parse_qs, urlparse
 from typing import Optional, Callable, Dict, Any
 import socket

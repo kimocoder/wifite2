@@ -4,7 +4,6 @@
 from ..util.color import Color
 from ..config import Configuration
 
-import glob
 import os
 import re
 import time

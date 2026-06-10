@@ -8,11 +8,9 @@ Provides common visual elements used across different views.
 
 from typing import List, Optional
 from rich.panel import Panel
-from rich.progress import Progress, BarColumn, TextColumn, TimeRemainingColumn
 from rich.table import Table
 from rich.text import Text
 from rich.console import Group
-from rich.style import Style
 
 
 class SignalStrengthBar:
@@ -136,9 +134,9 @@ class ProgressPanel:
 
         # Create header
         header = Text()
-        header.append(f"Attack: ", style="bold")
+        header.append("Attack: ", style="bold")
         header.append(f"{attack_type}\n", style="cyan")
-        header.append(f"Elapsed: ", style="bold")
+        header.append("Elapsed: ", style="bold")
         header.append(f"{elapsed_str}", style="white")
 
         if total_time:

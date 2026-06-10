@@ -21,7 +21,7 @@ import os
 import re
 import subprocess
 import shutil
-from typing import Optional, List, Dict, Tuple
+from typing import Optional, List, Dict
 from dataclasses import dataclass, field
 from enum import Enum
 
@@ -380,6 +380,7 @@ class SystemCheck:
             # Chipset (from airmon or driver map)
             try:
                 from ..tools.airmon import Airmon
+                from .interface_manager import InterfaceManager
                 info = Airmon.get_iface_info(iface)
                 if info and info.chipset:
                     result.chipset = info.chipset
@@ -774,15 +775,15 @@ class SystemCheck:
             # Smoke test result
             if iface.monitor_tested is not None:
                 if iface.monitor_tested:
-                    Color.pl(f'    Monitor test: {{G}}PASS{{W}} (entered and exited monitor mode)')
+                    Color.pl('    Monitor test: {G}PASS{W} (entered and exited monitor mode)')
                 else:
-                    Color.pl(f'    Monitor test: {{R}}FAIL{{W}} (could not enter monitor mode)')
+                    Color.pl('    Monitor test: {R}FAIL{W} (could not enter monitor mode)')
 
             # Driver warnings
             if iface.driver in ('iwlwifi',):
-                Color.pl(f'    {{O}}⚠ Intel driver — no packet injection support{{W}}')
+                Color.pl('    {O}⚠ Intel driver — no packet injection support{W}')
             if iface.driver in ('brcmfmac',):
-                Color.pl(f'    {{O}}⚠ Broadcom FullMAC — limited injection support{{W}}')
+                Color.pl('    {O}⚠ Broadcom FullMAC — limited injection support{W}')
 
             Color.pl('')  # Blank line between interfaces
 

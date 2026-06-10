@@ -35,9 +35,8 @@ Reason Codes:
 """
 
 import time
-import random
 from threading import Thread, Event
-from typing import Optional, List, Tuple, Callable
+from typing import Optional, Tuple, Callable
 
 try:
     from scapy.all import (

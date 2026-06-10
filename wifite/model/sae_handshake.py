@@ -13,7 +13,6 @@ from ..util.color import Color
 from ..tools.tshark import Tshark
 
 import os
-import re
 from typing import Dict, Optional, List, Any
 
 

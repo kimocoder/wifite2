@@ -9,13 +9,12 @@ Supports dictionary attacks, rule-based attacks, and mask attacks.
 """
 
 import os
-import re
 import time
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict
 
 from ..config import Configuration
 from ..model.sae_handshake import SAEHandshake
-from ..tools.hashcat import Hashcat, HashcatCracker, HcxPcapngTool
+from ..tools.hashcat import Hashcat, HashcatCracker
 from ..util.color import Color
 from ..util.process import Process
 

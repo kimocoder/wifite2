@@ -29,11 +29,10 @@ difficult targets, hcxdumptool is recommended as it handles edge cases
 and has better driver compatibility.
 """
 
-import os
 import time
 import binascii
 from threading import Thread, Event
-from typing import Optional, List, Dict, Tuple, Callable
+from typing import Optional, List, Callable
 from dataclasses import dataclass
 
 try:

@@ -12,7 +12,7 @@ from ..tools.aireplay import Aireplay, WEPAttackType
 from ..tools.airodump import Airodump
 from ..tools.ip import Ip
 from ..util.color import Color
-from ..util.logger import log_debug, log_info, log_warning
+from ..util.logger import log_info
 from ..util.output import OutputManager
 
 

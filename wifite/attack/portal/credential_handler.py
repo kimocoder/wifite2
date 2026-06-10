@@ -12,7 +12,6 @@ import threading
 from typing import Optional, Callable, Dict, List, Tuple
 from queue import Queue, Empty, Full
 from dataclasses import dataclass
-from datetime import datetime
 
 from ...util.logger import log_info, log_error, log_warning, log_debug
 

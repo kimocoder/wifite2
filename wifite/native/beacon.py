@@ -23,7 +23,7 @@ as it provides full AP functionality including association handling.
 import time
 import secrets
 from threading import Thread, Event
-from typing import Optional, List
+from typing import Optional
 
 try:
     from scapy.all import (

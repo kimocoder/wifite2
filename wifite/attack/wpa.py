@@ -2,8 +2,7 @@
 # -*- coding: utf-8 -*-
 
 from ..model.attack import Attack
-from ..tools.aircrack import Aircrack
-from ..tools.hashcat import Hashcat, HashcatCracker, HcxDumpTool, HcxPcapngTool
+from ..tools.hashcat import Hashcat, HashcatCracker, HcxPcapngTool
 from ..tools.airodump import Airodump
 from ..tools.aireplay import Aireplay
 from ..config import Configuration
@@ -17,6 +16,7 @@ from ..util.wpasec_uploader import WpaSecUploader
 import time
 import os
 import re
+import subprocess
 from shutil import copy
 from contextlib import contextmanager
 
@@ -70,7 +70,6 @@ class AttackWPA(Attack):
         Yields:
             None - use 'with' statement to wrap operations
         """
-        from ..util.logger import log_error, log_warning
         from ..util.process import ProcessManager, Process
         from ..util.memory import MemoryMonitor
         
@@ -119,7 +118,7 @@ class AttackWPA(Attack):
         Tries to bring the interface back to a working state.
         """
         from ..tools.airmon import Airmon
-        from ..util.logger import log_info, log_warning, log_error
+        from ..util.logger import log_info
         
         log_info('AttackWPA', 'Attempting interface recovery')
         Color.pl('{!} {O}Attempting interface recovery...{W}')
@@ -176,7 +175,7 @@ class AttackWPA(Attack):
         Returns:
             Result of operation, or None if all retries failed
         """
-        from ..util.logger import log_info, log_warning, log_error
+        from ..util.logger import log_info
         
         if max_retries is None:
             max_retries = self.MAX_RETRY_ATTEMPTS
@@ -193,7 +192,7 @@ class AttackWPA(Attack):
                     if self._recovered_from_error and self._retry_count > 0:
                         log_info('AttackWPA', f'{operation_name} succeeded after {self._retry_count} retry(s)')
                         if self.view:
-                            self.view.add_log(f'Operation succeeded after recovery')
+                            self.view.add_log('Operation succeeded after recovery')
                     
                     return result
                     
@@ -817,7 +816,7 @@ class AttackWPA(Attack):
         If one interface fails, logs an error but continues with the working interface.
         """
         from ..util.process import Process
-        from ..util.logger import log_error, log_debug, log_info
+        from ..util.logger import log_info
         
         target_channel = self.target.channel
         capture_success = False
@@ -874,7 +873,6 @@ class AttackWPA(Attack):
         and logs a warning if they don't match the target channel.
         """
         from ..util.interface_manager import InterfaceManager
-        from ..util.logger import log_warning, log_debug
         
         try:
             # Get current channel of both interfaces
@@ -1230,7 +1228,7 @@ class AttackWPA(Attack):
             Handshake object if captured, None otherwise
         """
         from ..tools.hcxdumptool import HcxDumpTool
-        from ..util.logger import log_info, log_debug, log_error
+        from ..util.logger import log_info
         
         handshake = None
         
@@ -1278,7 +1276,7 @@ class AttackWPA(Attack):
                 if self.view:
                     self.view.refresh_if_needed()
                     self.view.update_progress({
-                        'status': f'Listening for handshake [HCX]',
+                        'status': 'Listening for handshake [HCX]',
                         'metrics': {
                             'Mode': 'HCX (hcxdumptool)',
                             'Interface': Configuration.interface,

@@ -865,7 +865,6 @@ class SessionManager:
                 - 'interface_changed': Boolean indicating if interface was changed
                 - 'conflicts': List of conflicting flags that were overridden
         """
-        from ..util.color import Color
         
         warnings = []
         conflicts = []
@@ -932,7 +931,7 @@ class SessionManager:
         if saved_wordlist:
             if current_wordlist and current_wordlist != saved_wordlist:
                 conflicts.append(
-                    f"--wordlist: command-line value overridden by session value"
+                    "--wordlist: command-line value overridden by session value"
                 )
             config_obj.wordlist = saved_wordlist
         
@@ -942,7 +941,7 @@ class SessionManager:
             current_timeout = getattr(config_obj, 'wpa_attack_timeout', 500)
             if current_timeout != saved_timeout and current_timeout != 500:
                 conflicts.append(
-                    f"--wpa-attack-timeout: command-line value overridden by session value"
+                    "--wpa-attack-timeout: command-line value overridden by session value"
                 )
             config_obj.wpa_attack_timeout = saved_timeout
         
@@ -987,7 +986,7 @@ class SessionManager:
             current_use_tui = getattr(config_obj, 'use_tui', True)
             if current_use_tui != saved_use_tui:
                 conflicts.append(
-                    f"UI mode: command-line value overridden by session value"
+                    "UI mode: command-line value overridden by session value"
                 )
             config_obj.use_tui = saved_use_tui
         
@@ -1002,7 +1001,7 @@ class SessionManager:
             current_dual_enabled = getattr(config_obj, 'dual_interface_enabled', False)
             if current_dual_enabled != saved_dual_enabled:
                 conflicts.append(
-                    f"--dual-interface: command-line value overridden by session value"
+                    "--dual-interface: command-line value overridden by session value"
                 )
             config_obj.dual_interface_enabled = saved_dual_enabled
         
@@ -1030,7 +1029,7 @@ class SessionManager:
                         current_primary = getattr(config_obj, 'interface_primary', None)
                         if current_primary and current_primary != saved_primary:
                             conflicts.append(
-                                f"--interface-primary: command-line value overridden by session value"
+                                "--interface-primary: command-line value overridden by session value"
                             )
                         config_obj.interface_primary = saved_primary
                 except (FileNotFoundError, OSError, Exception):
@@ -1063,7 +1062,7 @@ class SessionManager:
                         current_secondary = getattr(config_obj, 'interface_secondary', None)
                         if current_secondary and current_secondary != saved_secondary:
                             conflicts.append(
-                                f"--interface-secondary: command-line value overridden by session value"
+                                "--interface-secondary: command-line value overridden by session value"
                             )
                         config_obj.interface_secondary = saved_secondary
                 except (FileNotFoundError, OSError, Exception):
