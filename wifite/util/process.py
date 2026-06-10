@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 import contextlib
 import re
@@ -253,7 +252,7 @@ class Process:
             log_info('Process', f'Process created successfully (PID: {self.pid.pid})')
         except OSError as e:
             if e.errno == 24:  # Too many open files
-                log_error('Process', f'Too many open files (errno 24), triggering emergency cleanup', e)
+                log_error('Process', 'Too many open files (errno 24), triggering emergency cleanup', e)
                 if Configuration.verbose > 0:
                     Color.pl('{!} {O}Too many open files, triggering emergency cleanup{W}')
                 ProcessManager().cleanup_all()
@@ -385,7 +384,6 @@ class Process:
                 self.interrupt()
         except (OSError, ValueError) as e:
             log_debug('Process', f'Error interrupting process: {str(e)}')
-            pass
 
         # Ensure all descriptors closed
         streams_closed = 0
@@ -396,7 +394,6 @@ class Process:
                     streams_closed += 1
                 except (OSError, ValueError) as e:
                     log_debug('Process', f'Error closing stream: {str(e)}')
-                    pass
 
         if streams_closed > 0:
             log_debug('Process', f'Closed {streams_closed} stream(s)')
@@ -409,7 +406,6 @@ class Process:
                 devnull_closed += 1
             except (OSError, ValueError) as e:
                 log_debug('Process', f'Error closing devnull handle: {str(e)}')
-                pass
         self._devnull_handles = []
 
         if devnull_closed > 0:
@@ -419,7 +415,6 @@ class Process:
             self._manager.unregister_process(self)
         except (OSError, ValueError) as e:
             log_debug('Process', f'Error unregistering process: {str(e)}')
-            pass
 
         # Detach the weakref finalizer — cleanup already done above
         if hasattr(self, '_finalizer'):
@@ -556,7 +551,6 @@ class Process:
                     return True
         except Exception as e:
             log_debug('Process', f'Error checking FD limit: {str(e)}')
-            pass
         return False
 
 

@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 from .dependency import Dependency
 from .tshark import Tshark
@@ -11,7 +10,6 @@ from ..model.target import Target, WPSState
 from ..model.client import Client
 from ..util.logger import log_debug, log_warning
 
-import csv
 import os
 import time
 
@@ -251,7 +249,7 @@ class Airodump(Dependency):
         except ImportError:
             encoding = 'utf-8'
 
-        with open(csv_filename, 'r', encoding=encoding, errors='ignore') as csvopen:
+        with open(csv_filename, encoding=encoding, errors='ignore') as csvopen:
             lines = []
             has_null = False
             for line in csvopen:

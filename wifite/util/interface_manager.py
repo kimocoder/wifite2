@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 Network interface management for Evil Twin attacks.
@@ -10,7 +9,6 @@ configuration, IP assignment, and cleanup.
 
 import os
 import re
-from typing import Optional, List, Tuple, Dict
 from dataclasses import dataclass
 
 from ..tools.iw import Iw
@@ -34,8 +32,8 @@ class InterfaceState:
     name: str                           # Interface name
     original_mode: str                  # Original mode (managed, monitor, AP, etc.)
     original_up: bool                   # Whether interface was originally up
-    original_mac: Optional[str]         # Original MAC address
-    original_channel: Optional[int]     # Original channel
+    original_mac: str | None         # Original MAC address
+    original_channel: int | None     # Original channel
     current_mode: str                   # Current mode
     current_up: bool                    # Current up/down state
     managed_by_wifite: bool = True      # Whether wifite is managing this interface
@@ -135,16 +133,16 @@ class InterfaceManager:
     
     def __init__(self):
         # Track interface states for cleanup (interface_name -> InterfaceState)
-        self.interface_states: Dict[str, InterfaceState] = {}
+        self.interface_states: dict[str, InterfaceState] = {}
         
         # Track assigned IP addresses (interface_name -> ip_address)
-        self.assigned_ips: Dict[str, str] = {}
+        self.assigned_ips: dict[str, str] = {}
         
         # Legacy compatibility - maps to interface_states
         self.managed_interfaces = {}  # Deprecated, kept for compatibility
     
     @staticmethod
-    def _execute_verbose(command: List[str], description: str = None) -> Optional[str]:
+    def _execute_verbose(command: list[str], description: str = None) -> str | None:
         """
         Execute a command with verbose logging support.
         
@@ -236,8 +234,8 @@ class InterfaceManager:
             log_error('InterfaceManager', f'Failed to save state for {interface}: {e}', e)
             return False
     
-    def _update_interface_state(self, interface: str, mode: Optional[str] = None, 
-                               up: Optional[bool] = None) -> bool:
+    def _update_interface_state(self, interface: str, mode: str | None = None, 
+                               up: bool | None = None) -> bool:
         """
         Update the tracked state of an interface after making changes.
         
@@ -292,7 +290,7 @@ class InterfaceManager:
         return interface in self.interface_states and \
                self.interface_states[interface].managed_by_wifite
     
-    def get_managed_interfaces(self) -> List[str]:
+    def get_managed_interfaces(self) -> list[str]:
         """
         Get list of all interfaces currently managed by wifite.
         
@@ -495,8 +493,8 @@ class InterfaceManager:
             log_error('InterfaceManager', f'Configuration result: FAILED - Could not set {interface} to channel {channel}: {e}', e)
             return False
     
-    def configure_interface(self, interface: str, mode: Optional[str] = None,
-                          channel: Optional[int] = None, up: Optional[bool] = None) -> bool:
+    def configure_interface(self, interface: str, mode: str | None = None,
+                          channel: int | None = None, up: bool | None = None) -> bool:
         """
         Configure multiple aspects of an interface at once.
         
@@ -552,7 +550,7 @@ class InterfaceManager:
             return False
     
     @staticmethod
-    def get_wireless_interfaces() -> List[str]:
+    def get_wireless_interfaces() -> list[str]:
         """
         Get list of all wireless interfaces.
         
@@ -585,7 +583,7 @@ class InterfaceManager:
             return []
     
     @staticmethod
-    def get_ap_capable_interfaces() -> List[InterfaceCapabilities]:
+    def get_ap_capable_interfaces() -> list[InterfaceCapabilities]:
         """
         Get list of interfaces that support AP mode.
         
@@ -771,12 +769,12 @@ class InterfaceManager:
             # Don't restore to AP mode (security consideration)
             if original_mode == 'AP':
                 original_mode = 'managed'
-                log_debug('InterfaceManager', f'Changing AP mode to managed for safety')
+                log_debug('InterfaceManager', 'Changing AP mode to managed for safety')
             
             # Don't restore to unknown mode (invalid)
             if original_mode == 'unknown':
                 original_mode = 'managed'
-                log_debug('InterfaceManager', f'Changing unknown mode to managed for safety')
+                log_debug('InterfaceManager', 'Changing unknown mode to managed for safety')
             
             # Set mode
             return self.set_interface_mode(interface, original_mode)
@@ -858,7 +856,7 @@ class InterfaceManager:
                 # Task 11.4: Log detailed error information and recovery attempts
                 log_error('InterfaceManager', f'Error during cleanup: Failed to bring {interface} down', e)
                 log_warning('InterfaceManager', f'System error: {str(e)}')
-                log_info('InterfaceManager', f'Recovery attempt: Continuing with restoration despite error')
+                log_info('InterfaceManager', 'Recovery attempt: Continuing with restoration despite error')
                 recovery_attempts.append(f'bring_down: {str(e)}')
                 success = False
             
@@ -871,7 +869,7 @@ class InterfaceManager:
                 # Task 11.4: Log detailed error information
                 log_warning('InterfaceManager', f'Error during cleanup: Failed to flush IP addresses on {interface}', e)
                 log_warning('InterfaceManager', f'System error: {str(e)}')
-                log_info('InterfaceManager', f'Recovery attempt: Continuing (non-critical error)')
+                log_info('InterfaceManager', 'Recovery attempt: Continuing (non-critical error)')
                 recovery_attempts.append(f'flush_ip: {str(e)}')
                 # Not critical, continue
             
@@ -879,11 +877,11 @@ class InterfaceManager:
             original_mode = state.original_mode
             if original_mode == 'AP':
                 original_mode = 'managed'  # Don't restore to AP mode
-                log_info('InterfaceManager', f'Security measure: Changing AP mode to managed for safety')
+                log_info('InterfaceManager', 'Security measure: Changing AP mode to managed for safety')
             
             if original_mode == 'unknown':
                 original_mode = 'managed'  # Don't restore to unknown mode
-                log_info('InterfaceManager', f'Safety measure: Changing unknown mode to managed')
+                log_info('InterfaceManager', 'Safety measure: Changing unknown mode to managed')
             
             try:
                 log_info('InterfaceManager', f'Cleanup step: Restoring {interface} to {original_mode} mode')
@@ -924,7 +922,7 @@ class InterfaceManager:
                 # Task 11.4: Log detailed error information and recovery attempts
                 log_error('InterfaceManager', f'Error during cleanup: Failed to restore mode for {interface}', e)
                 log_warning('InterfaceManager', f'System error: {str(e)}')
-                log_info('InterfaceManager', f'Recovery attempt: Trying to set to managed mode as fallback')
+                log_info('InterfaceManager', 'Recovery attempt: Trying to set to managed mode as fallback')
                 recovery_attempts.append(f'restore_mode: {str(e)}')
                 
                 # Try fallback to managed mode
@@ -1091,7 +1089,7 @@ class InterfaceManager:
         return success_count
     
     @staticmethod
-    def select_ap_interface(preferred=None) -> Optional[str]:
+    def select_ap_interface(preferred=None) -> str | None:
         """
         Select an interface for AP mode.
         
@@ -1370,7 +1368,7 @@ class InterfaceManager:
             return False
     
     @staticmethod
-    def _get_interface_frequency(interface: str) -> Optional[float]:
+    def _get_interface_frequency(interface: str) -> float | None:
         """
         Get current frequency of interface in MHz.
         
@@ -1391,7 +1389,7 @@ class InterfaceManager:
         return None
     
     @staticmethod
-    def _get_interface_channel(interface: str) -> Optional[int]:
+    def _get_interface_channel(interface: str) -> int | None:
         """
         Get current channel of interface.
         
@@ -1412,7 +1410,7 @@ class InterfaceManager:
         return None
     
     @staticmethod
-    def _get_interface_tx_power(interface: str) -> Optional[int]:
+    def _get_interface_tx_power(interface: str) -> int | None:
         """
         Get TX power of interface in dBm.
         
@@ -1548,7 +1546,6 @@ class InterfaceManager:
             True if monitor mode can be enabled, False otherwise
         """
         from ..tools.ip import Ip
-        from ..tools.iw import Iw
         import time
         
         try:
@@ -1653,7 +1650,7 @@ class InterfaceManager:
             return True
     
     @staticmethod
-    def get_available_interfaces() -> List[InterfaceInfo]:
+    def get_available_interfaces() -> list[InterfaceInfo]:
         """
         Get all available wireless interfaces with their capabilities.
         
@@ -1783,7 +1780,7 @@ class InterfaceManager:
         return interfaces
     
     @staticmethod
-    def _get_interface_info(interface: str) -> Optional[InterfaceInfo]:
+    def _get_interface_info(interface: str) -> InterfaceInfo | None:
         """
         Get comprehensive information about an interface.
         

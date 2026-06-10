@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 Wireless Attack Monitoring Module
@@ -13,9 +12,7 @@ from ..config import Configuration
 from ..util.color import Color
 from ..tools.tshark import TsharkMonitor
 from ..util.process import Process
-import os
 import time
-import re
 
 # TUI imports (optional)
 try:

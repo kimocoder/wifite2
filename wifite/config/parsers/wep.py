@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 """WEP-specific argument parser."""
 
 from ...util.color import Color

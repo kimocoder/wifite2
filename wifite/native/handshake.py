@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 Scapy-based WPA/WPA2 handshake verification.
@@ -29,7 +28,6 @@ in sequential order.
 """
 
 import os
-from typing import Optional, List, Dict, Set, Tuple
 from collections import defaultdict
 
 try:
@@ -67,7 +65,7 @@ class ScapyHandshake:
     @classmethod
     def bssids_with_handshakes(cls, 
                                 capfile: str, 
-                                bssid: Optional[str] = None) -> List[str]:
+                                bssid: str | None = None) -> list[str]:
         """
         Find all BSSIDs with valid 4-way handshakes in a capture file.
         
@@ -96,7 +94,7 @@ class ScapyHandshake:
             
             return list(valid_bssids)
             
-        except Exception as e:
+        except Exception:
             return []
     
     @classmethod
@@ -117,7 +115,7 @@ class ScapyHandshake:
     @classmethod
     def get_handshake_info(cls, 
                            capfile: str, 
-                           bssid: Optional[str] = None) -> List[Dict]:
+                           bssid: str | None = None) -> list[dict]:
         """
         Get detailed handshake information from capture file.
         
@@ -156,7 +154,7 @@ class ScapyHandshake:
     @classmethod
     def _extract_handshakes(cls, 
                             capfile: str, 
-                            bssid_filter: Optional[str] = None) -> Dict[Tuple[str, str], Set[int]]:
+                            bssid_filter: str | None = None) -> dict[tuple[str, str], set[int]]:
         """
         Extract EAPOL handshake messages from capture file.
         
@@ -312,7 +310,7 @@ class ScapyHandshake:
             return 0
     
     @classmethod
-    def _is_complete_handshake(cls, messages: Set[int]) -> bool:
+    def _is_complete_handshake(cls, messages: set[int]) -> bool:
         """
         Check if a set of messages forms a complete handshake.
         
@@ -321,7 +319,7 @@ class ScapyHandshake:
         return messages == {1, 2, 3, 4}
     
     @classmethod
-    def get_essid(cls, capfile: str, bssid: str) -> Optional[str]:
+    def get_essid(cls, capfile: str, bssid: str) -> str | None:
         """
         Extract ESSID for a BSSID from beacon/probe response frames.
         
@@ -388,7 +386,7 @@ def has_handshake(capfile: str, bssid: str) -> bool:
     return ScapyHandshake.has_handshake(capfile, bssid)
 
 
-def bssids_with_handshakes(capfile: str, bssid: Optional[str] = None) -> List[str]:
+def bssids_with_handshakes(capfile: str, bssid: str | None = None) -> list[str]:
     """Get list of BSSIDs with valid handshakes."""
     return ScapyHandshake.bssids_with_handshakes(capfile, bssid)
 

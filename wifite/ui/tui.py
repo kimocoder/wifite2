@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 TUI Controller for wifite2 using the rich library.
@@ -8,7 +7,6 @@ Manages the interactive terminal user interface with real-time updates.
 
 import time
 import signal
-from typing import Optional
 from rich.console import Console
 from rich.live import Live
 from ..util.tui_logger import TUILogger, log_tui_event, log_tui_error, log_tui_debug
@@ -27,7 +25,7 @@ class TUIController:
     def __init__(self):
         """Initialize TUI controller with rich Console and Live display."""
         self.console = Console()
-        self.live: Optional[Live] = None
+        self.live: Live | None = None
         self.is_running = False
         self.last_update = 0
         self.min_update_interval = 0.05  # 50ms minimum between updates (was 100ms)

@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 Unit tests for WPA3Detector class.
@@ -10,11 +9,8 @@ and SAE group extraction.
 
 import unittest
 from unittest.mock import Mock
-import sys
-import os
 
 # Add parent directory to path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from wifite.util.wpa3 import WPA3Detector, WPA3Info
 

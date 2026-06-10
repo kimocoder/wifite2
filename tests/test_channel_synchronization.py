@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 Unit tests for channel synchronization in dual interface WPA attacks.
@@ -12,7 +11,7 @@ Tests the channel synchronization functionality including:
 
 import unittest
 import sys
-from unittest.mock import Mock, patch, MagicMock, call
+from unittest.mock import Mock, patch, MagicMock
 
 # Mock sys.argv to prevent argparse from reading test arguments
 original_argv = sys.argv

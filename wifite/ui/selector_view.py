@@ -1,12 +1,10 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 Selector View for wifite2 TUI.
 Interactive target selection interface with keyboard navigation.
 """
 
-from typing import List, Set, Optional
 from rich.layout import Layout
 from rich.panel import Panel
 from rich.table import Table
@@ -20,7 +18,7 @@ from ..util.input import KeyboardInput
 class SelectorView:
     """Interactive target selection interface with keyboard navigation."""
 
-    def __init__(self, tui_controller, targets: List):
+    def __init__(self, tui_controller, targets: list):
         """
         Initialize selector view.
 
@@ -30,13 +28,13 @@ class SelectorView:
         """
         self.tui = tui_controller
         self.targets = targets
-        self.selected: Set[int] = set()  # Set of selected target indices
+        self.selected: set[int] = set()  # Set of selected target indices
         self.cursor = 0  # Current cursor position
         self.scroll_offset = 0  # For scrolling through long lists
         # Dynamic max rows based on terminal height (leave room for header/footer)
         self.max_visible_rows = self._calculate_max_visible_rows()
 
-    def run(self) -> List:
+    def run(self) -> list:
         """
         Run the interactive selector and return selected targets.
 
@@ -74,7 +72,7 @@ class SelectorView:
             # Clean up
             pass
 
-    def handle_input(self, key: str) -> Optional[str]:
+    def handle_input(self, key: str) -> str | None:
         """
         Handle keyboard input for navigation and selection.
 
@@ -163,7 +161,7 @@ class SelectorView:
         """Deselect all targets."""
         self.selected.clear()
 
-    def get_selected_targets(self) -> List:
+    def get_selected_targets(self) -> list:
         """
         Get list of selected targets.
 

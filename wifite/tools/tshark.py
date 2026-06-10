@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 Tshark wrapper with native Scapy fallback.
@@ -279,7 +278,7 @@ class Tshark(Dependency):
             lines = p.stdout()
         except KeyboardInterrupt:
             raise
-        except (OSError, IOError) as e:
+        except OSError as e:
             from ..config import Configuration
             if Configuration.verbose > 0:
                 from ..util.color import Color
@@ -443,7 +442,7 @@ class TsharkMonitor:
                 'bssid': fields[4] if len(fields) > 4 else '',
                 'channel': fields[5] if len(fields) > 5 else ''
             }
-        except (OSError, IOError):
+        except OSError:
             return None
     
     def stop(self):
@@ -476,4 +475,4 @@ if __name__ == '__main__':
     if targets[0].wps != WPSState.UNLOCKED:
         raise ValueError(f'Expected WPSState.UNLOCKED, got {targets[0].wps}')
 
-    print((Tshark.bssids_with_handshakes(test_file, bssid=target_bssid)))
+    print(Tshark.bssids_with_handshakes(test_file, bssid=target_bssid))

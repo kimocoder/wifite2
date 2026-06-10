@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 """General settings argument parser and encryption/WEP-attack helpers."""
 
 import os
@@ -114,11 +113,11 @@ def parse_settings_args(cls, args):
         try:
             # Try UTF-8 first (strict), fall back to latin-1 which accepts all byte values
             try:
-                with open(args.ignore_essids_file, 'r', encoding='utf-8') as fh:
+                with open(args.ignore_essids_file, encoding='utf-8') as fh:
                     file_essids = [line.strip() for line in fh if line.strip() and not line.startswith('#')]
             except UnicodeDecodeError:
                 Color.pl('{!} {O}ignore-essids-file is not valid UTF-8, trying latin-1{W}')
-                with open(args.ignore_essids_file, 'r', encoding='latin-1') as fh:
+                with open(args.ignore_essids_file, encoding='latin-1') as fh:
                     file_essids = [line.strip() for line in fh if line.strip() and not line.startswith('#')]
             if file_essids:
                 cls.ignore_essids = list(set((cls.ignore_essids or []) + file_essids))
@@ -127,7 +126,7 @@ def parse_settings_args(cls, args):
             else:
                 Color.pl('{!} {O}ignore-essids-file {R}%s{O} is empty or has only comments{W}' %
                          args.ignore_essids_file)
-        except (OSError, IOError) as e:
+        except OSError as e:
             Color.pl('{!} {R}Could not read ignore-essids-file {O}%s{R}: %s{W}' %
                      (args.ignore_essids_file, str(e)))
 

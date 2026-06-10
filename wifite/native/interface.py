@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 Native network interface management without external tools.
@@ -32,7 +31,6 @@ import re
 import socket
 import struct
 import fcntl
-from typing import Optional, List, Dict, Tuple
 from dataclasses import dataclass
 
 
@@ -40,15 +38,15 @@ from dataclasses import dataclass
 class InterfaceInfo:
     """Container for interface information."""
     name: str
-    mac_address: Optional[str] = None
-    driver: Optional[str] = None
-    mode: Optional[str] = None  # managed, monitor, etc.
+    mac_address: str | None = None
+    driver: str | None = None
+    mode: str | None = None  # managed, monitor, etc.
     is_up: bool = False
     is_wireless: bool = False
-    channel: Optional[int] = None
-    frequency: Optional[int] = None  # MHz
-    tx_power: Optional[int] = None  # dBm
-    phy: Optional[str] = None  # Physical device (phy0, phy1, etc.)
+    channel: int | None = None
+    frequency: int | None = None  # MHz
+    tx_power: int | None = None  # dBm
+    phy: str | None = None  # Physical device (phy0, phy1, etc.)
 
 
 class NativeInterface:
@@ -112,7 +110,7 @@ class NativeInterface:
     }
     
     @classmethod
-    def list_interfaces(cls, wireless_only: bool = False) -> List[str]:
+    def list_interfaces(cls, wireless_only: bool = False) -> list[str]:
         """
         List available network interfaces.
         
@@ -139,7 +137,7 @@ class NativeInterface:
         return sorted(interfaces)
     
     @classmethod
-    def get_info(cls, interface: str) -> Optional[InterfaceInfo]:
+    def get_info(cls, interface: str) -> InterfaceInfo | None:
         """
         Get detailed information about an interface.
         
@@ -157,16 +155,16 @@ class NativeInterface:
         
         # MAC address
         try:
-            with open(f'{sysfs_base}/address', 'r') as f:
+            with open(f'{sysfs_base}/address') as f:
                 info.mac_address = f.read().strip().upper()
-        except (IOError, OSError):
+        except OSError:
             pass
         
         # Driver
         try:
             driver_link = os.readlink(f'{sysfs_base}/device/driver')
             info.driver = os.path.basename(driver_link)
-        except (IOError, OSError):
+        except OSError:
             pass
         
         # Check if wireless
@@ -174,16 +172,16 @@ class NativeInterface:
         
         # Interface state
         try:
-            with open(f'{sysfs_base}/operstate', 'r') as f:
+            with open(f'{sysfs_base}/operstate') as f:
                 info.is_up = f.read().strip().lower() in ('up', 'unknown')
-        except (IOError, OSError):
+        except OSError:
             info.is_up = cls._is_up_ioctl(interface)
         
         # PHY device
         try:
             phy_link = os.readlink(f'{sysfs_base}/phy80211')
             info.phy = os.path.basename(phy_link)
-        except (IOError, OSError):
+        except OSError:
             pass
         
         # Wireless-specific info
@@ -213,7 +211,7 @@ class NativeInterface:
         return mode == 'monitor' if mode else False
     
     @classmethod
-    def up(cls, interface: str) -> Tuple[bool, str]:
+    def up(cls, interface: str) -> tuple[bool, str]:
         """
         Bring interface up.
         
@@ -226,7 +224,7 @@ class NativeInterface:
         return cls._set_flags(interface, add_flags=cls.IFF_UP)
     
     @classmethod
-    def down(cls, interface: str) -> Tuple[bool, str]:
+    def down(cls, interface: str) -> tuple[bool, str]:
         """
         Bring interface down.
         
@@ -239,12 +237,12 @@ class NativeInterface:
         return cls._set_flags(interface, remove_flags=cls.IFF_UP)
     
     @classmethod
-    def get_mac(cls, interface: str) -> Optional[str]:
+    def get_mac(cls, interface: str) -> str | None:
         """Get MAC address of interface."""
         try:
-            with open(f'/sys/class/net/{interface}/address', 'r') as f:
+            with open(f'/sys/class/net/{interface}/address') as f:
                 return f.read().strip().upper()
-        except (IOError, OSError):
+        except OSError:
             pass
         
         # Fallback to ioctl
@@ -257,11 +255,11 @@ class NativeInterface:
                 return ':'.join(f'{b:02X}' for b in mac_bytes)
             finally:
                 sock.close()
-        except (IOError, OSError):
+        except OSError:
             return None
     
     @classmethod
-    def get_channel(cls, interface: str) -> Optional[int]:
+    def get_channel(cls, interface: str) -> int | None:
         """Get current channel of wireless interface."""
         freq = cls._get_frequency_ioctl(interface)
         if freq:
@@ -280,7 +278,7 @@ class NativeInterface:
         return None
     
     @classmethod
-    def set_channel(cls, interface: str, channel: int) -> Tuple[bool, str]:
+    def set_channel(cls, interface: str, channel: int) -> tuple[bool, str]:
         """
         Set channel on wireless interface.
         
@@ -311,7 +309,7 @@ class NativeInterface:
             return False, str(e)
     
     @classmethod
-    def set_mode(cls, interface: str, mode: str) -> Tuple[bool, str]:
+    def set_mode(cls, interface: str, mode: str) -> tuple[bool, str]:
         """
         Set wireless interface mode.
         
@@ -342,7 +340,7 @@ class NativeInterface:
                 return True, f'Mode set to {mode}'
             finally:
                 sock.close()
-        except (IOError, OSError):
+        except OSError:
             pass
         
         # Fallback to iw command
@@ -356,7 +354,7 @@ class NativeInterface:
             return False, str(e)
     
     @classmethod
-    def get_mode(cls, interface: str) -> Optional[str]:
+    def get_mode(cls, interface: str) -> str | None:
         """Get current wireless mode."""
         return cls._get_mode_ioctl(interface)
     
@@ -372,11 +370,11 @@ class NativeInterface:
                 return bool(flags & cls.IFF_UP)
             finally:
                 sock.close()
-        except (IOError, OSError):
+        except OSError:
             return False
     
     @classmethod
-    def _set_flags(cls, interface: str, add_flags: int = 0, remove_flags: int = 0) -> Tuple[bool, str]:
+    def _set_flags(cls, interface: str, add_flags: int = 0, remove_flags: int = 0) -> tuple[bool, str]:
         """Set interface flags using ioctl."""
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -397,7 +395,7 @@ class NativeInterface:
                 return True, 'Flags updated'
             finally:
                 sock.close()
-        except (IOError, OSError) as e:
+        except OSError:
             pass
         
         # Fallback to ip command
@@ -412,7 +410,7 @@ class NativeInterface:
             return False, str(e)
     
     @classmethod
-    def _get_mode_ioctl(cls, interface: str) -> Optional[str]:
+    def _get_mode_ioctl(cls, interface: str) -> str | None:
         """Get wireless mode using ioctl."""
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -424,7 +422,7 @@ class NativeInterface:
                 return cls.MODE_NAMES.get(mode, 'unknown')
             finally:
                 sock.close()
-        except (IOError, OSError):
+        except OSError:
             pass
         
         # Fallback to iw command
@@ -440,7 +438,7 @@ class NativeInterface:
         return None
     
     @classmethod
-    def _get_frequency_ioctl(cls, interface: str) -> Optional[int]:
+    def _get_frequency_ioctl(cls, interface: str) -> int | None:
         """Get wireless frequency using ioctl."""
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -466,7 +464,7 @@ class NativeInterface:
                     
             finally:
                 sock.close()
-        except (IOError, OSError):
+        except OSError:
             pass
         
         return None
@@ -490,11 +488,11 @@ class NativeInterface:
                 return True
             finally:
                 sock.close()
-        except (IOError, OSError):
+        except OSError:
             return False
     
     @classmethod
-    def _channel_to_freq(cls, channel: int) -> Optional[int]:
+    def _channel_to_freq(cls, channel: int) -> int | None:
         """Convert channel number to frequency in MHz."""
         if channel in cls.CHANNEL_FREQ_24:
             return cls.CHANNEL_FREQ_24[channel]
@@ -503,7 +501,7 @@ class NativeInterface:
         return None
     
     @classmethod
-    def _freq_to_channel(cls, freq_mhz: int) -> Optional[int]:
+    def _freq_to_channel(cls, freq_mhz: int) -> int | None:
         """Convert frequency in MHz to channel number."""
         # Search 2.4 GHz
         for ch, f in cls.CHANNEL_FREQ_24.items():
@@ -517,26 +515,26 @@ class NativeInterface:
 
 
 # Convenience functions
-def list_interfaces(wireless_only: bool = False) -> List[str]:
+def list_interfaces(wireless_only: bool = False) -> list[str]:
     """List network interfaces."""
     return NativeInterface.list_interfaces(wireless_only)
 
 
-def get_info(interface: str) -> Optional[InterfaceInfo]:
+def get_info(interface: str) -> InterfaceInfo | None:
     """Get interface information."""
     return NativeInterface.get_info(interface)
 
 
-def up(interface: str) -> Tuple[bool, str]:
+def up(interface: str) -> tuple[bool, str]:
     """Bring interface up."""
     return NativeInterface.up(interface)
 
 
-def down(interface: str) -> Tuple[bool, str]:
+def down(interface: str) -> tuple[bool, str]:
     """Bring interface down."""
     return NativeInterface.down(interface)
 
 
-def get_mac(interface: str) -> Optional[str]:
+def get_mac(interface: str) -> str | None:
     """Get interface MAC address."""
     return NativeInterface.get_mac(interface)

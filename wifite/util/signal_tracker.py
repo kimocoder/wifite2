@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 Signal strength history tracking and analysis.
@@ -8,7 +7,6 @@ Tracks signal strength over time for targets and clients,
 providing trend analysis for attack optimization.
 """
 
-from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass, field
 from collections import deque
 import time
@@ -47,33 +45,33 @@ class SignalHistory:
         self.samples.append(SignalSample(time.time(), power))
 
     @property
-    def current(self) -> Optional[int]:
+    def current(self) -> int | None:
         """Get most recent signal strength."""
         return self.samples[-1].power if self.samples else None
 
     @property
-    def average(self) -> Optional[float]:
+    def average(self) -> float | None:
         """Calculate average signal strength."""
         if not self.samples:
             return None
         return sum(s.power for s in self.samples) / len(self.samples)
 
     @property
-    def max_power(self) -> Optional[int]:
+    def max_power(self) -> int | None:
         """Get maximum signal strength seen."""
         if not self.samples:
             return None
         return max(s.power for s in self.samples)
 
     @property
-    def min_power(self) -> Optional[int]:
+    def min_power(self) -> int | None:
         """Get minimum signal strength seen."""
         if not self.samples:
             return None
         return min(s.power for s in self.samples)
 
     @property
-    def variance(self) -> Optional[float]:
+    def variance(self) -> float | None:
         """Calculate signal variance (stability indicator)."""
         if len(self.samples) < 2:
             return None
@@ -119,7 +117,7 @@ class SignalHistory:
         var = self.variance
         return var is not None and var < threshold
 
-    def get_optimal_window(self, window_seconds: int = 10) -> Optional[Tuple[float, float]]:
+    def get_optimal_window(self, window_seconds: int = 10) -> tuple[float, float] | None:
         """
         Find the time window with best average signal.
 
@@ -158,8 +156,8 @@ class SignalTracker:
     
     def __init__(self, max_samples: int = 60):
         self.max_samples = max_samples
-        self.aps: Dict[str, SignalHistory] = {}
-        self.clients: Dict[str, SignalHistory] = {}
+        self.aps: dict[str, SignalHistory] = {}
+        self.clients: dict[str, SignalHistory] = {}
     
     def update_ap(self, bssid: str, power: int) -> None:
         """Update signal strength for an AP."""
@@ -173,16 +171,16 @@ class SignalTracker:
             self.clients[mac] = SignalHistory(mac, self.max_samples)
         self.clients[mac].add_sample(power)
     
-    def get_ap_history(self, bssid: str) -> Optional[SignalHistory]:
+    def get_ap_history(self, bssid: str) -> SignalHistory | None:
         """Get signal history for an AP."""
         return self.aps.get(bssid)
     
-    def get_client_history(self, mac: str) -> Optional[SignalHistory]:
+    def get_client_history(self, mac: str) -> SignalHistory | None:
         """Get signal history for a client."""
         return self.clients.get(mac)
     
     def get_best_targets(self, min_power: int = -70, 
-                         require_stable: bool = False) -> List[str]:
+                         require_stable: bool = False) -> list[str]:
         """
         Get list of APs with good, stable signal.
         
@@ -207,7 +205,7 @@ class SignalTracker:
         candidates.sort(key=lambda x: x[1], reverse=True)
         return [bssid for bssid, _ in candidates]
     
-    def get_active_clients(self, max_age_seconds: int = 30) -> List[str]:
+    def get_active_clients(self, max_age_seconds: int = 30) -> list[str]:
         """
         Get list of clients that have been seen recently.
         
@@ -230,7 +228,7 @@ class SignalTracker:
     
     def should_attack_now(self, bssid: str, 
                           min_power: int = -75,
-                          prefer_stable: bool = True) -> Tuple[bool, str]:
+                          prefer_stable: bool = True) -> tuple[bool, str]:
         """
         Determine if now is a good time to attack a target.
         
@@ -303,7 +301,7 @@ class SignalTracker:
         
         return removed
     
-    def get_summary(self) -> Dict:
+    def get_summary(self) -> dict:
         """Get summary statistics for all tracked entities."""
         ap_summary = {}
         for bssid, history in self.aps.items():
@@ -335,7 +333,7 @@ class SignalTracker:
 
 
 # Global signal tracker instance
-_global_tracker: Optional[SignalTracker] = None
+_global_tracker: SignalTracker | None = None
 
 
 def get_signal_tracker() -> SignalTracker:

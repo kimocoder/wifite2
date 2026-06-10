@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 from time import sleep, time
 
@@ -7,11 +6,10 @@ from ..config import Configuration
 from ..tools.airodump import Airodump
 from ..util.color import Color
 from ..util.output import OutputManager
-from shlex import quote as shlex_quote
 
 # Check for native scanner availability
 try:
-    from ..native.scanner import NativeScanner, AccessPoint as NativeAP, is_available as native_scanner_available
+    from ..native.scanner import NativeScanner, is_available as native_scanner_available
     NATIVE_SCANNER_AVAILABLE = native_scanner_available()
 except (ImportError, Exception):
     NATIVE_SCANNER_AVAILABLE = False
@@ -410,8 +408,7 @@ class Scanner:
         Returns:
             True if scan completed successfully
         """
-        from ..util.logger import log_info, log_debug, log_warning
-        from ..model.target import Target
+        from ..util.logger import log_info, log_warning
 
         log_info('Scanner', 'Starting native scanner')
 
@@ -739,7 +736,7 @@ class Scanner:
                 break
             if '-' in choice:
                 # User selected a range
-                (lower, upper) = [int(x) - 1 for x in choice.split('-')]
+                (lower, upper) = (int(x) - 1 for x in choice.split('-'))
                 for i in range(lower, min(len(self.targets), upper + 1)):
                     chosen_targets.append(self.targets[i])
             elif choice.isdigit():
@@ -762,7 +759,7 @@ if __name__ == '__main__':
         s = Scanner()
         s.find_targets()
         targets = s.select_targets()
-    except (OSError, IOError) as e:
+    except OSError as e:
         Color.pl('\r {!} {R}Scanner I/O Error{W}: %s' % str(e))
         Configuration.exit_gracefully()
     except subprocess.CalledProcessError as e:

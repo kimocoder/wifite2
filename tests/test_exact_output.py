@@ -1,17 +1,14 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 
 """
 Tests for Airmon._parse_airmon_start() against exact airmon-ng output formats.
 """
 
 import re
-import sys
 import unittest
 
 import pytest
 
-sys.path.insert(0, '..')
 
 from wifite.tools.airmon import Airmon
 

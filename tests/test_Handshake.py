@@ -1,7 +1,5 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
-import sys
 import unittest
 
 import pytest
@@ -9,7 +7,6 @@ import pytest
 from wifite.model.handshake import Handshake
 from wifite.util.process import Process
 
-sys.path.insert(0, '..')
 
 pytestmark = pytest.mark.timeout(30)
 

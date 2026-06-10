@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 Session management for wifite2.
@@ -11,7 +10,7 @@ import re
 import json
 import time
 from dataclasses import dataclass, field, asdict
-from typing import List, Dict, Any, Optional
+from typing import Any
 from datetime import datetime
 
 
@@ -32,19 +31,19 @@ class EvilTwinClientState:
     """Represents a client connection in an Evil Twin attack session."""
     
     mac_address: str
-    ip_address: Optional[str] = None
-    hostname: Optional[str] = None
+    ip_address: str | None = None
+    hostname: str | None = None
     connect_time: float = 0.0
-    disconnect_time: Optional[float] = None
+    disconnect_time: float | None = None
     credential_submitted: bool = False
-    credential_valid: Optional[bool] = None
+    credential_valid: bool | None = None
     
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         return asdict(self)
     
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'EvilTwinClientState':
+    def from_dict(cls, data: dict[str, Any]) -> 'EvilTwinClientState':
         """Create EvilTwinClientState from dictionary."""
         return cls(**data)
 
@@ -58,12 +57,12 @@ class EvilTwinCredentialAttempt:
     success: bool
     timestamp: float
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'EvilTwinCredentialAttempt':
+    def from_dict(cls, data: dict[str, Any]) -> 'EvilTwinCredentialAttempt':
         """Create EvilTwinCredentialAttempt from dictionary."""
         return cls(**data)
 
@@ -79,21 +78,21 @@ class EvilTwinAttackState:
     """Represents the complete state of an Evil Twin attack for session persistence."""
     
     # Attack configuration
-    interface_ap: Optional[str] = None
-    interface_deauth: Optional[str] = None
+    interface_ap: str | None = None
+    interface_deauth: str | None = None
     portal_template: str = 'generic'
     deauth_interval: int = 5
     
     # Attack progress
     attack_phase: str = "initializing"  # initializing, running, validating, completed, failed
-    start_time: Optional[float] = None
-    setup_time: Optional[float] = None
+    start_time: float | None = None
+    setup_time: float | None = None
     
     # Client tracking
-    clients: List[EvilTwinClientState] = field(default_factory=list)
+    clients: list[EvilTwinClientState] = field(default_factory=list)
     
     # Credential attempts
-    credential_attempts: List[EvilTwinCredentialAttempt] = field(default_factory=list)
+    credential_attempts: list[EvilTwinCredentialAttempt] = field(default_factory=list)
     
     # Statistics
     total_clients_connected: int = 0
@@ -101,10 +100,10 @@ class EvilTwinAttackState:
     successful_validations: int = 0
     
     # Result (if successful)
-    captured_password: Optional[str] = None
+    captured_password: str | None = None
     validation_time: float = 0.0
     
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         return {
             'interface_ap': self.interface_ap,
@@ -132,7 +131,7 @@ class EvilTwinAttackState:
             attempt.clear_password()
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'EvilTwinAttackState':
+    def from_dict(cls, data: dict[str, Any]) -> 'EvilTwinAttackState':
         """Create EvilTwinAttackState from dictionary."""
         clients = [EvilTwinClientState.from_dict(c) for c in data.get('clients', [])]
         attempts = [EvilTwinCredentialAttempt.from_dict(a) for a in data.get('credential_attempts', [])]
@@ -160,17 +159,17 @@ class TargetState:
     """Represents the state of a single target in a session."""
     
     bssid: str
-    essid: Optional[str]
+    essid: str | None
     channel: int
     encryption: str
     power: int
     wps: bool
     status: str = "pending"  # pending, in_progress, completed, failed
     attempts: int = 0
-    last_attempt: Optional[float] = None
+    last_attempt: float | None = None
     
     # Evil Twin specific fields
-    evil_twin_state: Optional[Dict[str, Any]] = None  # Evil Twin attack state
+    evil_twin_state: dict[str, Any] | None = None  # Evil Twin attack state
     
     @classmethod
     def from_target(cls, target) -> 'TargetState':
@@ -193,12 +192,12 @@ class TargetState:
             evil_twin_state=None
         )
     
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         return asdict(self)
     
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'TargetState':
+    def from_dict(cls, data: dict[str, Any]) -> 'TargetState':
         """Create TargetState from dictionary."""
         # Handle evil_twin_state deserialization
         evil_twin_data = data.get('evil_twin_state')
@@ -214,13 +213,13 @@ class SessionState:
     session_id: str
     created_at: float
     updated_at: float
-    config: Dict[str, Any]
-    targets: List[TargetState] = field(default_factory=list)
-    completed_targets: List[str] = field(default_factory=list)  # BSSIDs
-    failed_targets: Dict[str, str] = field(default_factory=dict)  # BSSID -> reason
+    config: dict[str, Any]
+    targets: list[TargetState] = field(default_factory=list)
+    completed_targets: list[str] = field(default_factory=list)  # BSSIDs
+    failed_targets: dict[str, str] = field(default_factory=dict)  # BSSID -> reason
     current_target_index: int = 0
     
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Serialize to dictionary for JSON storage."""
         return {
             'session_id': self.session_id,
@@ -234,7 +233,7 @@ class SessionState:
         }
     
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'SessionState':
+    def from_dict(cls, data: dict[str, Any]) -> 'SessionState':
         """Deserialize from dictionary."""
         targets = [TargetState.from_dict(t) for t in data.get('targets', [])]
         return cls(
@@ -248,7 +247,7 @@ class SessionState:
             current_target_index=data.get('current_target_index', 0)
         )
     
-    def get_progress_summary(self) -> Dict[str, Any]:
+    def get_progress_summary(self) -> dict[str, Any]:
         """Get summary of session progress."""
         total = len(self.targets)
         completed = len(self.completed_targets)
@@ -305,7 +304,7 @@ class SessionManager:
             raise ValueError(f'Session ID resolves outside session directory: {session_id!r}')
         return path
     
-    def create_session(self, targets: List, config) -> SessionState:
+    def create_session(self, targets: list, config) -> SessionState:
         """
         Create a new session from targets and configuration.
         
@@ -430,7 +429,7 @@ class SessionManager:
                     pass
             
             # Re-raise with detailed context
-            raise IOError(f'Failed to save session {session.session_id}: {str(e)}') from e
+            raise OSError(f'Failed to save session {session.session_id}: {str(e)}') from e
     
     def load_session(self, session_id: str = None) -> SessionState:
         """
@@ -463,11 +462,11 @@ class SessionManager:
         self._validate_file_permissions(session_path)
         
         try:
-            with open(session_path, 'r') as f:
+            with open(session_path) as f:
                 data = json.load(f)
         except json.JSONDecodeError as e:
             raise ValueError(f"Corrupted session file (invalid JSON): {e}")
-        except (OSError, IOError) as e:
+        except OSError as e:
             raise ValueError(f"Cannot read session file: {e}")
         
         # Validate session data structure
@@ -513,7 +512,7 @@ class SessionManager:
             # If we can't check permissions, continue anyway
             pass
     
-    def _validate_session_data(self, data: Dict[str, Any], session_id: str) -> None:
+    def _validate_session_data(self, data: dict[str, Any], session_id: str) -> None:
         """
         Validate session data structure and content.
         
@@ -584,7 +583,7 @@ class SessionManager:
             if not isinstance(data['failed_targets'], dict):
                 raise ValueError("failed_targets must be a dictionary")
     
-    def list_sessions(self) -> List[Dict[str, Any]]:
+    def list_sessions(self) -> list[dict[str, Any]]:
         """
         List all available sessions with metadata.
         
@@ -603,7 +602,7 @@ class SessionManager:
             session_path = os.path.join(self.session_dir, filename)
             
             try:
-                with open(session_path, 'r') as f:
+                with open(session_path) as f:
                     data = json.load(f)
                 
                 session_state = SessionState.from_dict(data)
@@ -702,7 +701,7 @@ class SessionManager:
     
     def get_remaining_targets(
         self, session: SessionState, include_failed: bool = False
-    ) -> List[TargetState]:
+    ) -> list[TargetState]:
         """
         Get list of targets that still need to be attacked.
         
@@ -750,7 +749,7 @@ class SessionManager:
                 target.evil_twin_state = evil_twin_state.to_dict()
                 break
     
-    def load_evil_twin_state(self, session: SessionState, bssid: str) -> Optional[EvilTwinAttackState]:
+    def load_evil_twin_state(self, session: SessionState, bssid: str) -> EvilTwinAttackState | None:
         """
         Load Evil Twin attack state for a specific target.
         
@@ -779,7 +778,7 @@ class SessionManager:
                 target.evil_twin_state = None
                 break
     
-    def handle_partial_evil_twin_completion(self, session: SessionState, bssid: str) -> Dict[str, Any]:
+    def handle_partial_evil_twin_completion(self, session: SessionState, bssid: str) -> dict[str, Any]:
         """
         Handle partial completion of Evil Twin attack.
         
@@ -845,7 +844,7 @@ class SessionManager:
             'attack_phase': evil_twin_state.attack_phase
         }
     
-    def restore_configuration(self, session: SessionState, config_obj) -> Dict[str, Any]:
+    def restore_configuration(self, session: SessionState, config_obj) -> dict[str, Any]:
         """
         Restore attack parameters from session to Configuration object.
         
@@ -865,7 +864,6 @@ class SessionManager:
                 - 'interface_changed': Boolean indicating if interface was changed
                 - 'conflicts': List of conflicting flags that were overridden
         """
-        from ..util.color import Color
         
         warnings = []
         conflicts = []
@@ -932,7 +930,7 @@ class SessionManager:
         if saved_wordlist:
             if current_wordlist and current_wordlist != saved_wordlist:
                 conflicts.append(
-                    f"--wordlist: command-line value overridden by session value"
+                    "--wordlist: command-line value overridden by session value"
                 )
             config_obj.wordlist = saved_wordlist
         
@@ -942,7 +940,7 @@ class SessionManager:
             current_timeout = getattr(config_obj, 'wpa_attack_timeout', 500)
             if current_timeout != saved_timeout and current_timeout != 500:
                 conflicts.append(
-                    f"--wpa-attack-timeout: command-line value overridden by session value"
+                    "--wpa-attack-timeout: command-line value overridden by session value"
                 )
             config_obj.wpa_attack_timeout = saved_timeout
         
@@ -987,7 +985,7 @@ class SessionManager:
             current_use_tui = getattr(config_obj, 'use_tui', True)
             if current_use_tui != saved_use_tui:
                 conflicts.append(
-                    f"UI mode: command-line value overridden by session value"
+                    "UI mode: command-line value overridden by session value"
                 )
             config_obj.use_tui = saved_use_tui
         
@@ -1002,7 +1000,7 @@ class SessionManager:
             current_dual_enabled = getattr(config_obj, 'dual_interface_enabled', False)
             if current_dual_enabled != saved_dual_enabled:
                 conflicts.append(
-                    f"--dual-interface: command-line value overridden by session value"
+                    "--dual-interface: command-line value overridden by session value"
                 )
             config_obj.dual_interface_enabled = saved_dual_enabled
         
@@ -1030,7 +1028,7 @@ class SessionManager:
                         current_primary = getattr(config_obj, 'interface_primary', None)
                         if current_primary and current_primary != saved_primary:
                             conflicts.append(
-                                f"--interface-primary: command-line value overridden by session value"
+                                "--interface-primary: command-line value overridden by session value"
                             )
                         config_obj.interface_primary = saved_primary
                 except (FileNotFoundError, OSError, Exception):
@@ -1063,7 +1061,7 @@ class SessionManager:
                         current_secondary = getattr(config_obj, 'interface_secondary', None)
                         if current_secondary and current_secondary != saved_secondary:
                             conflicts.append(
-                                f"--interface-secondary: command-line value overridden by session value"
+                                "--interface-secondary: command-line value overridden by session value"
                             )
                         config_obj.interface_secondary = saved_secondary
                 except (FileNotFoundError, OSError, Exception):

@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 Integration tests for session updates during attack execution.
@@ -9,7 +8,6 @@ import unittest
 import tempfile
 import os
 import shutil
-from unittest.mock import Mock, MagicMock, patch
 
 
 class TestSessionAttackIntegration(unittest.TestCase):

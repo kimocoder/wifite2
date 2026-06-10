@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 Interface assignment strategy for dual wireless device support.
@@ -8,10 +7,9 @@ Implements intelligent interface assignment logic for different attack types,
 selecting the best interfaces based on capabilities and preferences.
 """
 
-from typing import List, Optional, Tuple, Dict
 
 from ..model.interface_info import InterfaceInfo, InterfaceAssignment
-from ..util.logger import log_info, log_debug, log_warning
+from ..util.logger import log_info, log_debug, log_warning, log_error
 
 
 class InterfaceAssignmentStrategy:
@@ -44,7 +42,7 @@ class InterfaceAssignmentStrategy:
     ]
     
     @staticmethod
-    def assign_for_evil_twin(interfaces: List[InterfaceInfo]) -> Optional[InterfaceAssignment]:
+    def assign_for_evil_twin(interfaces: list[InterfaceInfo]) -> InterfaceAssignment | None:
         """
         Assign interfaces for Evil Twin attack.
         
@@ -162,7 +160,7 @@ class InterfaceAssignmentStrategy:
             # Task 11.2: Log fallback to single interface if applicable
             log_info('InterfaceAssignment', 'Falling back to single interface mode')
             log_info('InterfaceAssignment', 
-                    f'Rationale: Insufficient interfaces for dual mode (need 1 AP-capable + 1 additional monitor-capable)')
+                    'Rationale: Insufficient interfaces for dual mode (need 1 AP-capable + 1 additional monitor-capable)')
             
             # Select best AP-capable interface
             ap_interface = InterfaceAssignmentStrategy._select_best_ap_interface(ap_capable)
@@ -195,7 +193,7 @@ class InterfaceAssignmentStrategy:
             )
 
     @staticmethod
-    def assign_for_wpa(interfaces: List[InterfaceInfo]) -> Optional[InterfaceAssignment]:
+    def assign_for_wpa(interfaces: list[InterfaceInfo]) -> InterfaceAssignment | None:
         """
         Assign interfaces for WPA handshake capture attack.
         
@@ -315,7 +313,7 @@ class InterfaceAssignmentStrategy:
             # Task 11.2: Log fallback to single interface if applicable
             log_info('InterfaceAssignment', 'Falling back to single interface mode')
             log_info('InterfaceAssignment', 
-                    f'Rationale: Insufficient interfaces for dual mode (need 2 monitor-capable)')
+                    'Rationale: Insufficient interfaces for dual mode (need 2 monitor-capable)')
             
             # Select best monitor-capable interface
             monitor_interface = InterfaceAssignmentStrategy._select_best_monitor_interface(
@@ -350,7 +348,7 @@ class InterfaceAssignmentStrategy:
             )
     
     @staticmethod
-    def assign_for_wps(interfaces: List[InterfaceInfo]) -> Optional[InterfaceAssignment]:
+    def assign_for_wps(interfaces: list[InterfaceInfo]) -> InterfaceAssignment | None:
         """
         Assign interfaces for WPS attack.
         
@@ -440,7 +438,7 @@ class InterfaceAssignmentStrategy:
         return assignment
 
     @staticmethod
-    def _select_best_ap_interface(candidates: List[InterfaceInfo]) -> InterfaceInfo:
+    def _select_best_ap_interface(candidates: list[InterfaceInfo]) -> InterfaceInfo:
         """
         Select the best interface for AP mode from candidates.
         
@@ -504,7 +502,7 @@ class InterfaceAssignmentStrategy:
         return best_interface
     
     @staticmethod
-    def _select_best_monitor_interface(candidates: List[InterfaceInfo]) -> InterfaceInfo:
+    def _select_best_monitor_interface(candidates: list[InterfaceInfo]) -> InterfaceInfo:
         """
         Select the best interface for monitor mode from candidates.
         
@@ -569,7 +567,7 @@ class InterfaceAssignmentStrategy:
 
     @staticmethod
     def validate_dual_interface_setup(primary: InterfaceInfo, 
-                                      secondary: InterfaceInfo) -> Tuple[bool, str]:
+                                      secondary: InterfaceInfo) -> tuple[bool, str]:
         """
         Validate that two interfaces can work together in dual interface mode.
         
@@ -630,7 +628,7 @@ class InterfaceAssignmentStrategy:
         return True, ''
     
     @staticmethod
-    def get_assignment_recommendations(interfaces: List[InterfaceInfo]) -> Dict[str, Optional[InterfaceAssignment]]:
+    def get_assignment_recommendations(interfaces: list[InterfaceInfo]) -> dict[str, InterfaceAssignment | None]:
         """
         Get recommended interface assignments for all attack types.
         

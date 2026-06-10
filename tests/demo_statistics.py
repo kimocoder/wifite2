@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 Demonstration of client monitoring and statistics tracking.
@@ -31,7 +30,7 @@ def demo_client_connection():
     client.credential_submitted = True
     client.credential_valid = True
     
-    print(f"\nAfter credential submission:")
+    print("\nAfter credential submission:")
     print(f"  Credentials submitted: {client.credential_submitted}")
     print(f"  Credentials valid: {client.credential_valid}")
     print(f"  Connection duration: {client.connection_duration():.2f}s")
@@ -59,7 +58,7 @@ def demo_attack_statistics():
     # Second client connects
     time.sleep(0.3)
     stats.record_client_connect("11:22:33:44:55:66")
-    print(f"  Client 2 connected")
+    print("  Client 2 connected")
     
     # First client submits wrong password
     time.sleep(0.5)

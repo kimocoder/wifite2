@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 Interface information data model for dual wireless device support.
@@ -9,7 +8,6 @@ capabilities, current state, and suitability for different roles.
 """
 
 from dataclasses import dataclass
-from typing import Optional, List
 
 
 @dataclass
@@ -39,9 +37,9 @@ class InterfaceInfo:
     is_connected: bool          # Connected to network (for managed mode)
     
     # Optional details
-    frequency: Optional[float] = None    # Current frequency in MHz
-    channel: Optional[int] = None        # Current channel
-    tx_power: Optional[int] = None       # TX power in dBm
+    frequency: float | None = None    # Current frequency in MHz
+    channel: int | None = None        # Current channel
+    tx_power: int | None = None       # TX power in dBm
 
     
     def can_be_ap(self) -> bool:
@@ -186,11 +184,11 @@ class InterfaceAssignment:
     
     # Interface assignments
     primary: str      # Primary interface name
-    secondary: Optional[str] = None  # Secondary interface name (if any)
+    secondary: str | None = None  # Secondary interface name (if any)
     
     # Role descriptions
     primary_role: str = 'primary'    # Role of primary interface
-    secondary_role: Optional[str] = None  # Role of secondary interface
+    secondary_role: str | None = None  # Role of secondary interface
     
     def is_dual_interface(self) -> bool:
         """
@@ -201,7 +199,7 @@ class InterfaceAssignment:
         """
         return self.secondary is not None
     
-    def get_interfaces(self) -> List[str]:
+    def get_interfaces(self) -> list[str]:
         """
         Get list of all assigned interfaces.
         

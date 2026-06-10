@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 Test WPA2 backward compatibility after WPA3 implementation.
@@ -8,14 +7,10 @@ Ensures that WPA3 additions don't break existing WPA2 functionality.
 """
 
 import unittest
-from unittest.mock import Mock, patch, MagicMock
-import sys
-import os
 
 import pytest
 
 # Add parent directory to path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from wifite.model.target import Target
 

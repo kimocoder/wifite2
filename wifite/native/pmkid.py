@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 Native PMKID capture using Scapy.
@@ -29,18 +28,16 @@ difficult targets, hcxdumptool is recommended as it handles edge cases
 and has better driver compatibility.
 """
 
-import os
 import time
 import binascii
 from threading import Thread, Event
-from typing import Optional, List, Dict, Tuple, Callable
+from collections.abc import Callable
 from dataclasses import dataclass
 
 try:
     from scapy.all import (
         RadioTap, Dot11, Dot11Beacon, Dot11ProbeResp, Dot11Auth,
-        Dot11AssoReq, Dot11AssoResp, Dot11Elt, EAPOL, Raw,
-        sniff, sendp, conf as scapy_conf
+        Dot11Elt, EAPOL, Raw, sniff, sendp
     )
     SCAPY_AVAILABLE = True
 except ImportError:
@@ -53,9 +50,9 @@ class PMKIDResult:
     bssid: str
     client_mac: str
     pmkid: str  # Hex string
-    essid: Optional[str] = None
-    channel: Optional[int] = None
-    timestamp: Optional[float] = None
+    essid: str | None = None
+    channel: int | None = None
+    timestamp: float | None = None
     
     def to_hashcat_22000(self) -> str:
         """
@@ -128,12 +125,12 @@ class ScapyPMKID:
     def capture(cls,
                 interface: str,
                 bssid: str,
-                essid: Optional[str] = None,
-                client_mac: Optional[str] = None,
+                essid: str | None = None,
+                client_mac: str | None = None,
                 timeout: int = 30,
                 send_auth: bool = True,
-                channel: Optional[int] = None,
-                callback: Optional[Callable[[PMKIDResult], None]] = None) -> Optional[PMKIDResult]:
+                channel: int | None = None,
+                callback: Callable[[PMKIDResult], None] | None = None) -> PMKIDResult | None:
         """
         Capture PMKID for a specific target.
         
@@ -272,8 +269,8 @@ class ScapyPMKID:
     def passive_scan(cls,
                      interface: str,
                      duration: int = 60,
-                     bssid_filter: Optional[str] = None,
-                     callback: Optional[Callable[[PMKIDResult], None]] = None) -> List[PMKIDResult]:
+                     bssid_filter: str | None = None,
+                     callback: Callable[[PMKIDResult], None] | None = None) -> list[PMKIDResult]:
         """
         Passively scan for PMKIDs on multiple networks.
         
@@ -366,7 +363,7 @@ class ScapyPMKID:
         return results
     
     @classmethod
-    def _extract_pmkid(cls, pkt) -> Optional[str]:
+    def _extract_pmkid(cls, pkt) -> str | None:
         """
         Extract PMKID from EAPOL-Key frame.
         
@@ -379,7 +376,7 @@ class ScapyPMKID:
             PMKID as hex string, or None if not found
         """
         try:
-            eapol = pkt[EAPOL]
+            pkt[EAPOL]
             
             # Get raw packet data after EAPOL header
             if pkt.haslayer(Raw):
@@ -417,7 +414,7 @@ class ScapyPMKID:
             return None
     
     @classmethod
-    def _find_pmkid_in_key_data(cls, key_data: bytes) -> Optional[str]:
+    def _find_pmkid_in_key_data(cls, key_data: bytes) -> str | None:
         """
         Find PMKID in Key Data field.
         
@@ -486,7 +483,7 @@ class ScapyPMKID:
         return None
     
     @classmethod
-    def _parse_rsn_ie_for_pmkid(cls, rsn_data: bytes) -> Optional[str]:
+    def _parse_rsn_ie_for_pmkid(cls, rsn_data: bytes) -> str | None:
         """
         Parse RSN IE to find PMKID List.
         
@@ -593,7 +590,7 @@ class ScapyPMKID:
     
     @classmethod
     def save_to_file(cls, 
-                     results: List[PMKIDResult], 
+                     results: list[PMKIDResult], 
                      filename: str,
                      format: str = '22000') -> bool:
         """
@@ -616,7 +613,7 @@ class ScapyPMKID:
                         line = result.to_hashcat_22000()
                     f.write(line + '\n')
             return True
-        except (OSError, IOError):
+        except OSError:
             return False
 
 
@@ -629,9 +626,9 @@ class PMKIDCapture(Thread):
     
     def __init__(self,
                  interface: str,
-                 channels: Optional[List[int]] = None,
-                 bssid_filter: Optional[str] = None,
-                 callback: Optional[Callable[[PMKIDResult], None]] = None):
+                 channels: list[int] | None = None,
+                 bssid_filter: str | None = None,
+                 callback: Callable[[PMKIDResult], None] | None = None):
         """
         Initialize PMKID capture thread.
         
@@ -751,7 +748,7 @@ class PMKIDCapture(Thread):
         if self.is_alive():
             self.join(timeout=2)
     
-    def get_results(self) -> List[PMKIDResult]:
+    def get_results(self) -> list[PMKIDResult]:
         """Get captured PMKIDs."""
         return self.results.copy()
     
@@ -767,12 +764,12 @@ class PMKIDCapture(Thread):
 
 
 # Convenience functions
-def capture_pmkid(interface: str, bssid: str, timeout: int = 30) -> Optional[PMKIDResult]:
+def capture_pmkid(interface: str, bssid: str, timeout: int = 30) -> PMKIDResult | None:
     """Capture PMKID for specific target."""
     return ScapyPMKID.capture(interface, bssid, timeout=timeout)
 
 
-def passive_scan(interface: str, duration: int = 60) -> List[PMKIDResult]:
+def passive_scan(interface: str, duration: int = 60) -> list[PMKIDResult]:
     """Passively scan for PMKIDs."""
     return ScapyPMKID.passive_scan(interface, duration=duration)
 

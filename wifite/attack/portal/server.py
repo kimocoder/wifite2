@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 HTTP server for captive portal.
@@ -10,10 +9,10 @@ Serves login pages and handles credential submissions for Evil Twin attacks.
 import os
 import threading
 import time
-from http.server import HTTPServer, ThreadingHTTPServer, BaseHTTPRequestHandler
+from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import parse_qs, urlparse
-from typing import Optional, Callable, Dict, Any
-import socket
+from typing import Any
+from collections.abc import Callable
 
 from ...util.color import Color
 from ...util.logger import log_info, log_error, log_warning, log_debug
@@ -613,7 +612,7 @@ class PortalServer:
                 log_warning('Portal', 'Validation failed: HTTP %d, form not found' % response.status)
                 return False
 
-        except (ConnectionRefusedError, socket.timeout, OSError) as e:
+        except (ConnectionRefusedError, TimeoutError, OSError) as e:
             log_warning('Portal', 'Validation failed: cannot connect to %s:%d (%s)' % (
                 self.host, self.port, e))
             return False
@@ -655,7 +654,7 @@ class PortalServer:
         log_warning('Portal', 'DNS redirect validation failed - captive portal detection may not trigger')
         return False
     
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """
         Get server statistics.
         
@@ -821,7 +820,7 @@ class PortalServer:
             log_warning('Portal', f'Failed to cache static files: {e}')
             self._static_cache = {}
     
-    def get_cached_template(self, template_name: str) -> Optional[str]:
+    def get_cached_template(self, template_name: str) -> str | None:
         """
         Get cached template.
         
@@ -833,7 +832,7 @@ class PortalServer:
         """
         return self._template_cache.get(template_name)
     
-    def get_cached_static(self, filename: str) -> Optional[tuple]:
+    def get_cached_static(self, filename: str) -> tuple | None:
         """
         Get cached static file.
         

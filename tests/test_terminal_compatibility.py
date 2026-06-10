@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 Terminal compatibility tests for wifite2 TUI.
@@ -8,7 +7,7 @@ Tests various terminal configurations and edge cases.
 
 import unittest
 import os
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 
 
 class TestTerminalSizeHandling(unittest.TestCase):

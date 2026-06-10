@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 """Validation helpers and configuration validation routines."""
 
 import re

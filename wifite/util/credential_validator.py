@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 Credential validator for Evil Twin attacks.
@@ -11,13 +10,11 @@ import os
 import time
 import tempfile
 import threading
-from typing import Optional, Tuple, Dict
 from queue import Queue, Empty
 
 from ..tools.dependency import Dependency
 from ..config import Configuration
 from ..util.process import Process
-from ..util.color import Color
 from ..util.logger import log_info, log_error, log_warning, log_debug
 
 
@@ -115,7 +112,7 @@ class CredentialValidator:
         
         log_info('CredentialValidator', 'Validation thread stopped')
     
-    def validate_credentials(self, ssid: str, password: str, timeout=30) -> Tuple[bool, float, Optional[str]]:
+    def validate_credentials(self, ssid: str, password: str, timeout=30) -> tuple[bool, float, str | None]:
         """
         Validate credentials against the legitimate AP.
         
@@ -376,7 +373,7 @@ class CredentialValidator:
         else:
             return 2412  # Default to channel 1
     
-    def _check_cache(self, ssid: str, password: str) -> Optional[bool]:
+    def _check_cache(self, ssid: str, password: str) -> bool | None:
         """
         Check if result is in cache.
         
@@ -552,7 +549,7 @@ class CredentialValidator:
                  f'{self.failed_attempt_count} total failures, '
                  f'backoff: {self.backoff_multiplier:.1f}x')
     
-    def _log_validation_result(self, ssid: str, is_valid: bool, validation_time: float, error_message: Optional[str]):
+    def _log_validation_result(self, ssid: str, is_valid: bool, validation_time: float, error_message: str | None):
         """
         Log validation result with details.
         
@@ -586,7 +583,7 @@ class CredentialValidator:
         for file_path in self.temp_files[:]:
             self._remove_temp_file(file_path)
     
-    def get_statistics(self) -> Dict:
+    def get_statistics(self) -> dict:
         """
         Get validation statistics.
         

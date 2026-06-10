@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 from ..util.color import Color
 from .result import CrackResult
@@ -12,7 +11,7 @@ class CrackResultWPA(CrackResult):
         self.essid = essid
         self.handshake_file = handshake_file
         self.key = key
-        super(CrackResultWPA, self).__init__()
+        super().__init__()
 
     def dump(self):
         if self.essid:
@@ -53,4 +52,4 @@ if __name__ == '__main__':
     print('\n')
     w.dump()
     w.save()
-    print((w.__dict__['bssid']))
+    print(w.__dict__['bssid'])

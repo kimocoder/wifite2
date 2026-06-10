@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 from ..model.attack import Attack
 from ..config import Configuration
@@ -20,7 +19,7 @@ from shutil import copy
 
 # Check for native PMKID availability
 try:
-    from ..native.pmkid import ScapyPMKID, PMKIDResult as NativePMKIDResult
+    from ..native.pmkid import ScapyPMKID
     NATIVE_PMKID_AVAILABLE = ScapyPMKID.is_available()
 except BaseException:
     NATIVE_PMKID_AVAILABLE = False
@@ -28,7 +27,7 @@ except BaseException:
 
 class AttackPMKID(Attack):
     def __init__(self, target):
-        super(AttackPMKID, self).__init__(target)
+        super().__init__(target)
         self.crack_result = None
         self.do_airCRACK = False
         self.keep_capturing = None
@@ -73,7 +72,7 @@ class AttackPMKID(Attack):
 
             try:
                 log_debug('AttackPMKID', f'Checking file: {os.path.basename(pmkid_filename)}')
-                with open(pmkid_filename, 'r') as pmkid_handle:
+                with open(pmkid_filename) as pmkid_handle:
                     pmkid_hash = pmkid_handle.read().strip()
 
                     if Configuration.verbose > 2:
@@ -115,7 +114,7 @@ class AttackPMKID(Attack):
                             Color.pl('{+} {G}Found matching PMKID file: {C}%s{W}' % os.path.basename(pmkid_filename))
                         return pmkid_filename
 
-            except (IOError, OSError) as e:
+            except OSError as e:
                 log_warning('AttackPMKID', f'Error reading {os.path.basename(pmkid_filename)}: {str(e)}')
                 if Configuration.verbose > 2:
                     Color.pl('{+} {R}ERROR reading {C}%s{W}: %s' % (os.path.basename(pmkid_filename), str(e)))
@@ -565,7 +564,7 @@ class AttackPMKID(Attack):
     def _handle_pmkid_crack_success(self, key, pmkid_file):
         # Successfully cracked.
         if self.view:
-            self.view.add_log(f"Successfully cracked PMKID!")
+            self.view.add_log("Successfully cracked PMKID!")
             self.view.add_log(f"Password: {mask_sensitive(key)}")
             self.view.update_progress({
                 'progress': 1.0,
@@ -633,7 +632,7 @@ class AttackPMKID(Attack):
             def on_pmkid_captured(result):
                 log_info('AttackPMKID', f'Native capture found PMKID: {result.pmkid[:16]}...')
                 if self.view:
-                    self.view.add_log(f'PMKID captured!')
+                    self.view.add_log('PMKID captured!')
 
             # Use ScapyPMKID capture
             result = ScapyPMKID.capture(

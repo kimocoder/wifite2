@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 Unit tests for WPA capture method routing logic.
@@ -10,7 +9,7 @@ based on configuration and tool availability.
 
 import unittest
 import sys
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 
 import pytest
 

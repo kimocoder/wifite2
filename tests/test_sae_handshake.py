@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 Unit tests for SAEHandshake class.
@@ -8,18 +7,15 @@ Tests frame parsing, hashcat conversion, and validation.
 """
 
 import unittest
-from unittest.mock import Mock, patch, MagicMock
-import sys
+from unittest.mock import Mock, patch
 import os
 import tempfile
 
 import pytest
 
 # Add parent directory to path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from wifite.model.sae_handshake import SAEHandshake
-from wifite.util.process import Process
 
 pytestmark = pytest.mark.timeout(30)
 

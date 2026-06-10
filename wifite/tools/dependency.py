@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 import os
 import shlex
@@ -120,7 +119,6 @@ class Dependency:
     def _check_native_mac(cls) -> bool:
         """Check if native MAC manipulation is available."""
         try:
-            from ..native.mac import NativeMac
             return True
         except ImportError:
             return False

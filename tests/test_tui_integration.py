@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 Integration tests for wifite2 TUI views.
@@ -7,8 +6,7 @@ Tests complete view workflows with mock data and interactions.
 """
 
 import unittest
-from unittest.mock import Mock, MagicMock, patch
-import time
+from unittest.mock import Mock
 
 
 class MockTarget:

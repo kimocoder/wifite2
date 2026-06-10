@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 Native Python implementations for WiFi operations.
@@ -118,7 +117,6 @@ def check_native_availability() -> dict:
     status = {}
     
     try:
-        from .mac import NativeMac
         status['mac'] = True
     except Exception:
         status['mac'] = False
@@ -142,7 +140,6 @@ def check_native_availability() -> dict:
         status['wps'] = False
 
     try:
-        from .interface import NativeInterface
         status['interface'] = True
     except Exception:
         status['interface'] = False

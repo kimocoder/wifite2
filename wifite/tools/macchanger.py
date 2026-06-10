@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 MAC address changer with native Python fallback.
@@ -28,7 +27,6 @@ class Macchanger(Dependency):
         """Check if native MAC manipulation is available."""
         if cls._use_native is None:
             try:
-                from ..native.mac import NativeMac
                 cls._use_native = True
             except ImportError:
                 cls._use_native = False
@@ -96,7 +94,7 @@ class Macchanger(Dependency):
                     cls.is_changed = False
                     return
                     
-            except Exception as e:
+            except Exception:
                 # Fall back to macchanger binary
                 pass
         
@@ -151,7 +149,7 @@ class Macchanger(Dependency):
                     Color.pl('\r{+} {C}macchanger{W}: changed mac address to {C}%s{W} on {C}%s{W} (native)' % (result, iface))
                     return
                     
-            except (OSError, RuntimeError) as e:
+            except (OSError, RuntimeError):
                 # Bring interface back up if it was taken down
                 try:
                     Ip.up(iface)

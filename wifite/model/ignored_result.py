@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 from ..util.color import Color
 from ..model.result import CrackResult
@@ -20,7 +19,7 @@ class CrackResultIgnored(CrackResult):
         self.result_type = 'IGN'
         self.bssid = bssid
         self.essid = essid
-        super(CrackResultIgnored, self).__init__()
+        super().__init__()
 
     def dump(self):
         if self.essid is not None:

@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 SAE Handshake Model
@@ -13,8 +12,7 @@ from ..util.color import Color
 from ..tools.tshark import Tshark
 
 import os
-import re
-from typing import Dict, Optional, List, Any
+from typing import Any
 
 
 class SAEHandshake:
@@ -32,7 +30,7 @@ class SAEHandshake:
     - Save handshake to file
     """
 
-    def __init__(self, capfile: str, bssid: str, essid: Optional[str] = None):
+    def __init__(self, capfile: str, bssid: str, essid: str | None = None):
         """
         Initialize SAEHandshake object.
 
@@ -163,7 +161,7 @@ class SAEHandshake:
         except Exception:
             return False
 
-    def extract_sae_data(self) -> Optional[Dict[str, Any]]:
+    def extract_sae_data(self) -> dict[str, Any] | None:
         """
         Extract SAE authentication data from capture with optimized processing.
 
@@ -230,7 +228,7 @@ class SAEHandshake:
         except Exception:
             return None
 
-    def convert_to_hashcat(self, output_file: Optional[str] = None) -> Optional[str]:
+    def convert_to_hashcat(self, output_file: str | None = None) -> str | None:
         """
         Convert SAE handshake to hashcat format (mode 22000).
 
@@ -331,7 +329,7 @@ class SAEHandshake:
         else:
             Color.pl('    Status: {R}Incomplete or invalid SAE handshake{W}')
 
-    def extract_frame_timing(self) -> List[Dict]:
+    def extract_frame_timing(self) -> list[dict]:
         """
         Extract precise timestamps for all SAE Commit/Confirm frames.
 
@@ -346,7 +344,7 @@ class SAEHandshake:
         return DragonbloodTimingAttack.extract_timing_from_pcap(
             self.capfile, self.bssid)
 
-    def get_ap_response_times_us(self) -> List[float]:
+    def get_ap_response_times_us(self) -> list[float]:
         """
         Compute AP SAE Commit response latencies from this capture.
 
@@ -364,7 +362,7 @@ class SAEHandshake:
             frames, self.bssid)
 
     @staticmethod
-    def check_tools() -> Dict[str, bool]:
+    def check_tools() -> dict[str, bool]:
         """
         Check if required tools for SAE handshake processing are available.
 

@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 Attack View for wifite2 TUI.
@@ -7,7 +6,7 @@ Displays real-time attack progress with target info, status, and logs.
 """
 
 import time
-from typing import Optional, Dict, Any
+from typing import Any
 from rich.layout import Layout
 from rich.panel import Panel
 from rich.table import Table
@@ -56,7 +55,6 @@ class AttackView:
     def stop(self):
         """Stop the attack view."""
         # View cleanup if needed
-        pass
 
     def set_attack_type(self, attack_type: str):
         """
@@ -68,7 +66,7 @@ class AttackView:
         self.attack_type = attack_type
         self._render()
 
-    def update_progress(self, progress_data: Dict[str, Any]):
+    def update_progress(self, progress_data: dict[str, Any]):
         """
         Update attack progress with new data.
 
@@ -292,7 +290,7 @@ class AttackView:
             padding=(0, 1)
         )
 
-    def handle_input(self, key: str) -> Optional[str]:
+    def handle_input(self, key: str) -> str | None:
         """
         Handle keyboard input during attack.
 
@@ -488,7 +486,7 @@ class WPSAttackView(AttackView):
         self.pixie_dust_mode = False
         self.locked_out = False
 
-    def update_pin_attempts(self, pins_tried: int, total_pins: int = None, current_pin: Optional[str] = None):
+    def update_pin_attempts(self, pins_tried: int, total_pins: int = None, current_pin: str | None = None):
         """
         Update WPS PIN attempt progress.
 
@@ -509,7 +507,7 @@ class WPSAttackView(AttackView):
             status = "WPS locked out - attack stopped"
             progress = 0.0
         elif self.pixie_dust_mode:
-            status = f'Pixie Dust attack in progress'
+            status = 'Pixie Dust attack in progress'
             progress = 0.5  # Indeterminate for pixie dust
         else:
             status = f'Testing PINs ({self.pins_tried:,}/{self.total_pins:,})'
@@ -931,7 +929,7 @@ class WPA3AttackView(AttackView):
                 status = "SAE handshake captured (passive mode)!"
                 progress = 1.0
             else:
-                status = f"Passive capture (PMF required) - waiting for clients..."
+                status = "Passive capture (PMF required) - waiting for clients..."
                 progress = 0.4
         elif self.attack_strategy == "dragonblood":
             status = "Attempting Dragonblood vulnerability exploit..."
@@ -1250,7 +1248,7 @@ class EvilTwinAttackView(AttackView):
                 deauths_per_min = (self.deauths_sent / elapsed * 60) if elapsed > 0 else 0
                 metrics['Deauths Sent'] = f'[white]{self.deauths_sent:,}[/white] ([dim]{deauths_per_min:.1f}/min[/dim])'
             else:
-                metrics['Deauths Sent'] = f'[dim]0[/dim]'
+                metrics['Deauths Sent'] = '[dim]0[/dim]'
             
             # Show adaptive interval if available
             if 'Deauth Interval' in self.metrics:

@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 SAE Cracking Module
@@ -9,13 +8,11 @@ Supports dictionary attacks, rule-based attacks, and mask attacks.
 """
 
 import os
-import re
 import time
-from typing import Optional, Dict, Any, List
 
 from ..config import Configuration
 from ..model.sae_handshake import SAEHandshake
-from ..tools.hashcat import Hashcat, HashcatCracker, HcxPcapngTool
+from ..tools.hashcat import Hashcat, HashcatCracker
 from ..util.color import Color
 from ..util.process import Process
 
@@ -35,7 +32,7 @@ class SAECracker:
     # Hashcat mode for WPA3-SAE
     HASHCAT_MODE = '22000'
     
-    def __init__(self, sae_handshake: SAEHandshake, wordlist: Optional[str] = None):
+    def __init__(self, sae_handshake: SAEHandshake, wordlist: str | None = None):
         """
         Initialize SAE cracker.
         
@@ -51,12 +48,12 @@ class SAECracker:
     @staticmethod
     def crack_sae_handshake(
         sae_handshake: SAEHandshake,
-        wordlist: Optional[str] = None,
-        rules: Optional[str] = None,
-        mask: Optional[str] = None,
+        wordlist: str | None = None,
+        rules: str | None = None,
+        mask: str | None = None,
         show_command: bool = False,
         verbose: bool = True
-    ) -> Optional[str]:
+    ) -> str | None:
         """
         Crack a SAE handshake using hashcat mode 22000.
         
@@ -130,7 +127,7 @@ class SAECracker:
             Color.pl('{!} {R}Error preparing hash file:{W} %s' % str(e))
             return False
     
-    def _crack_with_wordlist(self, show_command: bool = False, verbose: bool = True) -> Optional[str]:
+    def _crack_with_wordlist(self, show_command: bool = False, verbose: bool = True) -> str | None:
         """
         Crack SAE handshake using dictionary attack.
         
@@ -164,7 +161,7 @@ class SAECracker:
         
         return key
     
-    def _crack_with_rules(self, rules: str, show_command: bool = False, verbose: bool = True) -> Optional[str]:
+    def _crack_with_rules(self, rules: str, show_command: bool = False, verbose: bool = True) -> str | None:
         """
         Crack SAE handshake using rule-based attack.
         
@@ -196,7 +193,7 @@ class SAECracker:
         
         return key
     
-    def _crack_with_mask(self, mask: str, show_command: bool = False, verbose: bool = True) -> Optional[str]:
+    def _crack_with_mask(self, mask: str, show_command: bool = False, verbose: bool = True) -> str | None:
         """
         Crack SAE handshake using mask attack.
         
@@ -226,12 +223,12 @@ class SAECracker:
     def _run_hashcat(
         self,
         attack_mode: str,
-        wordlist: Optional[str] = None,
-        rules: Optional[str] = None,
-        mask: Optional[str] = None,
+        wordlist: str | None = None,
+        rules: str | None = None,
+        mask: str | None = None,
         show_command: bool = False,
         verbose: bool = True
-    ) -> Optional[str]:
+    ) -> str | None:
         """
         Run hashcat and return the cracked password, or None.
 
@@ -255,7 +252,7 @@ class SAECracker:
         wordlist: str,
         show_command: bool = False,
         verbose: bool = True,
-    ) -> Optional[str]:
+    ) -> str | None:
         """Dictionary crack using HashcatCracker with live STATUS streaming."""
         with HashcatCracker(self.hash_file, wordlist, mode=self.HASHCAT_MODE) as cracker:
             cracker.start(show_command=show_command)
@@ -280,11 +277,11 @@ class SAECracker:
     def _run_hashcat_oneshot(
         self,
         attack_mode: str,
-        wordlist: Optional[str] = None,
-        rules: Optional[str] = None,
-        mask: Optional[str] = None,
+        wordlist: str | None = None,
+        rules: str | None = None,
+        mask: str | None = None,
         show_command: bool = False,
-    ) -> Optional[str]:
+    ) -> str | None:
         """Plain blocking hashcat run — for rules/mask paths only."""
         command = [
             'hashcat',
@@ -310,7 +307,7 @@ class SAECracker:
         stdout, stderr = proc.get_output()
         return self._parse_cracked_password(stdout, stderr)
     
-    def _check_pot_file(self, show_command: bool = False) -> Optional[str]:
+    def _check_pot_file(self, show_command: bool = False) -> str | None:
         """
         Check if password is already in hashcat pot file.
         
@@ -335,7 +332,7 @@ class SAECracker:
         
         return self._parse_cracked_password(stdout, '')
     
-    def _parse_cracked_password(self, stdout: str, stderr: str) -> Optional[str]:
+    def _parse_cracked_password(self, stdout: str, stderr: str) -> str | None:
         """
         Parse cracked password from hashcat output.
         
@@ -373,7 +370,7 @@ class SAECracker:
         return None
     
     @staticmethod
-    def check_dependencies() -> Dict[str, bool]:
+    def check_dependencies() -> dict[str, bool]:
         """
         Check if required tools for SAE cracking are available.
         

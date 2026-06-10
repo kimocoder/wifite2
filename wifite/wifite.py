@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 try:
     from .config import Configuration
@@ -87,7 +86,6 @@ class Wifite:
         from .model.handshake import Handshake
         from .util.crack import CrackHelper
         from .util.dbupdater import DBUpdater
-        from .util.session import SessionManager
 
         # Handle session cleanup
         if Configuration.clean_sessions:
@@ -260,7 +258,7 @@ class Wifite:
         """
         from .util.interface_manager import InterfaceManager
         from .util.color import Color
-        from .util.logger import log_info, log_warning
+        from .util.logger import log_info
         
         # Need at least 2 interfaces for dual mode
         if len(self.available_interfaces) < 2:
@@ -483,7 +481,7 @@ class Wifite:
             tuple: (is_valid, error_message, warnings)
         """
         from .util.interface_assignment import InterfaceAssignmentStrategy
-        from .util.logger import log_warning, log_error
+        from .util.logger import log_warning
         
         warnings = []
         
@@ -782,7 +780,6 @@ class Wifite:
             Color.pl('{+} Resuming attack on {C}%d{W} remaining target(s)...' % len(remaining_targets))
 
             # Convert TargetState objects back to Target objects
-            from .model.target import Target
             targets = []
             failed_conversions = []
 
@@ -1266,7 +1263,7 @@ class Wifite:
             try:
                 session_mgr.delete_session(session.session_id)
                 Color.pl('{+} {G}Session completed and cleaned up{W}')
-            except (OSError, IOError) as e:
+            except OSError as e:
                 Color.pl('{!} {O}Warning: Could not delete session file: %s{W}' % str(e))
             except Exception as e:
                 Color.pl('{!} {O}Warning: Unexpected error during session cleanup: %s{W}' % str(e))
@@ -1296,12 +1293,12 @@ def main():
     import subprocess
     import signal as _signal
 
-    _original_sigint = _signal.getsignal(_signal.SIGINT)
+    _signal.getsignal(_signal.SIGINT)
 
     try:
         wifite = Wifite()
         wifite.start()
-    except (OSError, IOError) as e:
+    except OSError as e:
         Color.pl('\n{!} {R}System Error{W}: %s' % str(e))
         Color.pl('\n{!} {R}Exiting{W}\n')
     except subprocess.CalledProcessError as e:

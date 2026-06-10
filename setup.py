@@ -5,8 +5,6 @@ try:
 except ImportError:
     raise ImportError("setuptools is required to install wifite2")
 
-from wifite.config import Configuration
-
 with open('README.md', 'r', encoding='utf-8') as fh:
     long_description = fh.read()
 
@@ -29,7 +27,7 @@ def _read_requirements():
 
 setup(
     name='wifite2',
-    version=Configuration.version,
+    version='2.9.9-beta',
     author='kimocoder',
     author_email='christian@aircrack-ng.org',
     url='https://github.com/kimocoder/wifite2',
@@ -38,7 +36,6 @@ setup(
         '': ['wordlists/*.txt']
     },
     license='GNU GPLv2',
-    scripts=['bin/wifite'],
     python_requires='>=3.10',
     install_requires=_read_requirements(),
     # Dev/test extras are defined once in pyproject.toml

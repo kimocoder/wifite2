@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 Classic text output mode for wifite2
@@ -161,7 +160,7 @@ class ClassicAttackOutput:
                 - metrics: Dict of attack-specific metrics
         """
         status = progress_data.get('status', '')
-        progress = progress_data.get('progress', 0)
+        progress_data.get('progress', 0)
         metrics = progress_data.get('metrics', {})
         
         # Print status
