@@ -29,6 +29,19 @@ class Color:
 
     last_sameline_length = 0
 
+    # ── Kalidroid MiniTerminal mode ───────────────────────────────────────────
+    # The Kalidroid Android app streams wifite's stdout into a MiniTerminal: an
+    # append-only scrollback view, NOT a terminal emulator. Carriage-return
+    # redraws (the live attack progress lines) and clear-line escapes therefore
+    # render as overwritten/garbled text. When --kalidroid is set these are
+    # flattened into discrete, newline-terminated lines (throttled so a
+    # per-second timer doesn't flood the view) and the clear-line ops become
+    # no-ops. ANSI colours are kept — the MiniTerminal parses SGR codes.
+    kalidroid = False
+    _kalidroid_last_emit = 0.0
+    _kalidroid_last_line = ''
+    _KALIDROID_MIN_INTERVAL = 0.4  # seconds between same-line progress emits
+
     @staticmethod
     def p(text):
         """
@@ -36,6 +49,9 @@ class Color:
         Example:
             Color.p('{R}This text is red. {W} This text is white')
         """
+        if Color.kalidroid:
+            Color._p_kalidroid(text)
+            return
         sys.stdout.write(Color.s(text))
         sys.stdout.flush()
         if '\r' in text:
@@ -43,6 +59,34 @@ class Color:
             Color.last_sameline_length = len(text)
         else:
             Color.last_sameline_length += len(text)
+
+    @staticmethod
+    def _p_kalidroid(text):
+        """
+        Same as [p] but for the Kalidroid MiniTerminal: a carriage-return
+        same-line update (e.g. the per-second attack progress line) is emitted
+        as its own newline-terminated line so the append-only scrollback stays
+        readable. Identical consecutive redraws and bursts faster than
+        [_KALIDROID_MIN_INTERVAL] are dropped so timers don't flood the view.
+        Plain text (no '\\r') — including the newline-terminated Color.pl prints
+        — passes through unchanged, so final/result lines are never throttled.
+        """
+        if '\r' not in text:
+            sys.stdout.write(Color.s(text))
+            sys.stdout.flush()
+            return
+        content = text[text.rfind('\r') + 1:].rstrip('\n')
+        if content.strip() == '':
+            return  # bare '\r' / whitespace-only clear carries no information
+        import time
+        now = time.time()
+        if (content == Color._kalidroid_last_line
+                or now - Color._kalidroid_last_emit < Color._KALIDROID_MIN_INTERVAL):
+            return
+        Color._kalidroid_last_emit = now
+        Color._kalidroid_last_line = content
+        sys.stdout.write(Color.s(content) + '\n')
+        sys.stdout.flush()
 
     @staticmethod
     def pl(text):
@@ -71,6 +115,11 @@ class Color:
 
     @staticmethod
     def clear_line():
+        # MiniTerminal has no cursor to rewind — the '\r<spaces>\r' erase would
+        # just append blanks. The flattened progress lines stand on their own.
+        if Color.kalidroid:
+            Color.last_sameline_length = 0
+            return
         spaces = ' ' * Color.last_sameline_length
         sys.stdout.write('\r%s\r' % spaces)
         sys.stdout.flush()
@@ -78,6 +127,9 @@ class Color:
 
     @staticmethod
     def clear_entire_line():
+        if Color.kalidroid:
+            Color.last_sameline_length = 0
+            return
         import shutil
         columns = shutil.get_terminal_size(fallback=(80, 24)).columns
         Color.p('\r' + (' ' * columns) + '\r')

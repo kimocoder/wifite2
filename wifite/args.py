@@ -14,6 +14,11 @@ class Arguments:
         # Hack: Check for -v before parsing args;
         # so we know which commands to display.
         self.verbose = '-v' in sys.argv or '-hv' in sys.argv or '-vh' in sys.argv
+        # Activate Kalidroid MiniTerminal output mode as early as possible (before
+        # any option-echo prints) so the whole run streams scrollback-friendly
+        # output to the Kalidroid app's MiniTerminal.
+        if '--kalidroid' in sys.argv:
+            Color.kalidroid = True
         self.config = configuration
         self.args = self.get_arguments()
 
@@ -269,6 +274,15 @@ against the real AP and captures valid passwords.
                           default=None,
                           help=self._verbose(
                               'Write debug log to {C}[path]{W} (implies {C}-vv{W} minimum verbosity)'))
+
+        glob.add_argument('--kalidroid',
+                          action='store_true',
+                          default=False,
+                          dest='kalidroid',
+                          help=self._verbose(
+                              'Emit {C}MiniTerminal{W}-friendly output for the {C}Kalidroid{W} app: '
+                              'flatten carriage-return progress redraws into discrete lines and '
+                              'skip clear-line escapes (default: {G}off{W})'))
 
         glob.add_argument('-i',
                           action='store',

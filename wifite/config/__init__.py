@@ -21,6 +21,7 @@ class Configuration:
 
     initialized = False  # Flag indicating config has been initialized
     verbose = 0
+    kalidroid = False  # --kalidroid: MiniTerminal-friendly output for the Kalidroid app
     version = _get_version()
 
     all_bands = None
