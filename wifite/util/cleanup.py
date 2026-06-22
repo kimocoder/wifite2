@@ -14,8 +14,7 @@ Provides comprehensive cleanup of all attack resources including:
 import os
 import re
 import signal
-import subprocess
-from typing import List, Optional, Tuple
+from typing import List, Tuple
 
 from .process import Process
 from .color import Color

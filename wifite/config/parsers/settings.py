@@ -11,6 +11,11 @@ from ...util.color import Color
 def parse_settings_args(cls, args):
     """Parses basic settings/configurations from arguments."""
 
+    if getattr(args, 'kalidroid', False):
+        cls.kalidroid = True
+        Color.kalidroid = True  # already set early in Arguments.__init__; keep in sync
+        Color.pl('{+} {C}option:{W} {G}Kalidroid MiniTerminal{W} output mode enabled')
+
     if args.random_mac or args.random_mac_vendor:
         if args.random_mac and args.random_mac_vendor:
             Color.pl('{!} {O}Warning: Cannot use both --random-mac and --random-mac-vendor')

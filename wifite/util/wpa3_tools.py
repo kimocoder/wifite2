@@ -247,12 +247,12 @@ class WPA3ToolChecker:
             Color.pl('\n{!} {R}Missing required tools:{W}')
             for tool in missing_required:
                 url = WPA3ToolChecker.INSTALL_URLS.get(tool, 'N/A')
-                Color.pl(f'    {tool}: {C}{url}{W}')
+                Color.pl(f'    {tool}: {{C}}{url}{{W}}')
 
         if outdated_tools:
             Color.pl('\n{!} {O}Outdated tools (may cause issues):{W}')
             for tool, current, minimum in outdated_tools:
-                Color.pl(f'    {tool}: {O}v{current}{W} (minimum: {C}v{minimum}{W})')
+                Color.pl(f'    {tool}: {{O}}v{current}{{W}} (minimum: {{C}}v{minimum}{{W}})')
 
         if all_available and not outdated_tools:
             Color.pl('\n{+} {G}All WPA3 tools are available and up to date!{W}')

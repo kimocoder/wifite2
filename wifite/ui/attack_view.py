@@ -509,7 +509,7 @@ class WPSAttackView(AttackView):
             status = "WPS locked out - attack stopped"
             progress = 0.0
         elif self.pixie_dust_mode:
-            status = f'Pixie Dust attack in progress'
+            status = 'Pixie Dust attack in progress'
             progress = 0.5  # Indeterminate for pixie dust
         else:
             status = f'Testing PINs ({self.pins_tried:,}/{self.total_pins:,})'
@@ -931,7 +931,7 @@ class WPA3AttackView(AttackView):
                 status = "SAE handshake captured (passive mode)!"
                 progress = 1.0
             else:
-                status = f"Passive capture (PMF required) - waiting for clients..."
+                status = "Passive capture (PMF required) - waiting for clients..."
                 progress = 0.4
         elif self.attack_strategy == "dragonblood":
             status = "Attempting Dragonblood vulnerability exploit..."
@@ -1250,7 +1250,7 @@ class EvilTwinAttackView(AttackView):
                 deauths_per_min = (self.deauths_sent / elapsed * 60) if elapsed > 0 else 0
                 metrics['Deauths Sent'] = f'[white]{self.deauths_sent:,}[/white] ([dim]{deauths_per_min:.1f}/min[/dim])'
             else:
-                metrics['Deauths Sent'] = f'[dim]0[/dim]'
+                metrics['Deauths Sent'] = '[dim]0[/dim]'
             
             # Show adaptive interval if available
             if 'Deauth Interval' in self.metrics:

@@ -12,7 +12,7 @@ from .owe import AttackOWE
 from ..config import Configuration
 from ..model.target import WPSState
 from ..util.color import Color
-from ..util.logger import log_info, log_debug
+from ..util.logger import log_info
 from ..util.wpa3_tools import WPA3ToolChecker
 from ..util.memory import MemoryMonitor, get_infinite_monitor
 

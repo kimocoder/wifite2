@@ -9,7 +9,6 @@ Used by Evil Twin attack to create rogue APs.
 import os
 import time
 import tempfile
-from typing import Optional
 
 from .dependency import Dependency
 from ..config import Configuration

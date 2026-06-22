@@ -20,7 +20,7 @@ from shutil import copy
 
 # Check for native PMKID availability
 try:
-    from ..native.pmkid import ScapyPMKID, PMKIDResult as NativePMKIDResult
+    from ..native.pmkid import ScapyPMKID
     NATIVE_PMKID_AVAILABLE = ScapyPMKID.is_available()
 except BaseException:
     NATIVE_PMKID_AVAILABLE = False
@@ -565,7 +565,7 @@ class AttackPMKID(Attack):
     def _handle_pmkid_crack_success(self, key, pmkid_file):
         # Successfully cracked.
         if self.view:
-            self.view.add_log(f"Successfully cracked PMKID!")
+            self.view.add_log("Successfully cracked PMKID!")
             self.view.add_log(f"Password: {mask_sensitive(key)}")
             self.view.update_progress({
                 'progress': 1.0,
@@ -633,7 +633,7 @@ class AttackPMKID(Attack):
             def on_pmkid_captured(result):
                 log_info('AttackPMKID', f'Native capture found PMKID: {result.pmkid[:16]}...')
                 if self.view:
-                    self.view.add_log(f'PMKID captured!')
+                    self.view.add_log('PMKID captured!')
 
             # Use ScapyPMKID capture
             result = ScapyPMKID.capture(

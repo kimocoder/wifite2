@@ -18,7 +18,7 @@ References:
 - https://papers.mathyvanhoef.com/dragonblood.pdf
 """
 
-from typing import Dict, List, Optional
+from typing import Dict, List
 from ..util.color import Color
 
 

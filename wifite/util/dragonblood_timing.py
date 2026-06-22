@@ -26,7 +26,7 @@ import re
 import time
 import tempfile
 import statistics
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional
 from dataclasses import dataclass, field
 
 from ..util.process import Process

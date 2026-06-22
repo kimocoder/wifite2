@@ -17,7 +17,6 @@ from queue import Queue, Empty
 from ..tools.dependency import Dependency
 from ..config import Configuration
 from ..util.process import Process
-from ..util.color import Color
 from ..util.logger import log_info, log_error, log_warning, log_debug
 
 

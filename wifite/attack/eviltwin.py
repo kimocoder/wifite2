@@ -12,8 +12,11 @@ import os
 import re
 import time
 import signal
-from typing import Optional, List
+from typing import TYPE_CHECKING
 from enum import Enum
+
+if TYPE_CHECKING:
+    from ..util.session import EvilTwinAttackState
 
 from ..model.attack import Attack
 from ..model.eviltwin_result import CrackResultEvilTwin
@@ -25,7 +28,6 @@ from ..util.client_monitor import ClientMonitor, ClientConnection
 from ..util.cleanup import CleanupManager
 from ..util.adaptive_deauth import AdaptiveDeauthManager
 from ..util.process import Process
-from ..tools.aireplay import Aireplay
 
 
 class AttackState(Enum):
@@ -251,7 +253,6 @@ class EvilTwin(Attack):
             # This is a fallback for when the attack is run directly
             import contextlib
             with contextlib.suppress(ImportError, AttributeError):
-                from ..wifite import Wifite
                 # Note: This is a fallback and may not always work
                 # The preferred approach is to set interface_assignment before calling run()
                 log_debug('EvilTwin', 'No interface assignment available, will use single interface mode')
@@ -1472,7 +1473,6 @@ class EvilTwin(Attack):
             count: Number of deauth packets to send
         """
         try:
-            from ..tools.aireplay import Aireplay
             from ..util.process import Process
             
             # Verify deauth interface is available
@@ -2074,7 +2074,6 @@ class EvilTwin(Attack):
             True if state was restored successfully, False otherwise
         """
         try:
-            from ..util.session import EvilTwinAttackState
             
             # Restore configuration
             self.interface_ap = state.interface_ap or self.interface_ap
@@ -2137,7 +2136,6 @@ class EvilTwin(Attack):
         Returns:
             True if an attack is running, False otherwise
         """
-        import subprocess
 
         try:
             # Check for hostapd processes with wifite config
@@ -2168,7 +2166,6 @@ class EvilTwin(Attack):
         other processes that may have been left running from a previous
         interrupted attack.
         """
-        import subprocess
 
         log_info('EvilTwin', 'Checking for orphaned processes')
 

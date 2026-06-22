@@ -11,7 +11,7 @@ selecting the best interfaces based on capabilities and preferences.
 from typing import List, Optional, Tuple, Dict
 
 from ..model.interface_info import InterfaceInfo, InterfaceAssignment
-from ..util.logger import log_info, log_debug, log_warning
+from ..util.logger import log_info, log_debug, log_warning, log_error
 
 
 class InterfaceAssignmentStrategy:
@@ -162,7 +162,7 @@ class InterfaceAssignmentStrategy:
             # Task 11.2: Log fallback to single interface if applicable
             log_info('InterfaceAssignment', 'Falling back to single interface mode')
             log_info('InterfaceAssignment', 
-                    f'Rationale: Insufficient interfaces for dual mode (need 1 AP-capable + 1 additional monitor-capable)')
+                    'Rationale: Insufficient interfaces for dual mode (need 1 AP-capable + 1 additional monitor-capable)')
             
             # Select best AP-capable interface
             ap_interface = InterfaceAssignmentStrategy._select_best_ap_interface(ap_capable)
@@ -315,7 +315,7 @@ class InterfaceAssignmentStrategy:
             # Task 11.2: Log fallback to single interface if applicable
             log_info('InterfaceAssignment', 'Falling back to single interface mode')
             log_info('InterfaceAssignment', 
-                    f'Rationale: Insufficient interfaces for dual mode (need 2 monitor-capable)')
+                    'Rationale: Insufficient interfaces for dual mode (need 2 monitor-capable)')
             
             # Select best monitor-capable interface
             monitor_interface = InterfaceAssignmentStrategy._select_best_monitor_interface(

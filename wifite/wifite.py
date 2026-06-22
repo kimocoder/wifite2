@@ -87,7 +87,6 @@ class Wifite:
         from .model.handshake import Handshake
         from .util.crack import CrackHelper
         from .util.dbupdater import DBUpdater
-        from .util.session import SessionManager
 
         # Handle session cleanup
         if Configuration.clean_sessions:
@@ -260,7 +259,7 @@ class Wifite:
         """
         from .util.interface_manager import InterfaceManager
         from .util.color import Color
-        from .util.logger import log_info, log_warning
+        from .util.logger import log_info
         
         # Need at least 2 interfaces for dual mode
         if len(self.available_interfaces) < 2:
@@ -483,7 +482,7 @@ class Wifite:
             tuple: (is_valid, error_message, warnings)
         """
         from .util.interface_assignment import InterfaceAssignmentStrategy
-        from .util.logger import log_warning, log_error
+        from .util.logger import log_warning
         
         warnings = []
         
@@ -782,7 +781,6 @@ class Wifite:
             Color.pl('{+} Resuming attack on {C}%d{W} remaining target(s)...' % len(remaining_targets))
 
             # Convert TargetState objects back to Target objects
-            from .model.target import Target
             targets = []
             failed_conversions = []
 

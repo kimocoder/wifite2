@@ -27,8 +27,7 @@ WPS Information Elements:
 """
 
 import os
-from typing import Optional, List, Dict, Set
-from collections import defaultdict
+from typing import Optional, List, Dict
 
 try:
     from scapy.all import (

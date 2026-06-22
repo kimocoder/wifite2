@@ -30,9 +30,8 @@ Channel Frequencies:
 
 import time
 from threading import Thread, Event, Lock
-from typing import Optional, List, Dict, Set, Callable
+from typing import Optional, List, Dict, Callable
 from dataclasses import dataclass, field
-from collections import defaultdict
 
 try:
     from scapy.all import (

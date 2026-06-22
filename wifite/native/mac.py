@@ -24,7 +24,6 @@ Usage:
     NativeMac.reset('wlan0')
 """
 
-import os
 import re
 import secrets
 import fcntl

@@ -9,9 +9,8 @@ Provides template rendering with support for multiple portal styles.
 
 import html
 import os
-from typing import Dict, Any, Optional
 
-from ...util.logger import log_info, log_error, log_warning, log_debug
+from ...util.logger import log_error, log_debug
 
 
 class TemplateRenderer:

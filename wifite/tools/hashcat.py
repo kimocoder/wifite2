@@ -193,7 +193,6 @@ class Hashcat(Dependency):
         if Hashcat._cached_version is not None:
             return Hashcat._cached_version
 
-        import re
         try:
             process = Process(['hashcat', '--version'])
             stdout = process.stdout()
@@ -465,7 +464,6 @@ class HcxPcapngTool(Dependency):
                 
                 # Also include tshark check for WPA3
                 if is_wpa3_sae:
-                    from .tshark import Tshark
                     tshark_check_cmd = ['tshark', '-r', handshake_obj.capfile, '-Y', 'wlan.fc.type_subtype == 0x0b'] # Authentication frames
                     tshark_process = Process(tshark_check_cmd)
                     tshark_stdout, _ = tshark_process.get_output()

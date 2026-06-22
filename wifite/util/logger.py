@@ -8,7 +8,6 @@ Provides consistent logging across all modules with proper exception handling.
 
 import os
 import sys
-import time
 import traceback
 from datetime import datetime
 from typing import Optional

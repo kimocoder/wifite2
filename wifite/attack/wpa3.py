@@ -19,7 +19,7 @@ from ..util.color import Color
 from ..util.logger import log_info, log_debug
 from ..util.timer import Timer
 from ..util.output import OutputManager
-from ..util.wpa3 import WPA3Detector, WPA3Info
+from ..util.wpa3 import WPA3Detector
 from ..util.wpa3_tools import WPA3ToolChecker
 from ..attack.wpa3_strategy import WPA3AttackStrategy
 from ..model.handshake import Handshake
@@ -780,7 +780,6 @@ class AttackWPA3SAE(Attack):
             Handshake object if successful, None otherwise
         """
         from ..tools.hcxdumptool import HcxDumpTool
-        from ..model.handshake import Handshake
         
         handshake = None
         hcxdump = None

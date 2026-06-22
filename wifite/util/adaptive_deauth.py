@@ -9,8 +9,7 @@ to maximize effectiveness while minimizing detection risk.
 """
 
 import time
-from typing import Optional
-from ..util.logger import log_info, log_debug, log_warning
+from ..util.logger import log_info, log_debug
 
 
 class AdaptiveDeauthManager:

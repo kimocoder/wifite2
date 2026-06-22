@@ -7,7 +7,6 @@ from ..config import Configuration
 from ..tools.airodump import Airodump
 from ..util.color import Color
 from ..util.output import OutputManager
-from shlex import quote as shlex_quote
 
 # Check for native scanner availability
 try:
@@ -410,8 +409,7 @@ class Scanner:
         Returns:
             True if scan completed successfully
         """
-        from ..util.logger import log_info, log_debug, log_warning
-        from ..model.target import Target
+        from ..util.logger import log_info, log_warning
 
         log_info('Scanner', 'Starting native scanner')
 
