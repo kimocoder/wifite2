@@ -224,6 +224,10 @@ class PortalRequestHandler(BaseHTTPRequestHandler):
         try:
             # Remove /static/ prefix and ensure a relative path
             file_path = path[8:].lstrip('/\\')  # Remove '/static/' and any leading separators
+            if not file_path:
+                self._send_error_response(404, 'Not Found')
+                return
+
             filename = os.path.basename(file_path)
             
             # Try to get cached static file from server instance
@@ -247,6 +251,17 @@ class PortalRequestHandler(BaseHTTPRequestHandler):
             # Normalize static directory path
             static_dir = os.path.realpath(os.path.join(portal_dir, 'static'))
             # Build and normalize full path to requested file
+            full_path = os.path.realpath(os.path.join(static_dir, file_path))
+
+            # Enforce that the requested file stays under static_dir
+            if os.path.commonpath([static_dir, full_path]) != static_dir:
+                log_warning('Portal', f'Blocked path traversal attempt: {path}')
+                self._send_error_response(403, 'Forbidden')
+                return
+
+            if not os.path.isfile(full_path):
+                self._send_error_response(404, 'Not Found')
+                return
             full_path = os.path.realpath(os.path.join(static_dir, file_path))
             
             # Security check: ensure file is within static directory
