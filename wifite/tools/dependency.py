@@ -472,9 +472,6 @@ class Dependency:
                 if cmd:
                     Color.pl('{!}     {D}Install: {C}%s{W}' % cmd)
 
-            # Interactive install prompt
-            cls._offer_install(missing_optional, required=False)
-
         # Handle missing required deps
         if missing_required:
             Color.pl('')
