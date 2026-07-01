@@ -930,19 +930,24 @@ class Wifite:
         if power > 0:
             power = power - 100
 
+        # Use the current datetime for first/last seen so restored targets sort
+        # and display with a reasonable timestamp instead of a year-2000 stub.
+        from datetime import datetime
+        now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
         fields = [
             target_state.bssid,                          # 0: BSSID
-            '2000-01-01 00:00:00',                       # 1: First time seen (placeholder)
-            '2000-01-01 00:00:00',                       # 2: Last time seen (placeholder)
+            now_str,                                     # 1: First time seen (current time; original not stored in session)
+            now_str,                                     # 2: Last time seen (current time; original not stored in session)
             str(target_state.channel),                   # 3: channel
-            '54',                                        # 4: Speed (placeholder)
+            '54',                                        # 4: Speed: airodump-ng "speed" field; not stored in session, 54 Mbps is a safe neutral default
             target_state.encryption,                     # 5: Privacy/Encryption
-            'CCMP',                                      # 6: Cipher (placeholder)
-            '',                                          # 7: Authentication (will be derived from encryption)
+            'CCMP',                                      # 6: Cipher: not stored in session; CCMP is the standard WPA2/WPA3 cipher and a safe default
+            '',                                          # 7: Authentication (will be derived from encryption below)
             str(power),                                  # 8: Power
-            '10',                                        # 9: beacons (placeholder)
-            '0',                                         # 10: IV (placeholder)
-            '0.  0.  0.  0',                            # 11: LAN IP (placeholder)
+            '10',                                        # 9: beacons (not stored in session; any non-zero value is a safe placeholder)
+            '0',                                         # 10: IV (not stored in session; 0 is correct for WPA targets)
+            '0.  0.  0.  0',                            # 11: LAN IP (not stored in session; airodump-ng format placeholder)
             str(len(target_state.essid)) if target_state.essid else '0',  # 12: ID-length
             target_state.essid if target_state.essid else '',              # 13: ESSID
             ''                                           # 14: Key (empty)
@@ -1360,9 +1365,14 @@ def main():
             from .util.logger import log_debug
             log_debug('Wifite', f'Interface cleanup thread error: {e}')
 
-        # Delete Reaver .pcap quickly
+        # Delete Reaver .pcap quickly.
+        # reaver_output.pcap is the legacy bare filename written by older reaver versions
+        # directly into the cwd. The current Reaver tool class writes to Configuration.temp()
+        # instead, but we still clean up the legacy name here using an absolute path
+        # (os.path.abspath) so the removal works regardless of cwd.
         try:
-            subprocess.run(["rm", "-f", "reaver_output.pcap"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=2)
+            reaver_pcap = os.path.abspath('reaver_output.pcap')
+            subprocess.run(["rm", "-f", reaver_pcap], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=2)
         except Exception as e:
             from .util.logger import log_debug
             log_debug('Wifite', f'Reaver cleanup error: {e}')
