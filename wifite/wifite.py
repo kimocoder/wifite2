@@ -6,7 +6,6 @@ try:
 except (ValueError, ImportError) as e:
     raise Exception("You may need to run wifite from the root directory (which includes README.md)", e) from e
 
-
 from .util.color import Color
 
 import os
@@ -975,6 +974,7 @@ class Wifite:
         Color.pl(r' {G}.´  ·  .{C}{D} · · {W}{G}.  ·  `.  {G}wifite2 {D}%s{W}' % Configuration.version)
         Color.pl(r' {G}:  :  : {C}{D}((·)){W}{G} :  :  :  {W}{D}a wireless auditor by {C}derv82{W}')
         Color.pl(r' {G}`.  ·  `{GR}{D} /│\ {W}{G}´  ·  .´  {W}{D}maintained by {C}kimocoder{W}')
+        Color.pl(r' {G}`.  ·  `{GR}{D} /│\ {W}{G}´  ·  .´  {W}{D}support by {C}nu11secur1ty{W}')
         Color.pl(r' {G}  `     {GR}{D}/─┴─\{W}{G}     ´    {C}{D}https://github.com/kimocoder/wifite2{W}')
         Color.pl('')
 
@@ -1273,7 +1273,27 @@ class Wifite:
             Color.pl('{+} {C}Session preserved for resume{W} ({O}%d{W} target(s) remaining)' % summary['remaining'])
             Color.pl('{+} Use {C}--resume{W} to continue this session')
 
-
+    # ================================================================
+    # НОВ МЕТОД ЗА РЕСЕТВАНЕ С ПРИНТ СЪОБЩЕНИЯ
+    # ================================================================
+    def reset_network(self):
+        """Reset network interface with visual feedback"""
+        import subprocess, time
+        iface = Configuration.interface
+        if iface:
+            Color.pl('')
+            Color.pl('{+} {C}Resetting network interface: {G}%s{W}' % iface)
+            Color.pl('{+} {D}Taking {G}%s{D} down...{W}' % iface)
+            subprocess.run(['ip', 'link', 'set', iface, 'down'])
+            time.sleep(1)
+            Color.pl('{+} {D}Bringing {G}%s{D} up...{W}' % iface)
+            subprocess.run(['ip', 'link', 'set', iface, 'up'])
+            time.sleep(1)
+            Color.pl('{+} {G}✓ {G}%s{G} reset successfully!{W}' % iface)
+            Color.pl('')
+        else:
+            Color.pl('{!} {O}No interface found to reset{W}')
+    # ================================================================
 
 
 def force_exit_handler(signum, frame):
@@ -1295,10 +1315,11 @@ def main():
     import signal as _signal
 
     _original_sigint = _signal.getsignal(_signal.SIGINT)
+    wifite_instance = None
 
     try:
-        wifite = Wifite()
-        wifite.start()
+        wifite_instance = Wifite()
+        wifite_instance.start()
     except (OSError, IOError) as e:
         Color.pl('\n{!} {R}System Error{W}: %s' % str(e))
         Color.pl('\n{!} {R}Exiting{W}\n')
@@ -1323,6 +1344,13 @@ def main():
     finally:
         # Use the module-level emergency_exit during final cleanup phase
         _signal.signal(_signal.SIGINT, emergency_exit)
+
+        # ================================================================
+        # АВТОМАТИЧНО РЕСЕТВАНЕ С ПРИНТ СЪОБЩЕНИЯ
+        # ================================================================
+        if wifite_instance:
+            wifite_instance.reset_network()
+        # ================================================================
 
         # Quick cleanup with short timeouts
         try:
