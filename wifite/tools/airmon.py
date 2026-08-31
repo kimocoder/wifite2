@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+import glob
 import os
 import re
 import signal
@@ -207,8 +208,9 @@ class Airmon(Dependency):
 
             if driver == 'icnss2':
                 Color.p('{+} Attempting {G}ICNSS2 monitor mode{W} on {C}%s{W}... ' % iface_name)
-                con_mode_path = '/sys/module/wlan/parameters/con_mode'
-                if os.path.exists(con_mode_path):
+                con_mode_paths = glob.glob('/sys/module/*/parameters/con_mode')
+                if con_mode_paths:
+                    con_mode_path = con_mode_paths[0]
                     try:
                         # Ensure interface is down before changing mode
                         Ip.down(iface_name)
