@@ -24,29 +24,26 @@ def parse_wps_args(cls, args):
         cls.wps_pin = False
         Color.pl('{+} {C}option:{W} will {O}never{W} use {C}WPS attacks{W} (Pixie-Dust/PIN) on targets')
 
-    elif args.wps_pixie:
-        # WPS Pixie-Dust only
-        cls.no_wps = False  # Explicitly ensure WPS attacks are enabled
-        cls.wps_pixie = True
-        cls.wps_no_nullpin = True
-        cls.wps_pin = False
-        Color.pl('{+} {C}option:{W} will {G}only{W} use {C}WPS Pixie-Dust attack{W} (no {O}PIN{W}) on targets')
+    else:
+        if args.wps_pixie:
+            # WPS Pixie-Dust only
+            cls.no_wps = False  # Explicitly ensure WPS attacks are enabled
+            cls.wps_pixie = True
+            cls.wps_no_nullpin = True
+            cls.wps_pin = False
+            Color.pl('{+} {C}option:{W} will {G}only{W} use {C}WPS Pixie-Dust attack{W} (no {O}PIN{W}) on targets')
 
-    elif args.wps_no_nullpin:
-        # WPS NULL PIN only
-        cls.no_wps = False  # Explicitly ensure WPS attacks are enabled
-        cls.wps_pixie = True
-        cls.wps_no_nullpin = False
-        cls.wps_pin = True
-        Color.pl('{+} {C}option:{W} will {G}not{W} use {C}WPS NULL PIN attack{W} (no {O}PIN{W}) on targets')
+        elif args.wps_no_pixie:
+            # WPS PIN only
+            cls.no_wps = False  # Explicitly ensure WPS attacks are enabled
+            cls.wps_pixie = False
+            cls.wps_pin = True
+            Color.pl('{+} {C}option:{W} will {G}only{W} use {C}WPS PIN attack{W} (no {O}Pixie-Dust{W}) on targets')
 
-    elif args.wps_no_pixie:
-        # WPS PIN only
-        cls.no_wps = False  # Explicitly ensure WPS attacks are enabled
-        cls.wps_pixie = False
-        cls.wps_no_nullpin = True
-        cls.wps_pin = True
-        Color.pl('{+} {C}option:{W} will {G}only{W} use {C}WPS PIN attack{W} (no {O}Pixie-Dust{W}) on targets')
+        if args.wps_no_nullpin:
+            # NULL PIN is independent of the selected WPS attack mode.
+            cls.wps_no_nullpin = False
+            Color.pl('{+} {C}option:{W} will {O}never{W} use {C}WPS NULL PIN attack{W} on targets')
 
     if args.use_bully:
         from ...tools.bully import Bully
