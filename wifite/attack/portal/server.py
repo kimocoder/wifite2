@@ -223,18 +223,23 @@ class PortalRequestHandler(BaseHTTPRequestHandler):
         """Serve static files (CSS, images, etc.) with caching optimization."""
         try:
             # Remove /static/ prefix and ensure a relative path
-            file_path = path[8:].lstrip('/\\')  # Remove '/static/' and any leading separators
-            if not file_path:
+            requested_path = path[8:].lstrip('/\\')  # Remove '/static/' and any leading separators
+            if not requested_path:
                 self._send_error_response(404, 'Not Found')
                 return
 
-            filename = os.path.basename(file_path)
-            
+            # Only allow direct files under static/ (no subdirectories)
+            filename = os.path.basename(requested_path)
+            if requested_path != filename:
+                log_warning('Portal', f'Blocked non-file static path request: {path}')
+                self._send_error_response(403, 'Forbidden')
+                return
+
             # Try to get cached static file from server instance
             cached = None
             if self.server_instance:
                 cached = self.server_instance.get_cached_static(filename)
-            
+
             if cached:
                 # Serve from cache (much faster)
                 content, content_type = cached
@@ -245,13 +250,11 @@ class PortalRequestHandler(BaseHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(content)
                 return
-            
+
             # Fallback to file system if not cached
             portal_dir = os.path.dirname(os.path.abspath(__file__))
-            # Normalize static directory path
             static_dir = os.path.realpath(os.path.join(portal_dir, 'static'))
-            # Build and normalize full path to requested file
-            full_path = os.path.realpath(os.path.join(static_dir, file_path))
+            full_path = os.path.realpath(os.path.join(static_dir, filename))
 
             # Enforce that the requested file stays under static_dir
             if os.path.commonpath([static_dir, full_path]) != static_dir:
@@ -259,17 +262,12 @@ class PortalRequestHandler(BaseHTTPRequestHandler):
                 self._send_error_response(403, 'Forbidden')
                 return
 
+            # Check if file exists
             if not os.path.isfile(full_path):
                 self._send_error_response(404, 'Not Found')
                 return
-            full_path = os.path.realpath(os.path.join(static_dir, file_path))
-            
-            # Security check: ensure file is within static directory
-            if os.path.commonpath([static_dir, full_path]) != static_dir:
-                self._send_error_response(403, 'Forbidden')
-                return
-            
-            # Check if file exists
+
+            # Determine content type
             if not os.path.exists(full_path):
                 self._send_error_response(404, 'Not Found')
                 return
