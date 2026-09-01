@@ -1,4 +1,4 @@
-FROM python:3.14-slim
+FROM python:3.15-rc-alpine
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV HASHCAT_VERSION=hashcat-6.2.6
