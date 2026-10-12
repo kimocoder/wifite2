@@ -27,6 +27,7 @@ class TestConfigurationRestoration(unittest.TestCase):
         self.config.wordlist = '/usr/share/wordlists/rockyou.txt'
         self.config.wpa_attack_timeout = 500
         self.config.wps_pixie = True
+        self.config.wps_no_nullpin = True
         self.config.wps_pin = True
         self.config.dont_use_pmkid = False
         self.config.wps_only = False
@@ -57,6 +58,7 @@ class TestConfigurationRestoration(unittest.TestCase):
                 'wordlist': '/custom/wordlist.txt',
                 'wpa_attack_timeout': 600,
                 'wps_pixie': False,
+                'wps_no_nullpin': False,
                 'wps_pin': False,
                 'use_pmkid': True,
                 'wps_only': False,
@@ -79,7 +81,7 @@ class TestConfigurationRestoration(unittest.TestCase):
         )
         
         # Mock subprocess to simulate interface check
-        with patch('subprocess.run') as mock_run:
+        with patch('wifite.util.process.Process.run_simple') as mock_run:
             mock_run.return_value = Mock(
                 stdout='Interface wlan1mon\n',
                 returncode=0
@@ -93,6 +95,7 @@ class TestConfigurationRestoration(unittest.TestCase):
         self.assertEqual(self.config.wordlist, '/custom/wordlist.txt')
         self.assertEqual(self.config.wpa_attack_timeout, 600)
         self.assertFalse(self.config.wps_pixie)
+        self.assertFalse(self.config.wps_no_nullpin)
         self.assertFalse(self.config.wps_pin)
         self.assertFalse(self.config.dont_use_pmkid)  # use_pmkid=True means dont_use_pmkid=False
         self.assertTrue(self.config.use_pmkid_only)
@@ -129,7 +132,7 @@ class TestConfigurationRestoration(unittest.TestCase):
         )
         
         # Mock subprocess to simulate interface not found
-        with patch('subprocess.run') as mock_run:
+        with patch('wifite.util.process.Process.run_simple') as mock_run:
             mock_run.return_value = Mock(
                 stdout='Interface wlan0mon\nInterface wlan1mon\n',
                 returncode=0
@@ -148,6 +151,9 @@ class TestConfigurationRestoration(unittest.TestCase):
         # Set different values in config (simulating command-line flags)
         self.config.wordlist = '/different/wordlist.txt'
         self.config.wpa_attack_timeout = 300
+        self.config.wps_pixie = False
+        self.config.wps_no_nullpin = False
+        self.config.wps_pin = False
         self.config.use_tui = False
         
         session = SessionState(
@@ -158,6 +164,9 @@ class TestConfigurationRestoration(unittest.TestCase):
                 'interface': 'wlan0mon',
                 'wordlist': '/original/wordlist.txt',
                 'wpa_attack_timeout': 600,
+                'wps_pixie': True,
+                'wps_no_nullpin': True,
+                'wps_pin': True,
                 'use_tui': True
             },
             targets=[
@@ -173,7 +182,7 @@ class TestConfigurationRestoration(unittest.TestCase):
         )
         
         # Mock subprocess
-        with patch('subprocess.run') as mock_run:
+        with patch('wifite.util.process.Process.run_simple') as mock_run:
             mock_run.return_value = Mock(
                 stdout='Interface wlan0mon\n',
                 returncode=0
@@ -184,11 +193,38 @@ class TestConfigurationRestoration(unittest.TestCase):
         
         # Should have conflicts detected
         self.assertGreater(len(result['conflicts']), 0)
+        self.assertTrue(any('--pixie/--no-pixie' in conflict for conflict in result['conflicts']))
+        self.assertTrue(any('--no-nullpin' in conflict for conflict in result['conflicts']))
+        self.assertTrue(any('WPS PIN mode' in conflict for conflict in result['conflicts']))
         
         # Configuration should be overridden with session values
         self.assertEqual(self.config.wordlist, '/original/wordlist.txt')
         self.assertEqual(self.config.wpa_attack_timeout, 600)
+        self.assertTrue(self.config.wps_pixie)
+        self.assertTrue(self.config.wps_no_nullpin)
+        self.assertTrue(self.config.wps_pin)
         self.assertTrue(self.config.use_tui)
+
+    def test_create_session_preserves_wps_configuration(self):
+        """Test that all WPS mode settings are stored in a new session."""
+        target = Mock(
+            bssid='AA:BB:CC:DD:EE:FF',
+            essid='TestNetwork',
+            channel=6,
+            encryption='WPA2',
+            power=50,
+            wps=True,
+        )
+        config = Mock()
+        config.wps_pixie = False
+        config.wps_no_nullpin = False
+        config.wps_pin = True
+
+        session = self.session_mgr.create_session([target], config)
+
+        self.assertFalse(session.config['wps_pixie'])
+        self.assertFalse(session.config['wps_no_nullpin'])
+        self.assertTrue(session.config['wps_pin'])
     
     def test_interface_check_failure(self):
         """Test handling when interface check fails."""
@@ -213,7 +249,7 @@ class TestConfigurationRestoration(unittest.TestCase):
         )
         
         # Mock subprocess to raise exception
-        with patch('subprocess.run') as mock_run:
+        with patch('wifite.util.process.Process.run_simple') as mock_run:
             mock_run.side_effect = FileNotFoundError('iw command not found')
             
             # Restore configuration
@@ -249,9 +285,10 @@ class TestConfigurationRestoration(unittest.TestCase):
         # Store original values
         original_wordlist = self.config.wordlist
         original_timeout = self.config.wpa_attack_timeout
+        original_wps_no_nullpin = self.config.wps_no_nullpin
         
         # Mock subprocess
-        with patch('subprocess.run') as mock_run:
+        with patch('wifite.util.process.Process.run_simple') as mock_run:
             mock_run.return_value = Mock(
                 stdout='Interface wlan0mon\n',
                 returncode=0
@@ -263,6 +300,7 @@ class TestConfigurationRestoration(unittest.TestCase):
         # Original values should be preserved when not in session
         self.assertEqual(self.config.wordlist, original_wordlist)
         self.assertEqual(self.config.wpa_attack_timeout, original_timeout)
+        self.assertEqual(self.config.wps_no_nullpin, original_wps_no_nullpin)
         
         # Interface should still be restored
         self.assertEqual(self.config.interface, 'wlan0mon')

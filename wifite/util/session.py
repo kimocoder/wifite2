@@ -331,6 +331,7 @@ class SessionManager:
                 'wordlist': getattr(config, 'wordlist', None),
                 'wpa_attack_timeout': getattr(config, 'wpa_attack_timeout', 500),
                 'wps_pixie': getattr(config, 'wps_pixie', True),
+                'wps_no_nullpin': getattr(config, 'wps_no_nullpin', True),
                 'wps_pin': getattr(config, 'wps_pin', True),
                 'use_pmkid': not getattr(config, 'dont_use_pmkid', False),
                 'infinite_mode': getattr(config, 'infinite_mode', False),
@@ -948,11 +949,31 @@ class SessionManager:
         # WPS Pixie
         saved_wps_pixie = saved_config.get('wps_pixie')
         if saved_wps_pixie is not None:
+            current_wps_pixie = getattr(config_obj, 'wps_pixie', True)
+            if current_wps_pixie != saved_wps_pixie:
+                conflicts.append(
+                    "--pixie/--no-pixie: command-line value overridden by session value"
+                )
             config_obj.wps_pixie = saved_wps_pixie
-        
+
+        # WPS NULL PIN
+        saved_wps_no_nullpin = saved_config.get('wps_no_nullpin')
+        if saved_wps_no_nullpin is not None:
+            current_wps_no_nullpin = getattr(config_obj, 'wps_no_nullpin', True)
+            if current_wps_no_nullpin != saved_wps_no_nullpin:
+                conflicts.append(
+                    "--no-nullpin: command-line value overridden by session value"
+                )
+            config_obj.wps_no_nullpin = saved_wps_no_nullpin
+
         # WPS PIN
         saved_wps_pin = saved_config.get('wps_pin')
         if saved_wps_pin is not None:
+            current_wps_pin = getattr(config_obj, 'wps_pin', True)
+            if current_wps_pin != saved_wps_pin:
+                conflicts.append(
+                    "WPS PIN mode: command-line value overridden by session value"
+                )
             config_obj.wps_pin = saved_wps_pin
         
         # PMKID
