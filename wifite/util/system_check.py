@@ -480,6 +480,14 @@ class SystemCheck:
                 # Unknown driver — assume supported for wireless adapters
                 result.supports_injection = True
 
+            # Broadcom FullMAC capabilities come from the Nexmon firmware
+            # itself; without it monitor/injection are not usable.
+            if result.driver == 'brcmfmac':
+                from ..tools.nexmon import Nexmon
+                caps = Nexmon.probe(result.name)
+                result.supports_monitor = bool(caps and caps.native_monitor_ready)
+                result.supports_injection = bool(caps and caps.injection)
+
         except Exception:
             pass
 
@@ -783,7 +791,17 @@ class SystemCheck:
             if iface.driver in ('iwlwifi',):
                 Color.pl('    {O}⚠ Intel driver — no packet injection support{W}')
             if iface.driver in ('brcmfmac',):
-                Color.pl('    {O}⚠ Broadcom FullMAC — limited injection support{W}')
+                try:
+                    from ..tools.nexmon import Nexmon
+                    caps = Nexmon.probe(iface.name)
+                except Exception:
+                    caps = None
+                if caps is None:
+                    Color.pl('    {O}⚠ Broadcom FullMAC — Nexmon firmware/nexutil not detected{W}')
+                elif caps.native_monitor_ready:
+                    Color.pl('    {G}✓ Broadcom FullMAC with Nexmon monitor/radiotap support{W}')
+                else:
+                    Color.pl('    {O}⚠ Nexmon detected but incomplete: %s{W}' % caps.describe())
 
             Color.pl('')  # Blank line between interfaces
 

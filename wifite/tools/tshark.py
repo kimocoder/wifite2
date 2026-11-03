@@ -244,24 +244,11 @@ class Tshark(Dependency):
         return list(ssid_pairs)
 
     @classmethod
-    def check_for_wps_and_update_targets(cls, capfile, targets):
-        """
-        Update targets with WPS status from capture file.
-        
-        Uses native Scapy implementation if tshark is unavailable.
-        """
-        # Try native implementation first if tshark is not available
+    def get_wps_status_map(cls, capfile):
+        """Return WPS lock states keyed by uppercase BSSID."""
         if not cls.exists():
-            if cls._can_use_native():
-                try:
-                    from ..native.wps import ScapyWPS
-                    ScapyWPS.update_targets(capfile, targets)
-                    return
-                except (ImportError, OSError):
-                    pass
-            raise ValueError('Cannot detect WPS networks: Tshark does not exist and native fallback failed')
-        
-        # Use tshark
+            raise ValueError('Cannot detect WPS networks: Tshark does not exist')
+
         command = [
             'tshark',
             '-r', capfile,
@@ -275,57 +262,55 @@ class Tshark(Dependency):
         p = Process(command)
 
         try:
-            p.wait()
-            lines = p.stdout()
+            lines, _ = p.get_output(timeout=15)
         except KeyboardInterrupt:
             raise
-        except (OSError, IOError) as e:
-            from ..config import Configuration
-            if Configuration.verbose > 0:
-                from ..util.color import Color
-                Color.pl('{!} {O}Warning: tshark WPS detection failed: %s{W}' % str(e))
-            return
         except Exception as e:
-            from ..config import Configuration
-            from ..util.color import Color
-            Color.pl('{!} {R}Unexpected error in WPS detection: %s{W}' % str(e))
-            if Configuration.verbose > 1:
-                import traceback
-                Color.pl('{!} {O}%s{W}' % traceback.format_exc())
-            return
-        
-        wps_bssids = set()
-        locked_bssids = set()
-        
+            raise ValueError(f'tshark WPS detection failed: {e}') from e
+        finally:
+            p.cleanup()
+
+        if p.poll() != 0:
+            raise ValueError('tshark WPS detection failed')
+
+        status_map = {}
         for line in lines.split('\n'):
-            line = line.strip()
-            if not line:
+            parts = line.strip().split(',', maxsplit=1)
+            if not parts[0]:
                 continue
-            
-            parts = line.split(',', maxsplit=1)
-            
-            if len(parts) < 1:
-                continue
-            
+
             bssid = parts[0].strip()
             locked = parts[1].strip() if len(parts) > 1 else ''
-            
             if len(bssid) != 17 or bssid.count(':') != 5:
                 continue
-            
-            if locked.lower() in ('0x01', '0x1', '1'):
-                locked_bssids.add(bssid.upper())
-            else:
-                wps_bssids.add(bssid.upper())
 
-        for t in targets:
-            target_bssid = t.bssid.upper()
-            if target_bssid in wps_bssids:
-                t.wps = WPSState.UNLOCKED
-            elif target_bssid in locked_bssids:
-                t.wps = WPSState.LOCKED
-            else:
-                t.wps = WPSState.NONE
+            state = WPSState.LOCKED if locked.lower() in ('0x01', '0x1', '1') else WPSState.UNLOCKED
+            bssid = bssid.upper()
+            if state == WPSState.UNLOCKED or bssid not in status_map:
+                status_map[bssid] = state
+
+        return status_map
+
+    @classmethod
+    def check_for_wps_and_update_targets(cls, capfile, targets):
+        """
+        Update targets with WPS status from capture file.
+
+        Uses native Scapy implementation if tshark is unavailable.
+        """
+        if not cls.exists():
+            if cls._can_use_native():
+                try:
+                    from ..native.wps import ScapyWPS
+                    ScapyWPS.update_targets(capfile, targets)
+                    return
+                except (ImportError, OSError):
+                    pass
+            raise ValueError('Cannot detect WPS networks: Tshark does not exist and native fallback failed')
+
+        status_map = cls.get_wps_status_map(capfile)
+        for target in targets:
+            target.wps = status_map.get(target.bssid.upper(), WPSState.NONE)
 
     @classmethod
     def check_for_wps_native(cls, capfile, targets):

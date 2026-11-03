@@ -143,6 +143,67 @@ class WPA3Detector:
         return result
 
     @staticmethod
+    def parse_capture_batch(capfile: str) -> Dict[str, Dict[str, Any]]:
+        """Parse PMF and SAE details for every BSSID in one tshark pass."""
+        from ..tools.tshark import Tshark
+        from ..util.process import Process
+        if not Tshark.exists():
+            return {}
+
+        command = [
+            'tshark', '-r', capfile,
+            '-n',
+            '-Y', '(wlan.fc.type_subtype == 0x08 && wlan.rsn.capabilities) || wlan.fixed.auth.alg == 3',
+            '-T', 'fields',
+            '-e', 'wlan.bssid',
+            '-e', 'wlan.rsn.capabilities.mfpc',
+            '-e', 'wlan.rsn.capabilities.mfpr',
+            '-e', 'wlan.fixed.finite_cyclic_group',
+        ]
+        process = Process(command)
+        try:
+            stdout, _ = process.get_output(timeout=15)
+        finally:
+            process.cleanup()
+        if process.poll() != 0:
+            raise ValueError('tshark WPA3 analysis failed')
+        results = {}
+
+        for line in (stdout or '').splitlines():
+            parts = line.strip('\r\n').split('\t')
+            if len(parts) < 4:
+                continue
+            bssid = parts[0].strip().upper()
+            if len(bssid) != 17 or bssid.count(':') != 5:
+                continue
+
+            mfpc, mfpr, group_text = (part.strip() for part in parts[1:4])
+            entry = results.setdefault(bssid, {'pmf_status': None, 'sae_groups': set()})
+            if entry['pmf_status'] is None:
+                if mfpr in ('1', 'True'):
+                    entry['pmf_status'] = WPA3Detector.PMF_REQUIRED
+                elif mfpc in ('1', 'True'):
+                    entry['pmf_status'] = WPA3Detector.PMF_OPTIONAL
+                elif mfpc in ('0', 'False'):
+                    entry['pmf_status'] = WPA3Detector.PMF_DISABLED
+
+            try:
+                group = int(group_text)
+            except ValueError:
+                continue
+            if group > 0:
+                entry['sae_groups'].add(group)
+
+        return {
+            bssid: {
+                'pmf_status': entry['pmf_status'],
+                'sae_groups': sorted(entry['sae_groups']),
+            }
+            for bssid, entry in results.items()
+            if entry['pmf_status'] or entry['sae_groups']
+        }
+
+    @staticmethod
     def _parse_pmf_from_beacon(capfile: str, bssid: str) -> Optional[str]:
         """
         Extract PMF status from the RSN IE in a beacon frame.
@@ -187,7 +248,7 @@ class WPA3Detector:
             'tshark', '-r', capfile,
             '-Y', 'wlan.bssid == %s && wlan.fixed.auth.alg == 3' % bssid,
             '-T', 'fields',
-            '-e', 'wlan.fixed.auth.sae.group',
+            '-e', 'wlan.fixed.finite_cyclic_group',
         ]
         stdout, _ = Process.call(command, timeout=15)
         seen = []
@@ -428,7 +489,7 @@ class WPA3Detector:
                     proc.interrupt()
                     time.sleep(0.3)
                     if proc.poll() is None:
-                        proc.kill()
+                        proc.force_kill()
             return status
         finally:
             try:

@@ -113,7 +113,7 @@ class CleanupManager:
                     
                     # Force kill if still running
                     if process.poll() is None:
-                        process.kill()
+                        process.force_kill()
             
             log_info('Cleanup', f'Stopped {name}')
             return True

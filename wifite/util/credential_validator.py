@@ -170,59 +170,65 @@ class CredentialValidator:
 
                 process = Process(cmd, devnull=False)
 
-                # Wait for authentication result with optimized polling
+                # Wait for authentication result without blocking on process completion.
                 is_valid = False
                 error_message = None
+                output = ''
+                deadline = time.monotonic() + timeout
+                select_interval = 0.2
 
-                start = time.time()
-                poll_interval = 0.2  # Reduced from 0.5s to 0.2s for faster detection
+                try:
+                    import selectors
+                    with selectors.DefaultSelector() as selector:
+                        stdout = process.pid.stdout
+                        if stdout is None:
+                            raise RuntimeError('wpa_supplicant stdout is unavailable')
+                        selector.register(stdout, selectors.EVENT_READ)
 
-                while time.time() - start < timeout:
-                    if process.poll() is not None:
-                        # Process ended
-                        break
+                        while time.monotonic() < deadline:
+                            process_ended = process.poll() is not None
+                            remaining = deadline - time.monotonic()
+                            wait_time = 0 if process_ended else min(select_interval, remaining)
+                            events = selector.select(wait_time)
 
-                    # Check output for authentication success/failure
-                    try:
-                        output = process.stdout()
+                            for key, _ in events:
+                                stream = key.fileobj
+                                try:
+                                    chunk = os.read(stream.fileno(), 4096)
+                                except BlockingIOError:
+                                    continue
+                                if not chunk:
+                                    selector.unregister(stream)
+                                    continue
+                                output = (output + chunk.decode('utf-8', errors='replace'))[-262144:]
 
-                        if 'WPA: Key negotiation completed' in output:
-                            is_valid = True
-                            log_info('CredentialValidator', f'Valid credentials for {ssid}')
-                            break
+                            if 'WPA: Key negotiation completed' in output:
+                                is_valid = True
+                                log_info('CredentialValidator', f'Valid credentials for {ssid}')
+                                break
 
-                        if 'CTRL-EVENT-SSID-TEMP-DISABLED' in output:
-                            error_message = 'AP temporarily disabled (too many failed attempts)'
-                            log_warning('CredentialValidator', error_message)
-                            break
+                            if 'CTRL-EVENT-SSID-TEMP-DISABLED' in output:
+                                error_message = 'AP temporarily disabled (too many failed attempts)'
+                                log_warning('CredentialValidator', error_message)
+                                break
 
-                        if 'authentication with' in output and 'timed out' in output:
-                            error_message = 'Authentication timed out'
-                            break
+                            if 'authentication with' in output and 'timed out' in output:
+                                error_message = 'Authentication timed out'
+                                break
 
-                        if '4-Way Handshake failed' in output:
-                            error_message = 'Invalid password'
-                            break
+                            if '4-Way Handshake failed' in output:
+                                error_message = 'Invalid password'
+                                break
 
-                        # Early detection of connection success
-                        if 'CTRL-EVENT-CONNECTED' in output:
-                            is_valid = True
-                            log_info('CredentialValidator', f'Valid credentials for {ssid} (connected)')
-                            break
+                            if 'CTRL-EVENT-CONNECTED' in output:
+                                is_valid = True
+                                log_info('CredentialValidator', f'Valid credentials for {ssid} (connected)')
+                                break
 
-                    except Exception as e:
-                        # Log unexpected errors but continue polling
-                        log_debug('CredentialValidator', f'Error reading wpa_supplicant output: {e}')
-
-                    time.sleep(poll_interval)
-
-                # Stop process
-                import contextlib
-                with contextlib.suppress(Exception):
-                    process.interrupt()
-                    time.sleep(0.5)
-                    if process.poll() is None:
-                        process.kill()
+                            if process_ended and (not events or not selector.get_map()):
+                                break
+                finally:
+                    process.cleanup()
 
                 # Update statistics and rate limiting state
                 self.total_validations += 1

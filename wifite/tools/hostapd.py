@@ -314,7 +314,7 @@ class Hostapd(Dependency):
 
                 # Force kill if still running
                 if self.process.poll() is None:
-                    self.process.kill()
+                    self.process.force_kill()
 
             self.running = False
             log_info('Hostapd', 'Stopped')

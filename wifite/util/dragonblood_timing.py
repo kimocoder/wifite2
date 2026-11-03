@@ -382,7 +382,7 @@ class DragonbloodTimingAttack:
                 process.interrupt()
                 time.sleep(0.3)
                 if process.poll() is None:
-                    process.kill()
+                    process.force_kill()
 
         if commit_sent_ts is not None and commit_received_ts is not None:
             delta_us = (commit_received_ts - commit_sent_ts) * 1_000_000
@@ -599,7 +599,7 @@ class DragonbloodTimingAttack:
                 '-e', 'wlan.sa',
                 '-e', 'wlan.da',
                 '-e', 'wlan.fixed.auth.seq',
-                '-e', 'wlan.fixed.auth.sae.group',
+                '-e', 'wlan.fixed.finite_cyclic_group',
             ]
             proc = Process(command, devnull=False)
             output = proc.stdout()

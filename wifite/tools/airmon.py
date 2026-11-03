@@ -198,6 +198,28 @@ class Airmon(Dependency):
         # Remember this as the 'base' interface.
         Airmon.base_interface = iface_name
 
+        if driver is None:
+            iface_obj = Airmon.get_iface_info(iface_name)
+            if iface_obj:
+                driver = iface_obj.driver
+
+        # Broadcom FullMAC only supports monitor mode through Nexmon firmware.
+        # Without Nexmon capabilities we keep the previous (likely failing) path
+        # so behaviour on unpatched hardware is unchanged.
+        if driver == 'brcmfmac':
+            from .nexmon import Nexmon
+            capabilities = Nexmon.probe(iface_name)
+            if capabilities is not None and capabilities.native_monitor_ready:
+                Color.p('{+} Enabling {G}Nexmon monitor mode{W} on {C}%s{W}... ' % iface_name)
+                try:
+                    monitor = Nexmon.start_monitor(iface_name)
+                except Exception as e:
+                    Color.pl('{R}failed (%s).{W}' % e)
+                    raise Exception(f'Failed to enable Nexmon monitor mode on {iface_name}: {e}')
+                cls.use_ipiw = True
+                Color.pl('{G}enabled{W}!')
+                return monitor
+
         # Try ICNSS2-specific activation first
         if iface_name == 'wlan0':
             # Try to get driver info if not already available
@@ -307,6 +329,16 @@ class Airmon(Dependency):
     @classmethod
     def stop(cls, interface):
         Color.p('{!}{W} Disabling {O}monitor{W} mode on {R}%s{W}...\n' % interface)
+
+        # A Nexmon session owns the monitor interface and must be torn down
+        # through the wrapper so the station netdev is restored safely.
+        from .nexmon import Nexmon
+        if Nexmon.has_session(interface):
+            if Nexmon.stop(interface):
+                Color.pl('{+}{W} Disabled Nexmon monitor mode on {G}%s{W}' % interface)
+            else:
+                Color.pl('{!} {O}Could not disable Nexmon monitor mode on {R}%s{W}' % interface)
+            return interface, interface
 
         if cls.use_ipiw:
             enabled_interface = disabled_interface = Airmon.stop_monitor(interface)

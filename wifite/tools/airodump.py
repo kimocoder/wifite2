@@ -36,6 +36,9 @@ class Airodump(Dependency):
         self.interface = interface
         self.targets = []
         self._target_cache_limit = 500  # Limit cached targets to prevent memory bloat
+        self._capture_analysis_signature = None
+        self._wps_capture_cache = {}
+        self._wpa3_capture_cache = {}
 
         if channel is None:
             channel = Configuration.target_channel
@@ -197,24 +200,8 @@ class Airodump(Dependency):
                 # If the new_target is not in old_targets, check target_archives
                 target_archives[new_target.bssid].transfer_info(new_target)
 
-        # Check targets for WPS
-        if not self.skip_wps:
-            capfile = f'{csv_filename[:-3]}cap'
-            try:
-                Tshark.check_for_wps_and_update_targets(capfile, new_targets)
-            except ValueError:
-                # No tshark, or it failed. Fall-back to wash
-                Wash.check_for_wps_and_update_targets(capfile, new_targets)
-
-        # Detect WPA3 capabilities for all targets.
-        # Pass airodump's running capfile so WPA3Detector can parse real
-        # PMF bits from beacon RSN IEs (and SAE groups from any captured
-        # commit frames) instead of falling back to heuristics.
         capfile = f'{csv_filename[:-3]}cap'
-        Airodump.detect_wpa3_capabilities(
-            new_targets,
-            capfile=capfile if os.path.isfile(capfile) else None,
-        )
+        self._analyze_capture(capfile, new_targets)
 
         # Honeypot / rogue AP detection
         if Configuration.detect_honeypots:
@@ -322,7 +309,68 @@ class Airodump(Dependency):
         return targets2
 
     @staticmethod
-    def detect_wpa3_capabilities(targets, capfile=None):
+    def _capture_signature(capfile):
+        try:
+            stat = os.stat(capfile)
+            return stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns
+        except OSError:
+            return None
+
+    def _analyze_capture(self, capfile, targets):
+        signature = self._capture_signature(capfile)
+        if signature is None:
+            Airodump.detect_wpa3_capabilities(targets)
+            return
+
+        refreshed = signature != self._capture_analysis_signature
+        if refreshed:
+            wps_results = {}
+            wpa3_results = {}
+            cacheable = Tshark.exists()
+
+            if not self.skip_wps:
+                try:
+                    wps_results = Tshark.get_wps_status_map(capfile)
+                except ValueError:
+                    cacheable = False
+                    if Tshark.exists():
+                        Wash.check_for_wps_and_update_targets(capfile, targets)
+                    else:
+                        try:
+                            Tshark.check_for_wps_and_update_targets(capfile, targets)
+                        except ValueError:
+                            Wash.check_for_wps_and_update_targets(capfile, targets)
+                    wps_results = {target.bssid.upper(): target.wps for target in targets}
+
+            try:
+                wpa3_results = WPA3Detector.parse_capture_batch(capfile)
+            except (OSError, ValueError):
+                cacheable = False
+
+            self._capture_analysis_signature = signature if cacheable else None
+            self._wps_capture_cache = wps_results
+            self._wpa3_capture_cache = wpa3_results
+
+        if not self.skip_wps:
+            for target in targets:
+                target.wps = self._wps_capture_cache.get(target.bssid.upper(), WPSState.NONE)
+
+        Airodump.detect_wpa3_capabilities(
+            targets, capture_results=self._wpa3_capture_cache, reset=refreshed)
+
+    @staticmethod
+    def _apply_wpa3_capture_result(target, parsed):
+        info = target.wpa3_info
+        if parsed.get('pmf_status'):
+            info.pmf_status = parsed['pmf_status']
+        if parsed.get('sae_groups'):
+            info.sae_groups = parsed['sae_groups']
+            info.dragonblood_vulnerable = any(
+                group in WPA3Detector.VULNERABLE_SAE_GROUPS
+                for group in info.sae_groups)
+
+    @staticmethod
+    def detect_wpa3_capabilities(targets, capfile=None, capture_results=None, reset=False):
         """
         Detect and store WPA3 capabilities for all targets.
 
@@ -333,18 +381,29 @@ class Airodump(Dependency):
                      observed SAE groups from any SAE Commit frames. This
                      turns Dragonblood detection from a hardcoded [19]
                      default into data-driven detection.
+            capture_results: Optional pre-parsed BSSID results to apply without
+                             launching per-target tshark processes.
+            reset: Rebuild heuristic state before applying new capture results.
         """
         for target in targets:
-            # Skip if already detected (cached)
-            if hasattr(target, 'wpa3_info') and target.wpa3_info is not None:
-                # Opportunistically refine from the capture if we have one
-                if capfile:
-                    WPA3Detector.refresh_from_capture(target, capfile)
-                continue
+            if reset:
+                target.wpa3_info = None
 
-            wpa3_info_dict = WPA3Detector.detect_wpa3_capability(
-                target, use_cache=False, capfile=capfile)
-            target.wpa3_info = WPA3Info.from_dict(wpa3_info_dict)
+            parsed = None
+            if capture_results is not None:
+                parsed = capture_results.get(target.bssid.upper())
+
+            if target.wpa3_info is None:
+                wpa3_info_dict = WPA3Detector.detect_wpa3_capability(
+                    target,
+                    use_cache=False,
+                    capfile=capfile if capture_results is None else None)
+                target.wpa3_info = WPA3Info.from_dict(wpa3_info_dict)
+            elif capfile and capture_results is None:
+                WPA3Detector.refresh_from_capture(target, capfile)
+
+            if parsed:
+                Airodump._apply_wpa3_capture_result(target, parsed)
 
     @staticmethod
     def filter_targets(targets5, skip_wps=False):

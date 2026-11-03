@@ -47,11 +47,11 @@ class Wifite:
 
         if os.name == 'nt':
             Color.pl('{!} {R}error: {O}wifite{R} must be run under a {O}*NIX{W}{R} like OS')
-            Configuration.exit_gracefully()
+            raise SystemExit(1)
         if os.getuid() != 0:
             Color.pl('{!} {R}error: {O}wifite{R} must be run as {O}root{W}')
             Color.pl('{!} {R}re-run with {O}sudo{W}')
-            Configuration.exit_gracefully()
+            raise SystemExit(1)
 
         from .tools.dependency import Dependency
         Dependency.run_dependency_check()
@@ -1226,7 +1226,7 @@ class Wifite:
         
         if not is_valid:
             Color.pl('{!} {R}Cannot proceed with invalid interface configuration{W}')
-            Configuration.exit_gracefully()
+            raise SystemExit(1)
 
         # Scan (no signal handler during scanning to allow proper target selection)
         s = Scanner()
@@ -1295,24 +1295,38 @@ def main():
     import signal as _signal
 
     _original_sigint = _signal.getsignal(_signal.SIGINT)
+    exit_code = 0
 
     try:
         wifite = Wifite()
         wifite.start()
+    except SystemExit as e:
+        if e.code is None:
+            exit_code = 0
+        elif isinstance(e.code, int):
+            exit_code = e.code
+        else:
+            print(e.code, file=sys.stderr)
+            exit_code = 1
     except (OSError, IOError) as e:
+        exit_code = 1
         Color.pl('\n{!} {R}System Error{W}: %s' % str(e))
         Color.pl('\n{!} {R}Exiting{W}\n')
     except subprocess.CalledProcessError as e:
+        exit_code = 1
         Color.pl('\n{!} {R}Command Failed{W}: %s' % str(e))
         Color.pl('\n{!} {R}Exiting{W}\n')
     except PermissionError as e:
+        exit_code = 1
         Color.pl('\n{!} {R}Permission Error{W}: %s' % str(e))
         Color.pl('\n{!} {R}Try running with sudo{W}\n')
     except KeyboardInterrupt:
+        exit_code = 130
         Color.pl('\n{!} {O}Interrupted, Shutting down...{W}')
         # Second Ctrl+C during cleanup will force-exit immediately
         _signal.signal(_signal.SIGINT, force_exit_handler)
     except Exception as e:
+        exit_code = 1
         if 'did not find any wireless interfaces' in str(e):
             Color.pl('\n{!} {R}Exiting{W}\n')
         else:
@@ -1382,8 +1396,7 @@ def main():
             from .util.logger import log_debug
             log_debug('Wifite', f'Exit thread error: {e}')
 
-        # Force exit regardless
-        sys.exit(0)
+        sys.exit(exit_code)
 
 
 if __name__ == '__main__':

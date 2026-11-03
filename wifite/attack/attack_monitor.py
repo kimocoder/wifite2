@@ -13,7 +13,9 @@ from ..config import Configuration
 from ..util.color import Color
 from ..tools.tshark import TsharkMonitor
 from ..util.process import Process
+import heapq
 import time
+from collections import OrderedDict, deque
 
 # TUI imports (optional)
 try:
@@ -28,6 +30,12 @@ class AttackMonitor:
     Wireless attack monitoring system.
     Detects deauth/disassoc frames and provides real-time visualization.
     """
+
+    TRACKING_TTL_SECONDS = 600
+    MAX_TRACKED_NETWORKS = 1000
+    MAX_TRACKED_ATTACKERS = 1000
+    PRUNE_INTERVAL_SECONDS = 60
+    REFRESH_INTERVAL_SECONDS = 0.25
 
     def __init__(self, tui_controller=None):
         """
@@ -49,18 +57,20 @@ class AttackMonitor:
         self.last_log_flush = time.time()
 
         # Attack tracking
-        # List of recent attack events (limited to last 100)
-        self.attack_events = []
+        self.attack_events = deque(maxlen=100)
 
         # Dictionary tracking networks under attack
         # Format: {bssid: {'essid': str, 'count': int, 'last_seen': float,
         #                  'first_seen': float, 'attack_types': {'deauth': int, 'disassoc': int}}}
-        self.networks_under_attack = {}
+        self.networks_under_attack = OrderedDict()
 
         # Dictionary tracking attacker MACs
         # Format: {mac: {'count': int, 'targets': set(), 'first_seen': float,
         #                'last_seen': float, 'attack_types': {'deauth': int, 'disassoc': int}}}
-        self.attacker_macs = {}
+        self.attacker_macs = OrderedDict()
+        self.last_prune = 0.0
+        self.last_statistics_update = 0.0
+        self.last_display_update = 0.0
 
         # Statistics dictionary
         self.statistics = {
@@ -208,17 +218,7 @@ class AttackMonitor:
             return None
 
     def track_attack(self, attack_event):
-        """
-        Track attack event and update statistics.
-
-        Updates networks_under_attack dictionary.
-        Updates attacker_macs dictionary.
-        Updates attack counters.
-        Adds event to attack_events list.
-
-        Args:
-            attack_event: Attack event dictionary
-        """
+        """Track an attack event and update bounded statistics state."""
         if not attack_event:
             return
 
@@ -227,7 +227,6 @@ class AttackMonitor:
         attack_type = attack_event['type']
         timestamp = attack_event['timestamp']
 
-        # Track network under attack
         if bssid not in self.networks_under_attack:
             self.networks_under_attack[bssid] = {
                 'essid': attack_event.get('essid', ''),
@@ -237,12 +236,11 @@ class AttackMonitor:
                 'attack_types': {'deauth': 0, 'disassoc': 0}
             }
 
-        # Update network statistics
         self.networks_under_attack[bssid]['count'] += 1
         self.networks_under_attack[bssid]['last_seen'] = timestamp
         self.networks_under_attack[bssid]['attack_types'][attack_type] += 1
+        self.networks_under_attack.move_to_end(bssid)
 
-        # Track attacker MAC
         if source_mac not in self.attacker_macs:
             self.attacker_macs[source_mac] = {
                 'count': 0,
@@ -252,26 +250,41 @@ class AttackMonitor:
                 'attack_types': {'deauth': 0, 'disassoc': 0}
             }
 
-        # Update attacker statistics
         self.attacker_macs[source_mac]['count'] += 1
         self.attacker_macs[source_mac]['targets'].add(bssid)
         self.attacker_macs[source_mac]['last_seen'] = timestamp
         self.attacker_macs[source_mac]['attack_types'][attack_type] += 1
+        self.attacker_macs.move_to_end(source_mac)
 
-        # Update global counters
         if attack_type == 'deauth':
             self.statistics['deauth_count'] += 1
         elif attack_type == 'disassoc':
             self.statistics['disassoc_count'] += 1
-
         self.statistics['total_attacks'] += 1
+        self.attack_events.append(attack_event)
+
+        current_time = time.time()
+        if (current_time - self.last_prune >= self.PRUNE_INTERVAL_SECONDS or
+                len(self.networks_under_attack) > self.MAX_TRACKED_NETWORKS or
+                len(self.attacker_macs) > self.MAX_TRACKED_ATTACKERS):
+            self._prune_tracking_state(current_time)
+
         self.statistics['unique_networks'] = len(self.networks_under_attack)
         self.statistics['unique_attackers'] = len(self.attacker_macs)
 
-        # Add to recent events list (limit to 100)
-        self.attack_events.append(attack_event)
-        if len(self.attack_events) > 100:
-            self.attack_events.pop(0)
+    def _prune_tracking_state(self, current_time):
+        self.last_prune = current_time
+        for mapping, max_size in (
+                (self.networks_under_attack, self.MAX_TRACKED_NETWORKS),
+                (self.attacker_macs, self.MAX_TRACKED_ATTACKERS)):
+            expired = [
+                key for key, value in mapping.items()
+                if current_time - value['last_seen'] > self.TRACKING_TTL_SECONDS
+            ]
+            for key in expired:
+                del mapping[key]
+            while len(mapping) > max_size:
+                mapping.popitem(last=False)
 
     def setup_logging(self):
         """
@@ -388,39 +401,31 @@ class AttackMonitor:
                 Color.pl('{!} {R}Error flushing log buffer:{W} %s' % str(e))
 
     def update_statistics(self):
-        """
-        Update statistics and TUI.
+        """Update duration and refresh TUI statistics at the configured rate."""
+        current_time = time.time()
+        if current_time - self.last_statistics_update < self.REFRESH_INTERVAL_SECONDS:
+            return
+        self.last_statistics_update = current_time
 
-        Calculates current statistics from tracking dictionaries.
-        Updates TUI view if available.
-        """
-        # Update duration
         if self.statistics['start_time']:
-            self.statistics['duration_seconds'] = int(time.time() - self.statistics['start_time'])
+            self.statistics['duration_seconds'] = int(current_time - self.statistics['start_time'])
 
-        # Update TUI if available
         if self.tui_view:
-            # Sort networks by attack count
-            sorted_networks = sorted(
+            top_networks = heapq.nlargest(
+                20,
                 self.networks_under_attack.items(),
-                key=lambda x: x[1]['count'],
-                reverse=True
-            )[:20]  # Top 20
-
-            # Sort attackers by attack count
-            sorted_attackers = sorted(
+                key=lambda item: item[1]['count'])
+            top_attackers = heapq.nlargest(
+                10,
                 self.attacker_macs.items(),
-                key=lambda x: x[1]['count'],
-                reverse=True
-            )[:10]  # Top 10
+                key=lambda item: item[1]['count'])
 
-            # Update TUI view
             self.tui_view.update_attack_statistics(
                 deauth_count=self.statistics['deauth_count'],
                 disassoc_count=self.statistics['disassoc_count'],
-                networks=dict(sorted_networks),
-                attackers=dict(sorted_attackers),
-                recent_events=self.attack_events
+                networks=dict(top_networks),
+                attackers=dict(top_attackers),
+                recent_events=list(self.attack_events)
             )
 
     def run(self):
@@ -562,9 +567,14 @@ class AttackMonitor:
         Shows attack counts, networks, attackers, and duration.
         Updates display on same line without clearing screen.
         """
+        current_time = time.time()
+        if current_time - self.last_display_update < self.REFRESH_INTERVAL_SECONDS:
+            return
+        self.last_display_update = current_time
+
         # Calculate duration
         if self.statistics['start_time']:
-            self.statistics['duration_seconds'] = int(time.time() - self.statistics['start_time'])
+            self.statistics['duration_seconds'] = int(current_time - self.statistics['start_time'])
 
         # Format duration as HH:MM:SS
         duration = self.statistics['duration_seconds']

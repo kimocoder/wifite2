@@ -1499,7 +1499,17 @@ class InterfaceManager:
             if current_mode == 'monitor':
                 log_debug('InterfaceManager', f'{interface} already in monitor mode')
                 return True
-            
+
+            # Broadcom FullMAC needs Nexmon firmware to expose monitor mode.
+            driver = InterfaceManager._get_interface_driver(interface)
+            if driver == 'brcmfmac':
+                from ..tools.nexmon import Nexmon
+                caps = Nexmon.probe(interface)
+                supported = bool(caps and caps.native_monitor_ready)
+                log_debug('InterfaceManager',
+                          f'{interface} monitor via Nexmon: {supported}')
+                return supported
+
             # Get PHY for this interface
             phy = InterfaceManager._get_interface_phy(interface)
             
@@ -1562,7 +1572,19 @@ class InterfaceManager:
                 if Configuration.verbose > 0:
                     Color.pl('{+} {G}%s already in monitor mode{W}' % interface)
                 return True
-            
+
+            # Broadcom FullMAC requires the guarded Nexmon lifecycle.
+            if InterfaceManager._get_interface_driver(interface) == 'brcmfmac':
+                from ..tools.nexmon import Nexmon
+                if os.geteuid() != 0:
+                    log_debug('InterfaceManager',
+                              f'Cannot live-test Nexmon monitor mode on {interface} without root')
+                    return False
+                success = Nexmon.self_test(interface)
+                log_debug('InterfaceManager',
+                          f'{interface} Nexmon monitor self-test: {success}')
+                return success
+
             # If mode detection failed, log it and default to managed
             if original_mode == 'unknown':
                 log_warning('InterfaceManager', f'Could not detect mode for {interface}, defaulting to managed')
@@ -1632,6 +1654,15 @@ class InterfaceManager:
         try:
             driver = InterfaceManager._get_interface_driver(interface)
             
+            # Broadcom FullMAC only injects when Nexmon firmware is loaded.
+            if driver == 'brcmfmac':
+                from ..tools.nexmon import Nexmon
+                caps = Nexmon.probe(interface)
+                supported = bool(caps and caps.injection)
+                log_debug('InterfaceManager',
+                          f'{interface} injection via Nexmon: {supported}')
+                return supported
+
             # Check against known problematic drivers
             if driver in InterfaceManager.NO_INJECTION_DRIVERS:
                 log_debug('InterfaceManager', f'{interface} does not support injection (known driver: {driver})')

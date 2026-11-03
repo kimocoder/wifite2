@@ -394,9 +394,25 @@ class Configuration:
             from ..util.logger import log_error
             log_error('Config', f'Error during interface cleanup: {e}', e)
 
+        # Tear down Nexmon monitor sessions before reporting interface state.
+        nexmon_restored = []
+        try:
+            from ..tools.nexmon import Nexmon
+            from ..util.logger import log_info, log_debug
+
+            nexmon_restored = Nexmon.cleanup_all()
+            if nexmon_restored:
+                log_info('Config', f'Restored {len(nexmon_restored)} Nexmon interface(s)')
+                log_debug('Config', f'Nexmon restored: {nexmon_restored}')
+        except Exception as e:
+            from ..util.logger import log_error
+            log_error('Config', f'Error during Nexmon cleanup: {e}', e)
+
         from ..tools.airmon import Airmon
         if cls.interface is not None and Airmon.base_interface is not None:
-            if not cls.daemon:
+            if nexmon_restored:
+                pass
+            elif not cls.daemon:
                 Color.pl('{!} {O}Note:{W} Leaving interface in Monitor Mode!')
                 Color.pl('{!} To disable Monitor Mode when finished: '
                          '{C}ip link set %s down && iw dev %s set type managed && ip link set %s up{W}'

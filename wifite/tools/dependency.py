@@ -173,6 +173,7 @@ class Dependency:
     CATEGORY_EVILTWIN = 'eviltwin'   # Hostapd, dnsmasq
     CATEGORY_WPA3 = 'wpa3'           # hcxdumptool, hcxpcapngtool (overlap)
     CATEGORY_WPASEC = 'wpasec'       # wlancap2wpasec
+    CATEGORY_NEXMON = 'nexmon'       # nexutil (patched Broadcom firmware)
 
     CATEGORY_LABELS = {
         CATEGORY_CORE:     'Core (required)',
@@ -183,6 +184,7 @@ class Dependency:
         CATEGORY_EVILTWIN: 'Evil Twin',
         CATEGORY_WPA3:     'WPA3',
         CATEGORY_WPASEC:   'WPA-SEC Upload',
+        CATEGORY_NEXMON:   'Nexmon (Broadcom)',
     }
 
     # --- Subclass enforcement ---
@@ -426,6 +428,7 @@ class Dependency:
         from .tshark import Tshark
         from .macchanger import Macchanger
         from .hashcat import Hashcat, HcxDumpTool, HcxPcapngTool
+        from .nexmon import Nexmon
 
         apps = [
             # Core
@@ -439,6 +442,11 @@ class Dependency:
             # Misc
             Macchanger,
         ]
+
+        # Nexmon is only meaningful on Broadcom FullMAC hardware; reporting
+        # nexutil as missing everywhere else would be noise.
+        if Nexmon.system_applicable():
+            apps.append(Nexmon)
 
         # Partition into present / missing-required / missing-optional
         missing_required = []
