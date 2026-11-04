@@ -1,4 +1,5 @@
 import base64
+import contextlib
 import struct
 import unittest
 from contextlib import contextmanager
@@ -142,6 +143,7 @@ class TestMonitorLifecycle(NexmonTestBase):
                       side_effect=lambda name: modes.get(name)), \
                 patch('wifite.tools.nexmon._read_phy', return_value='phy0'), \
                 patch('wifite.tools.nexmon._assert_safe_to_take_over'), \
+                patch('wifite.tools.nexmon._sweep_leaked_monitor', return_value=None), \
                 patch('wifite.tools.nexmon._select_monitor_name',
                       return_value='wlan0mon'), \
                 patch('wifite.tools.nexmon._is_up', return_value=False), \
@@ -286,6 +288,138 @@ class TestAirmonIntegration(NexmonTestBase):
             self.assertEqual(Airmon.stop('wlan0mon'), ('wlan0mon', 'wlan0mon'))
 
         stop.assert_called_once_with('wlan0mon')
+
+
+class TestLeakedMonitorSweep(NexmonTestBase):
+    def _sweep_mocks(self, deleted, ifindexes=None, station_up=False,
+                     monitor_phy='phy0', monitor_mode='monitor'):
+        if ifindexes is None:
+            ifindexes = {'wlan0': 3, 'wlan0mon': 42}
+        modes = {'wlan0': 'managed', 'wlan0mon': monitor_mode}
+        return [
+            patch('wifite.tools.nexmon._ifindex',
+                  side_effect=lambda n: ifindexes.get(n)),
+            patch('wifite.tools.nexmon._read_phy', return_value=monitor_phy),
+            patch('wifite.tools.nexmon._interface_mode',
+                  side_effect=lambda n: modes.get(n)),
+            patch('wifite.tools.nexmon._is_up', return_value=station_up),
+            patch('wifite.tools.nexmon._delete_interface',
+                  side_effect=lambda n: deleted.append(n) or True),
+        ]
+
+    def test_sweep_removes_leaked_monitor(self):
+        deleted = []
+        with contextlib.ExitStack() as stack:
+            for m in self._sweep_mocks(deleted, station_up=False):
+                stack.enter_context(m)
+            self.assertEqual(nexmon._sweep_leaked_monitor('wlan0', 'phy0'), 'wlan0mon')
+        self.assertEqual(deleted, ['wlan0mon'])
+
+    def test_sweep_keeps_monitor_when_station_is_up(self):
+        deleted = []
+        with contextlib.ExitStack() as stack:
+            for m in self._sweep_mocks(deleted, station_up=True):
+                stack.enter_context(m)
+            self.assertIsNone(nexmon._sweep_leaked_monitor('wlan0', 'phy0'))
+        self.assertEqual(deleted, [])
+
+    def test_sweep_keeps_monitor_from_live_session(self):
+        session = SimpleNamespace(
+            station='wlan0', monitor='wlan0mon', owned=True, active=True)
+        nexmon._register_session(session)
+        deleted = []
+        with contextlib.ExitStack() as stack:
+            for m in self._sweep_mocks(deleted, station_up=False):
+                stack.enter_context(m)
+            self.assertIsNone(nexmon._sweep_leaked_monitor('wlan0', 'phy0'))
+        self.assertEqual(deleted, [])
+
+    def test_sweep_ignores_monitor_on_other_phy(self):
+        deleted = []
+        with contextlib.ExitStack() as stack:
+            for m in self._sweep_mocks(deleted, station_up=False,
+                                       monitor_phy='phy9'):
+                stack.enter_context(m)
+            self.assertIsNone(nexmon._sweep_leaked_monitor('wlan0', 'phy0'))
+        self.assertEqual(deleted, [])
+
+    def test_sweep_ignores_non_monitor_interface(self):
+        deleted = []
+        with contextlib.ExitStack() as stack:
+            for m in self._sweep_mocks(deleted, station_up=False,
+                                       monitor_mode='managed'):
+                stack.enter_context(m)
+            self.assertIsNone(nexmon._sweep_leaked_monitor('wlan0', 'phy0'))
+        self.assertEqual(deleted, [])
+
+    def test_sweep_ignores_missing_interface(self):
+        deleted = []
+        with contextlib.ExitStack() as stack:
+            for m in self._sweep_mocks(deleted, station_up=False,
+                                       ifindexes={'wlan0': 3}):
+                stack.enter_context(m)
+            self.assertIsNone(nexmon._sweep_leaked_monitor('wlan0', 'phy0'))
+        self.assertEqual(deleted, [])
+
+    def test_start_monitor_reuses_swept_name(self):
+        ifindexes = {'wlan0': 3, 'wlan0mon': 42}
+        deleted = []
+
+        def fake_delete(name):
+            deleted.append(name)
+            ifindexes.pop(name, None)
+            return True
+
+        modes = {'wlan0': 'managed', 'wlan0mon': 'monitor'}
+
+        with patch('wifite.tools.nexmon.probe', return_value=make_caps()), \
+                patch('wifite.tools.nexmon._interface_mode',
+                      side_effect=lambda n: modes.get(n)), \
+                patch('wifite.tools.nexmon._read_phy', return_value='phy0'), \
+                patch('wifite.tools.nexmon._assert_safe_to_take_over'), \
+                patch('wifite.tools.nexmon._is_up', return_value=False), \
+                patch('wifite.tools.nexmon._is_associated', return_value=False), \
+                patch('wifite.tools.nexmon._power_save_state', return_value=False), \
+                patch('wifite.tools.nexmon._create_monitor',
+                      side_effect=lambda station, phy, monitor:
+                      ifindexes.__setitem__(monitor, 43)), \
+                patch('wifite.tools.nexmon._ifindex',
+                      side_effect=lambda n: ifindexes.get(n)), \
+                patch('wifite.tools.nexmon._run_ok', return_value=True), \
+                patch('wifite.tools.nexmon._radiotap_monitor_mode', return_value=2), \
+                patch('wifite.tools.nexmon._delete_interface', side_effect=fake_delete):
+            monitor = nexmon.start_monitor('wlan0')
+
+        self.assertEqual(monitor, 'wlan0mon')
+        self.assertEqual(deleted, ['wlan0mon'])
+        self.assertEqual(ifindexes.get('wlan0mon'), 43)
+        self.assertTrue(Nexmon.has_session('wlan0mon'))
+        self.assertTrue(Nexmon.stop('wlan0'))
+        self.assertFalse(Nexmon.has_session('wlan0'))
+        self.assertFalse(Nexmon.has_session('wlan0mon'))
+
+
+class TestRadiotapMonitorMode(NexmonTestBase):
+    def test_radiotap_monitor_mode_parses_monitor_label(self):
+        for text, expected in (
+            ('monitor: 2\n', 2),
+            ('monitor: 0\n', 0),
+            ('monitor: -1\n', -1),
+            ('2\n', 2),
+            ('0\n', 0),
+        ):
+            result = SimpleNamespace(returncode=0, stdout=text, stderr='')
+            with patch('wifite.tools.nexmon._run', return_value=result):
+                self.assertEqual(nexmon._radiotap_monitor_mode('wlan0mon'), expected)
+
+    def test_radiotap_monitor_mode_handles_failure(self):
+        result = SimpleNamespace(returncode=1, stdout='', stderr='error')
+        with patch('wifite.tools.nexmon._run', return_value=result):
+            self.assertIsNone(nexmon._radiotap_monitor_mode('wlan0mon'))
+
+        result = SimpleNamespace(returncode=0, stdout='invalid string', stderr='')
+        with patch('wifite.tools.nexmon._run', return_value=result):
+            self.assertIsNone(nexmon._radiotap_monitor_mode('wlan0mon'))
 
 
 if __name__ == '__main__':

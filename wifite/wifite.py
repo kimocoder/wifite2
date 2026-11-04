@@ -292,6 +292,26 @@ class Wifite:
             
             valid_interfaces.append(iface_info)
         
+        # Interfaces sharing a PHY are one physical radio (typically a station
+        # plus the monitor wifite created from it), not two attack
+        # interfaces. Keep one candidate per PHY, preferring the interface
+        # already in monitor mode.
+        by_phy = {}
+        for iface_info in valid_interfaces:
+            current = by_phy.get(iface_info.phy)
+            if current is None or (iface_info.current_mode == 'monitor'
+                                   and current.current_mode != 'monitor'):
+                by_phy[iface_info.phy] = iface_info
+        deduped = list(by_phy.values())
+        dropped_names = [i.name for i in valid_interfaces
+                         if i.name not in {d.name for d in deduped}]
+        if dropped_names:
+            Color.pl('{!} {O}%s: same physical device as another interface; '
+                     'counting one monitor-capable interface per device{W}'
+                     % ', '.join(dropped_names))
+            log_info('Wifite', f'Same-PHY duplicate candidates ignored: {dropped_names}')
+        valid_interfaces = deduped
+        
         # Update available interfaces to only include valid ones
         self.available_interfaces = valid_interfaces
         

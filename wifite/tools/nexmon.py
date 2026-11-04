@@ -19,6 +19,12 @@ associated, carries a default route, is managed by NetworkManager, is in an
 AP/P2P/mesh/adhoc mode, or shares a PHY with such an interface.  The firmware
 advertises injection but this module makes no claim that injection has been
 verified over the air.
+
+Sessions are tracked in process memory only.  If a wifite process is killed,
+its monitor survives; the next ``start_monitor`` call detects that leaked
+monitor (``{station}mon`` in monitor mode on the same PHY with the station
+down and no live session) and removes it so the preferred name is reused.  A
+monitor the user configured while the station is up is left untouched.
 """
 
 import base64
@@ -314,14 +320,18 @@ def _radiotap_monitor_mode(interface: str) -> Optional[int]:
     if result is None or result.returncode != 0:
         return None
     match = re.search(r'monitor:\s*(-?\d+)', result.stdout or '')
-    if not match:
-        match = re.search(r'-?\d+', result.stdout or '')
-    if not match:
-        return None
-    try:
-        return int(match.group(0))
-    except ValueError:
-        return None
+    if match:
+        try:
+            return int(match.group(1))
+        except ValueError:
+            return None
+    match = re.search(r'-?\d+', result.stdout or '')
+    if match:
+        try:
+            return int(match.group(0))
+        except ValueError:
+            return None
+    return None
 
 
 def _delete_interface(interface: str) -> bool:
@@ -495,6 +505,35 @@ def _assert_safe_to_take_over(station: str, phy: str) -> None:
             raise NexmonRefused(f'{sibling} carries a default route')
 
 
+def _sweep_leaked_monitor(station: str, phy: str) -> Optional[str]:
+    """Remove a monitor leaked by a previously killed wifite process.
+
+    While a Nexmon session is active the station netdev is held down, so a
+    ``{station}mon`` interface in monitor mode on ``phy`` with the station
+    down and no registered session is the fingerprint of a lifecycle whose
+    owning process died.  Freeing the name lets the next run reuse it; the
+    station's original power-save state cannot be recovered and is left
+    as-is.  A monitor the user configured while the station is up, or one
+    owned by a live session, is left untouched.
+    """
+    name = f'{station}mon'
+    if len(name.encode('utf-8')) > _MAX_INTERFACE_NAME:
+        return None
+    if _lookup_session(name) is not None:
+        return None
+    if _ifindex(name) is None:
+        return None
+    if _read_phy(name) != phy:
+        return None
+    if _interface_mode(name) != 'monitor':
+        return None
+    if _is_up(station) is not False:
+        return None
+    if not _delete_interface(name):
+        return None
+    return name
+
+
 def _select_monitor_name(station: str) -> str:
     candidates = [f'{station}mon'] + [f'mon{i}' for i in range(10)]
     for name in candidates:
@@ -608,6 +647,11 @@ def start_monitor(interface: str) -> str:
         raise NexmonRefused(f'could not determine the PHY of {interface}')
 
     _assert_safe_to_take_over(interface, phy)
+
+    leaked = _sweep_leaked_monitor(interface, phy)
+    if leaked is not None:
+        log_warning('Nexmon',
+                    f'Removed monitor interface {leaked} leaked by a previous run')
 
     monitor = _select_monitor_name(interface)
     station_was_up = _is_up(interface)
