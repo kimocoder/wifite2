@@ -8,7 +8,8 @@ Nexmon is a community patched ``brcmfmac`` firmware shipped with the
 drivers, or assumes that every Broadcom adapter is patched: every capability
 decision comes from the firmware's own capability mask, read with bounded
 read-only ``nexutil`` calls (base64 output first, hexdump fallback for
-nexutil builds without ``-R``).
+nexutil builds without ``-R``; the firmware string comes from ``nexutil``
+revinfo, not the kernel driver version).
 
 Detection is fail-closed.  A missing tool, a nonzero exit status, a timeout,
 malformed base64, a payload that is not exactly four bytes, an unknown driver,
@@ -232,9 +233,18 @@ def _read_driver(interface: str) -> str:
     return 'unknown'
 
 
-def _firmware_version() -> Optional[str]:
-    version = _read_sysfs('/sys/module/brcmfmac/version')
-    return version or None
+def _firmware_version(interface: str) -> Optional[str]:
+    """Firmware version reported by the chip via ``nexutil`` revinfo.
+
+    This is the real firmware build string (e.g. ``7.45.265 ... nexmon.org
+    ...``), not the kernel driver version exposed under ``/sys/module``.
+    """
+    result = _run([_NEXUTIL, '-I', interface, '-V'], timeout=_NEXUTIL_TIMEOUT)
+    if result is None or result.returncode != 0:
+        return None
+    match = re.search(r'^firmware\s+(\S.*?)\s*$',
+                      result.stdout or '', re.MULTILINE)
+    return match.group(1) if match else None
 
 
 def _interface_mode(interface: str) -> Optional[str]:
@@ -432,18 +442,18 @@ def _probe_uncached(interface: str) -> Optional[NexmonCapabilities]:
         interface=interface,
         driver=driver,
         mask=mask,
-        firmware=_firmware_version(),
+        firmware=_firmware_version(interface),
     )
 
 
 def probe(interface: str, use_cache: bool = True) -> Optional[NexmonCapabilities]:
     """Return advertised Nexmon capabilities, or None.
 
-    This performs at most two bounded read-only ``nexutil`` calls (base64
-    output first, hexdump fallback) and never changes radio state.  Negative
-    results are cached briefly as well so a system with ``nexutil``
-    installed but stock firmware is not re-probed for every capability
-    query.
+    This performs at most three bounded read-only ``nexutil`` calls
+    (capability mask via base64 or hexdump fallback, plus firmware
+    revinfo) and never changes radio state.  Negative results are cached
+    briefly as well so a system with ``nexutil`` installed but stock
+    firmware is not re-probed for every capability query.
     """
     try:
         validate_interface_name(interface)

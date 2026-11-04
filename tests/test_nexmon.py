@@ -133,6 +133,41 @@ class TestCapabilityDetection(NexmonTestBase):
                 patch('wifite.tools.nexmon._query_capability_mask', return_value=0):
             self.assertIsNone(nexmon.probe('wlan0'))
 
+    def test_firmware_version_parses_revinfo(self):
+        revinfo = (
+            'firmware 7.45.265 (28bca26 CY nexmon.org: 7a89f-dirty-4) FWID 01-b677b91b\n'
+            'vendorid 0x14e4\n'
+            'chipnum 0x4345\n'
+            'platform             | firmware                         | vendorid\n'
+        )
+        result = SimpleNamespace(returncode=0, stdout=revinfo, stderr='')
+        with patch('wifite.tools.nexmon._run', return_value=result):
+            self.assertEqual(
+                nexmon._firmware_version('wlan0'),
+                '7.45.265 (28bca26 CY nexmon.org: 7a89f-dirty-4) FWID 01-b677b91b',
+            )
+
+    def test_firmware_version_fails_closed(self):
+        for stdout in ('', 'vendorid 0x14e4\n', 'firmware\n'):
+            result = SimpleNamespace(returncode=0, stdout=stdout, stderr='')
+            with patch('wifite.tools.nexmon._run', return_value=result):
+                self.assertIsNone(nexmon._firmware_version('wlan0'), stdout)
+        result = SimpleNamespace(returncode=1, stdout='', stderr='denied')
+        with patch('wifite.tools.nexmon._run', return_value=result):
+            self.assertIsNone(nexmon._firmware_version('wlan0'))
+        with patch('wifite.tools.nexmon._run', return_value=None):
+            self.assertIsNone(nexmon._firmware_version('wlan0'))
+
+    def test_probe_reports_firmware_from_revinfo(self):
+        with patch('wifite.tools.nexmon._read_driver', return_value='brcmfmac'), \
+                patch('wifite.tools.nexmon._query_capability_mask', return_value=FULL_CAPS), \
+                patch('wifite.tools.nexmon._firmware_version',
+                      return_value='7.45.265 (28bca26 CY nexmon.org: 7a89f-dirty-4)'):
+            caps = nexmon.probe('wlan0', use_cache=False)
+        self.assertEqual(caps.firmware,
+                         '7.45.265 (28bca26 CY nexmon.org: 7a89f-dirty-4)')
+        self.assertIn('7.45.265', caps.describe())
+
     def test_probe_rejects_invalid_interface_name(self):
         self.assertIsNone(nexmon.probe('bad name!'))
 
