@@ -1,10 +1,11 @@
+import signal
 import subprocess
 import unittest
 from contextlib import ExitStack
 from unittest.mock import patch
 
 from wifite.config import Configuration
-from wifite.wifite import main
+from wifite.wifite import emergency_exit, main, sigterm_handler
 
 
 class TestExitStatus(unittest.TestCase):
@@ -37,6 +38,29 @@ class TestExitStatus(unittest.TestCase):
 
     def test_non_integer_system_exit_is_failure(self):
         self.assertEqual(self.invoke_main(constructor_error=SystemExit('invalid arguments')), 1)
+
+    def test_sigterm_handler_raises_keyboard_interrupt(self):
+        with self.assertRaises(KeyboardInterrupt):
+            sigterm_handler(signal.SIGTERM, None)
+
+    def test_main_installs_sigterm_handler(self):
+        with ExitStack() as stack:
+            stack.enter_context(patch('wifite.wifite.Wifite'))
+            stack.enter_context(patch('wifite.wifite.Configuration.exit_gracefully'))
+            stack.enter_context(patch.object(Configuration, 'interface_manager', None, create=True))
+            stack.enter_context(patch('wifite.util.process.ProcessManager'))
+            stack.enter_context(patch('subprocess.run'))
+            signal_mock = stack.enter_context(patch('signal.signal'))
+
+            with self.assertRaises(SystemExit):
+                main()
+
+        sigterm_installs = [args[1] for args, _ in signal_mock.call_args_list
+                            if len(args) >= 2 and args[0] == signal.SIGTERM]
+        # First install routes SIGTERM through the Ctrl+C cleanup path;
+        # the finally phase later escalates it to an emergency hard exit.
+        self.assertIs(sigterm_installs[0], sigterm_handler)
+        self.assertIn(emergency_exit, sigterm_installs)
 
     def test_failures_exit_nonzero(self):
         failures = [

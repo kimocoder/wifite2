@@ -1296,6 +1296,16 @@ class Wifite:
 
 
 
+def sigterm_handler(signum, frame):
+    """Treat SIGTERM like Ctrl+C so the shutdown cleanup runs on ``kill``.
+
+    Without this, SIGTERM's default disposition terminates the process
+    immediately and the ``finally`` cleanup in ``main()`` (interface
+    teardown, Nexmon monitor removal) never executes.
+    """
+    raise KeyboardInterrupt
+
+
 def force_exit_handler(signum, frame):
     """Force exit on multiple Ctrl+C during cleanup"""
     import sys
@@ -1315,6 +1325,8 @@ def main():
     import signal as _signal
 
     _original_sigint = _signal.getsignal(_signal.SIGINT)
+    # SIGTERM (kill, systemd stop) must run the same cleanup as Ctrl+C.
+    _signal.signal(_signal.SIGTERM, sigterm_handler)
     exit_code = 0
 
     try:
@@ -1343,8 +1355,9 @@ def main():
     except KeyboardInterrupt:
         exit_code = 130
         Color.pl('\n{!} {O}Interrupted, Shutting down...{W}')
-        # Second Ctrl+C during cleanup will force-exit immediately
+        # Second Ctrl+C or SIGTERM during cleanup will force-exit immediately
         _signal.signal(_signal.SIGINT, force_exit_handler)
+        _signal.signal(_signal.SIGTERM, force_exit_handler)
     except Exception as e:
         exit_code = 1
         if 'did not find any wireless interfaces' in str(e):
@@ -1357,6 +1370,7 @@ def main():
     finally:
         # Use the module-level emergency_exit during final cleanup phase
         _signal.signal(_signal.SIGINT, emergency_exit)
+        _signal.signal(_signal.SIGTERM, emergency_exit)
 
         # Quick cleanup with short timeouts
         try:

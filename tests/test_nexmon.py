@@ -239,6 +239,7 @@ class TestMonitorLifecycle(NexmonTestBase):
                 patch('wifite.tools.nexmon._read_phy', return_value='phy0'), \
                 patch('wifite.tools.nexmon._assert_safe_to_take_over'), \
                 patch('wifite.tools.nexmon._sweep_leaked_monitor', return_value=None), \
+                patch('wifite.tools.nexmon._is_associated', return_value=False), \
                 patch('wifite.tools.nexmon._select_monitor_name',
                       return_value='wlan0mon'), \
                 patch('wifite.tools.nexmon._is_up', return_value=False), \
