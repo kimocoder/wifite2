@@ -6,8 +6,9 @@
 Nexmon is a community patched ``brcmfmac`` firmware shipped with the
 ``nexutil`` userspace tool.  This module never installs firmware, replaces
 drivers, or assumes that every Broadcom adapter is patched: every capability
-decision comes from the firmware's own capability mask, read with a bounded
-read-only ``nexutil`` call.
+decision comes from the firmware's own capability mask, read with bounded
+read-only ``nexutil`` calls (base64 output first, hexdump fallback for
+nexutil builds without ``-R``).
 
 Detection is fail-closed.  A missing tool, a nonzero exit status, a timeout,
 malformed base64, a payload that is not exactly four bytes, an unknown driver,
@@ -51,6 +52,11 @@ CAPABILITY_INJECTION = 0x4
 # nexutil custom command used to read the capability mask.
 CAPABILITY_COMMAND = 400
 CAPABILITY_LENGTH = 4
+
+# nexutil prints data bytes as "%02x " in 16 fixed columns followed by an
+# ASCII column (utilities/nexutil/nexutil.c, hexdump()).
+_HEXDUMP_LINE_RE = re.compile(r'^0x[0-9a-fA-F]+:')
+_HEXDUMP_COLS = 16
 
 # Radiotap monitor mode requested from the firmware after interface creation.
 RADIOTAP_MONITOR_MODE = 2
@@ -345,30 +351,72 @@ def _delete_interface(interface: str) -> bool:
 # ---------------------------------------------------------------------------
 
 
-def _query_capability_mask(interface: str) -> Optional[int]:
-    result = _run(
-        [
-            _NEXUTIL,
-            '-I',
-            interface,
-            '-g',
-            str(CAPABILITY_COMMAND),
-            '-l',
-            str(CAPABILITY_LENGTH),
-            '-R',
-        ],
-        timeout=_NEXUTIL_TIMEOUT,
-    )
-    if result is None or result.returncode != 0:
-        return None
-    payload = (result.stdout or '').strip()
-    if not payload:
-        return None
+def _decode_base64_mask(payload: str) -> Optional[int]:
     try:
         raw = base64.b64decode(payload, validate=True)
     except (binascii.Error, ValueError):
         return None
     if len(raw) != CAPABILITY_LENGTH:
+        return None
+    return int.from_bytes(raw, 'little')
+
+
+def _parse_hexdump(text: str) -> Optional[bytes]:
+    """Parse the fixed-column hexdump nexutil prints without ``-R``.
+
+    Every nexutil generation (upstream and forks) shares this format: data
+    bytes as ``%02x `` in 16 fixed columns, then an ASCII column.  Only the
+    byte columns are read, so letters in the ASCII column cannot be mistaken
+    for data.
+    """
+    data = bytearray()
+    for line in text.splitlines():
+        match = _HEXDUMP_LINE_RE.match(line)
+        if match is None:
+            continue
+        fields = line[match.end():match.end() + 1 + 3 * _HEXDUMP_COLS][1:]
+        for i in range(_HEXDUMP_COLS):
+            field = fields[i * 3:i * 3 + 3]
+            if len(field) < 2 or not field[0:2].strip():
+                break
+            try:
+                data.append(int(field[0:2], 16))
+            except ValueError:
+                break
+    return bytes(data) if data else None
+
+
+def _query_capability_mask(interface: str) -> Optional[int]:
+    """Read the firmware capability mask, or None on any ambiguity.
+
+    Prefers the base64 payload printed by ``nexutil -R``.  Builds without
+    ``-R`` (older upstream nexutil) reject the option or print a hexdump
+    instead, so the mask is re-read without ``-R`` and parsed from the
+    hexdump columns.  Anything undecodable fails closed.
+    """
+    base_cmd = [
+        _NEXUTIL,
+        '-I',
+        interface,
+        '-g',
+        str(CAPABILITY_COMMAND),
+        '-l',
+        str(CAPABILITY_LENGTH),
+    ]
+
+    result = _run(base_cmd + ['-R'], timeout=_NEXUTIL_TIMEOUT)
+    if result is None:
+        return None
+    if result.returncode == 0:
+        mask = _decode_base64_mask((result.stdout or '').strip())
+        if mask is not None:
+            return mask
+
+    result = _run(base_cmd, timeout=_NEXUTIL_TIMEOUT)
+    if result is None or result.returncode != 0:
+        return None
+    raw = _parse_hexdump(result.stdout or '')
+    if raw is None or len(raw) != CAPABILITY_LENGTH:
         return None
     return int.from_bytes(raw, 'little')
 
@@ -391,10 +439,11 @@ def _probe_uncached(interface: str) -> Optional[NexmonCapabilities]:
 def probe(interface: str, use_cache: bool = True) -> Optional[NexmonCapabilities]:
     """Return advertised Nexmon capabilities, or None.
 
-    This performs at most one bounded read-only ``nexutil`` call and never
-    changes radio state.  Negative results are cached briefly as well so a
-    system with ``nexutil`` installed but stock firmware is not re-probed for
-    every capability query.
+    This performs at most two bounded read-only ``nexutil`` calls (base64
+    output first, hexdump fallback) and never changes radio state.  Negative
+    results are cached briefly as well so a system with ``nexutil``
+    installed but stock firmware is not re-probed for every capability
+    query.
     """
     try:
         validate_interface_name(interface)

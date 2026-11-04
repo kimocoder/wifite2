@@ -64,6 +64,66 @@ class TestCapabilityDetection(NexmonTestBase):
         with patch('wifite.tools.nexmon._run', return_value=result):
             self.assertIsNone(nexmon._query_capability_mask('wlan0'))
 
+    def _hexdump_line(self, offset, *bytes_):
+        fields = ''.join(f'{b:02x} ' for b in bytes_)[:3 * 16]
+        fields += '   ' * (16 - len(bytes_))
+        ascii_column = ''.join(chr(b) if 32 <= b < 127 else '.' for b in bytes_)
+        ascii_column += ' ' * (16 - len(ascii_column))
+        return f'0x{offset:06x}: {fields}{ascii_column}'
+
+    def test_parse_hexdump_decodes_nexutil_format(self):
+        line = self._hexdump_line(0, 7, 0, 0, 0)
+        self.assertEqual(
+            nexmon._parse_hexdump(line + '\n'),
+            b'\x07\x00\x00\x00',
+        )
+
+    def test_parse_hexdump_ignores_ascii_column(self):
+        # ASCII letters must not be mistaken for hex data bytes.
+        line = self._hexdump_line(0, 0x61, 0x62, 0, 0)
+        self.assertEqual(
+            nexmon._parse_hexdump(line + '\n'),
+            b'\x61\x62\x00\x00',
+        )
+
+    def test_parse_hexdump_spans_multiple_lines(self):
+        text = (
+            self._hexdump_line(0, *range(16)) + '\n'
+            + self._hexdump_line(16, 0x07, 0, 0, 0) + '\n'
+        )
+        self.assertEqual(len(nexmon._parse_hexdump(text)), 20)
+
+    def test_parse_hexdump_rejects_garbage(self):
+        self.assertIsNone(nexmon._parse_hexdump('invalid string'))
+        self.assertIsNone(nexmon._parse_hexdump(''))
+
+    def test_query_capability_mask_falls_back_to_hexdump(self):
+        hexdump = self._hexdump_line(0, 7, 0, 0, 0) + '\n'
+        results = [
+            SimpleNamespace(returncode=0, stdout='not-base64!!', stderr=''),
+            SimpleNamespace(returncode=0, stdout=hexdump, stderr=''),
+        ]
+        with patch('wifite.tools.nexmon._run', side_effect=results) as run:
+            self.assertEqual(nexmon._query_capability_mask('wlan0'), FULL_CAPS)
+        self.assertEqual(run.call_count, 2)
+        self.assertIn('-R', run.call_args_list[0][0][0])
+        self.assertNotIn('-R', run.call_args_list[1][0][0])
+
+    def test_query_capability_mask_falls_back_when_r_option_rejected(self):
+        hexdump = self._hexdump_line(0, 7, 0, 0, 0) + '\n'
+        results = [
+            SimpleNamespace(returncode=1, stdout='', stderr='unrecognized option'),
+            SimpleNamespace(returncode=0, stdout=hexdump, stderr=''),
+        ]
+        with patch('wifite.tools.nexmon._run', side_effect=results) as run:
+            self.assertEqual(nexmon._query_capability_mask('wlan0'), FULL_CAPS)
+        self.assertEqual(run.call_count, 2)
+
+    def test_query_capability_mask_skips_fallback_when_tool_missing(self):
+        with patch('wifite.tools.nexmon._run', return_value=None) as run:
+            self.assertIsNone(nexmon._query_capability_mask('wlan0'))
+        self.assertEqual(run.call_count, 1)
+
     def test_probe_ignores_non_brcmfmac_driver(self):
         with patch('wifite.tools.nexmon._read_driver', return_value='iwlwifi'):
             self.assertIsNone(nexmon.probe('wlan0'))
