@@ -64,6 +64,20 @@ class Target:
         else:
             return colored_str + ' ' * diff
 
+    @property
+    def band(self):
+        """Return '2.4', '5' or '6' when the frequency is known, else None."""
+        freq = getattr(self, 'frequency', None)
+        if not freq:
+            return None
+        if 2400 <= freq < 2500:
+            return '2.4'
+        if 5150 <= freq < 5950:
+            return '5'
+        if 5950 <= freq <= 7125:
+            return '6'
+        return None
+
     def __init__(self, fields):
         """
             Initializes & stores target info based on fields.
@@ -88,6 +102,11 @@ class Target:
         """
         self.manufacturer = None
         self.wps = WPSState.NONE
+        # Frequency is only known on the native-scanner path; airodump's CSV
+        # has no frequency column. Used to disambiguate 6 GHz channel numbers.
+        self.frequency = None
+        # WPA-FT (802.11r) if the RSN AKM suites advertise FT-PSK/FT-802.1X.
+        self.wpa_ft = False
         bssid_raw = fields[0].strip().upper()
         # Validate MAC address format (XX:XX:XX:XX:XX:XX)
         if not re.match(r'^([0-9A-F]{2}:){5}[0-9A-F]{2}$', bssid_raw):

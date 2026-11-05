@@ -75,7 +75,7 @@ class HcxDumpTool(Dependency):
 
     def __init__(self, interface=None, channel=None, target_bssid=None,
                  output_file=None, enable_deauth=True, pmf_required=False,
-                 manage_interface=False):
+                 manage_interface=False, band=None):
         """
         Initialize hcxdumptool wrapper.
 
@@ -89,6 +89,8 @@ class HcxDumpTool(Dependency):
             manage_interface: Hand a wifite-armed monitor interface back to
                 managed mode so hcxdumptool can own the monitor lifecycle.
                 Only use when no other tool shares the interface.
+            band: '2.4', '5' or '6' to disambiguate the channel number
+                (6 GHz reuses 1-233); None keeps the historical heuristic.
         """
         Configuration.initialize()
 
@@ -117,6 +119,7 @@ class HcxDumpTool(Dependency):
         self.enable_deauth = enable_deauth and not pmf_required
         self.pmf_required = pmf_required
         self.manage_interface = manage_interface
+        self.band = band
         # Interfaces handed back to managed mode for hcxdumptool; re-armed
         # on __exit__ so the rest of wifite keeps its monitor interface.
         self._monitor_restore = []
@@ -182,7 +185,7 @@ class HcxDumpTool(Dependency):
 
         # Channel needs an explicit band suffix: 1a (2.4 GHz), 36b (5 GHz), 5c (6 GHz)
         if self.channel:
-            command.extend(['-c', channel_spec(self.channel)])
+            command.extend(['-c', channel_spec(self.channel, band=self.band)])
 
         # Note: hcxdumptool 7.x removed --filterlist_ap option
         # BSSID filtering must be done post-capture with hcxpcapngtool
@@ -482,6 +485,19 @@ class HcxDumpToolPassive:
         if os.path.exists(self.output_file):
             return os.path.getsize(self.output_file)
         return 0
+
+    def get_failure_reason(self, timeout: int = 2) -> str:
+        """Return the last error line from a capture that exited early."""
+        if not self.proc:
+            return ''
+        try:
+            stdout, stderr = self.proc.get_output(timeout=timeout)
+        except Exception:
+            return ''
+        text = (stderr or '').strip() or (stdout or '').strip()
+        if not text:
+            return ''
+        return text.splitlines()[-1].strip()
 
 
 class HcxPcapngTool(Dependency):

@@ -10,6 +10,7 @@ Dragonblood vulnerability indicators.
 """
 
 import os
+import re
 from typing import Dict, List, Any, Optional
 
 
@@ -60,12 +61,24 @@ class WPA3Detector:
         """
         # Return cached results if available and caching is enabled
         if use_cache and hasattr(target, 'wpa3_info') and target.wpa3_info is not None:
+            if getattr(target.wpa3_info, 'wpa_ft', False):
+                target.wpa_ft = True
             return target.wpa3_info.to_dict()
 
         full_enc = getattr(target, 'full_encryption_string', '')
         full_auth = getattr(target, 'full_authentication_string', '')
         primary_enc = getattr(target, 'primary_encryption', '')
         primary_auth = getattr(target, 'primary_authentication', '')
+
+        # FT (802.11r) is advertised in the RSN AKM suites, which airodump's
+        # CSV does not expose; it can only be established from a capture.
+        bssid = getattr(target, 'bssid', None)
+        parsed = None
+        if capfile and bssid and os.path.isfile(capfile):
+            parsed = WPA3Detector._parse_rsn_from_capture(capfile, bssid)
+            if parsed is not None:
+                target.wpa_ft = bool(parsed.get('ft'))
+        wpa_ft = bool(getattr(target, 'wpa_ft', False))
 
         # Heuristic pass from airodump's CSV fields
         has_wpa3 = ('WPA3' in full_enc or primary_enc == 'WPA3' or
@@ -80,6 +93,7 @@ class WPA3Detector:
                 'is_transition': False,
                 'pmf_status': WPA3Detector.PMF_DISABLED,
                 'sae_groups': [],
+                'wpa_ft': wpa_ft,
                 'dragonblood_vulnerable': False
             }
 
@@ -92,16 +106,13 @@ class WPA3Detector:
             pmf_status = WPA3Detector.PMF_REQUIRED
         sae_groups: List[int] = [WPA3Detector.DEFAULT_SAE_GROUP]
 
-        # Precise layer: parse real RSN/SAE data from a capture if we have one
-        bssid = getattr(target, 'bssid', None)
-        if capfile and bssid and os.path.isfile(capfile):
-            parsed = WPA3Detector._parse_rsn_from_capture(capfile, bssid)
-            if parsed:
-                if parsed.get('pmf_status'):
-                    pmf_status = parsed['pmf_status']
-                observed = parsed.get('sae_groups') or []
-                if observed:
-                    sae_groups = observed
+        # Precise layer: apply the RSN/SAE data parsed above.
+        if parsed:
+            if parsed.get('pmf_status'):
+                pmf_status = parsed['pmf_status']
+            observed = parsed.get('sae_groups') or []
+            if observed:
+                sae_groups = observed
 
         dragonblood_vulnerable = any(
             g in WPA3Detector.VULNERABLE_SAE_GROUPS for g in sae_groups)
@@ -112,6 +123,7 @@ class WPA3Detector:
             'is_transition': is_transition,
             'pmf_status': pmf_status,
             'sae_groups': sae_groups,
+            'wpa_ft': wpa_ft,
             'dragonblood_vulnerable': dragonblood_vulnerable
         }
 
@@ -129,16 +141,23 @@ class WPA3Detector:
         if not Tshark.exists():
             return None
 
-        result = {'pmf_status': None, 'sae_groups': []}
         try:
-            result['pmf_status'] = WPA3Detector._parse_pmf_from_beacon(capfile, bssid)
+            parsed = WPA3Detector.parse_capture_batch(capfile)
         except (OSError, ValueError):
-            pass
-        try:
-            result['sae_groups'] = WPA3Detector._parse_sae_groups_from_commits(capfile, bssid)
-        except (OSError, ValueError):
-            pass
-        if result['pmf_status'] is None and not result['sae_groups']:
+            return None
+
+        entry = parsed.get(bssid.upper())
+        if not entry:
+            return None
+
+        result = {
+            'pmf_status': entry.get('pmf_status'),
+            'sae_groups': list(entry.get('sae_groups') or []),
+        }
+        if entry.get('ft'):
+            result['ft'] = True
+        if (result['pmf_status'] is None and not result['sae_groups'] and
+                not result.get('ft')):
             return None
         return result
 
@@ -159,6 +178,7 @@ class WPA3Detector:
             '-e', 'wlan.rsn.capabilities.mfpc',
             '-e', 'wlan.rsn.capabilities.mfpr',
             '-e', 'wlan.fixed.finite_cyclic_group',
+            '-e', 'wlan.rsn.akms.type',
         ]
         process = Process(command)
         try:
@@ -178,7 +198,13 @@ class WPA3Detector:
                 continue
 
             mfpc, mfpr, group_text = (part.strip() for part in parts[1:4])
-            entry = results.setdefault(bssid, {'pmf_status': None, 'sae_groups': set()})
+            akm_text = parts[4].strip() if len(parts) > 4 else ''
+            entry = results.setdefault(
+                bssid, {'pmf_status': None, 'sae_groups': set(), 'ft': False})
+            # AKM suite 3 = FT-802.1X, 4 = FT-PSK (802.11r fast transition).
+            if any(token in ('3', '4')
+                   for token in re.split(r'[,\s]+', akm_text)):
+                entry['ft'] = True
             if entry['pmf_status'] is None:
                 if mfpr in ('1', 'True'):
                     entry['pmf_status'] = WPA3Detector.PMF_REQUIRED
@@ -194,14 +220,18 @@ class WPA3Detector:
             if group > 0:
                 entry['sae_groups'].add(group)
 
-        return {
-            bssid: {
+        output = {}
+        for bssid, entry in results.items():
+            if not (entry['pmf_status'] or entry['sae_groups'] or entry['ft']):
+                continue
+            item = {
                 'pmf_status': entry['pmf_status'],
                 'sae_groups': sorted(entry['sae_groups']),
             }
-            for bssid, entry in results.items()
-            if entry['pmf_status'] or entry['sae_groups']
-        }
+            if entry['ft']:
+                item['ft'] = True
+            output[bssid] = item
+        return output
 
     @staticmethod
     def _parse_pmf_from_beacon(capfile: str, bssid: str) -> Optional[str]:
@@ -290,6 +320,13 @@ class WPA3Detector:
             return False
 
         changed = False
+        if parsed.get('ft'):
+            if not getattr(target, 'wpa_ft', False):
+                target.wpa_ft = True
+                changed = True
+            if not getattr(info, 'wpa_ft', False):
+                info.wpa_ft = True
+                changed = True
         if parsed.get('pmf_status') and parsed['pmf_status'] != info.pmf_status:
             info.pmf_status = parsed['pmf_status']
             changed = True
@@ -677,7 +714,8 @@ class WPA3Info:
     def __init__(self, has_wpa3: bool = False, has_wpa2: bool = False,
                  is_transition: bool = False, pmf_status: str = WPA3Detector.PMF_DISABLED,
                  sae_groups: Optional[List[int]] = None,
-                 dragonblood_vulnerable: bool = False):
+                 dragonblood_vulnerable: bool = False,
+                 wpa_ft: bool = False):
         """
         Initialize WPA3Info object.
         
@@ -688,6 +726,7 @@ class WPA3Info:
             pmf_status: 'required', 'optional', or 'disabled'
             sae_groups: List of supported SAE groups
             dragonblood_vulnerable: True if vulnerable indicators detected
+            wpa_ft: True if RSN advertises FT-PSK/FT-802.1X (802.11r)
         """
         self.has_wpa3 = has_wpa3
         self.has_wpa2 = has_wpa2
@@ -695,6 +734,7 @@ class WPA3Info:
         self.pmf_status = pmf_status
         self.sae_groups = sae_groups if sae_groups is not None else []
         self.dragonblood_vulnerable = dragonblood_vulnerable
+        self.wpa_ft = wpa_ft
     
     def get(self, key: str, default=None):
         """
@@ -722,7 +762,8 @@ class WPA3Info:
             'is_transition': self.is_transition,
             'pmf_status': self.pmf_status,
             'sae_groups': self.sae_groups,
-            'dragonblood_vulnerable': self.dragonblood_vulnerable
+            'dragonblood_vulnerable': self.dragonblood_vulnerable,
+            'wpa_ft': self.wpa_ft
         }
     
     @classmethod
@@ -742,11 +783,13 @@ class WPA3Info:
             is_transition=data.get('is_transition', False),
             pmf_status=data.get('pmf_status', WPA3Detector.PMF_DISABLED),
             sae_groups=data.get('sae_groups', []),
-            dragonblood_vulnerable=data.get('dragonblood_vulnerable', False)
+            dragonblood_vulnerable=data.get('dragonblood_vulnerable', False),
+            wpa_ft=data.get('wpa_ft', False)
         )
     
     def __repr__(self) -> str:
         """String representation of WPA3Info."""
         return (f"WPA3Info(has_wpa3={self.has_wpa3}, has_wpa2={self.has_wpa2}, "
                 f"is_transition={self.is_transition}, pmf_status={self.pmf_status}, "
-                f"sae_groups={self.sae_groups}, dragonblood_vulnerable={self.dragonblood_vulnerable})")
+                f"sae_groups={self.sae_groups}, dragonblood_vulnerable={self.dragonblood_vulnerable}, "
+                f"wpa_ft={self.wpa_ft})")

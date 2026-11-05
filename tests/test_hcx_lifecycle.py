@@ -5,6 +5,7 @@
 
 import sys
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch, MagicMock, call
 
 import pytest
@@ -202,6 +203,37 @@ class TestReadinessVersionGates(unittest.TestCase):
         ])
         readiness = checker.assess_attack_readiness()
         self.assertEqual(readiness['WPA3/SAE'], CheckStatus.WARN)
+
+
+class TestPmkidWrapperHandover(unittest.TestCase):
+    """The PMKID path uses the hashcat.py wrapper; it must still hand over."""
+
+    def test_hands_over_and_restores_monitor(self):
+        from wifite.tools.hashcat import HcxDumpTool as PmkidHcxDumpTool
+
+        manager = MagicMock()
+        manager.get_interface_state.return_value = {'mode': 'monitor'}
+        manager.is_managed.return_value = True
+        manager.set_interface_mode.return_value = True
+
+        target = SimpleNamespace(channel=6, band=None)
+
+        with patch.object(Configuration, 'interface', 'wlan0'), \
+             patch.object(Configuration, 'get_interface_manager',
+                          return_value=manager), \
+             patch('wifite.tools.hcxdumptool.HcxDumpTool.check_version',
+                   return_value='8.0.0'), \
+             patch('wifite.tools.hcxdumptool.HcxDumpTool.check_tool_pairing',
+                   return_value=(True, None)), \
+             patch('wifite.tools.hashcat.Process'):
+            tool = PmkidHcxDumpTool(target, '/tmp/pmkid_test.pcapng')
+            with tool:
+                pass
+
+        self.assertEqual(
+            manager.set_interface_mode.call_args_list,
+            [call('wlan0', 'managed'), call('wlan0', 'monitor')],
+        )
 
 
 if __name__ == '__main__':

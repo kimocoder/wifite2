@@ -424,10 +424,31 @@ class AttackPassivePMKID:
                     end_time = time.time() + Configuration.pmkid_passive_duration
 
                 # Main statistics display loop
+                capture_failed = False
                 try:
                     while True:
                         # Display statistics
                         self.display_statistics()
+
+                        # Fail fast if hcxdumptool died (bad flags, arming
+                        # failure, unplugged adapter) instead of showing
+                        # statistics until the duration expires.
+                        if not dumptool.is_running():
+                            capture_failed = True
+                            try:
+                                reason = dumptool.get_failure_reason()
+                            except Exception:
+                                reason = ''
+                            if self.tui_view:
+                                message = 'hcxdumptool exited unexpectedly'
+                                if reason:
+                                    message += f': {reason}'
+                                self.tui_view.add_log(message)
+                            else:
+                                Color.pl('\n{!} {R}hcxdumptool exited unexpectedly{W}')
+                                if reason:
+                                    Color.pl('{!} {O}%s{W}' % reason)
+                            break
 
                         # Check if duration timeout reached
                         if end_time and time.time() >= end_time:
@@ -448,6 +469,9 @@ class AttackPassivePMKID:
 
                 # Cleanup
                 self.cleanup()
+
+                if capture_failed:
+                    return False
 
         except Exception as e:
             error_msg = f'Error during passive capture: {str(e)}'

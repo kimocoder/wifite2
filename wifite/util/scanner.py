@@ -421,6 +421,10 @@ class Scanner:
         else:
             band = '2.4'
 
+        # Remember which band is being scanned so native targets can carry a
+        # frequency even when the access point did not report one.
+        self.band = band
+
         # Determine channels
         channels = None
         if Configuration.target_channel:
@@ -580,6 +584,17 @@ class Scanner:
                 
                 # Create Target from fields
                 target = Target(fields)
+
+                # Carry the frequency when the native scanner knows it, or
+                # derive it from the channel and the band being scanned.
+                # 6 GHz reuses channels 1-233, so this is what lets attack
+                # code pick the right hcxdumptool band suffix.
+                frequency = getattr(ap, 'frequency', 0) or 0
+                if not frequency:
+                    from ..native.interface import NativeInterface
+                    frequency = NativeInterface._channel_to_freq(
+                        ap.channel, band=getattr(self, 'band', None)) or 0
+                target.frequency = frequency or None
                 
                 # Set WPS state
                 if ap.wps:

@@ -189,13 +189,28 @@ class Configuration:
         return cls.interface_manager
 
     @classmethod
+    def hcxdumptool_owns_radio(cls):
+        """True when this run's capture is handled by hcxdumptool.
+
+        hcxdumptool randomizes the MAC itself and restores the original on
+        exit, so running macchanger first is redundant and can confuse the
+        restore.
+        """
+        return bool(
+            cls.use_hcxdump or cls.pmkid_passive or cls.use_pmkid_only or
+            cls.wpa3_only or cls.wpa3_force_sae or cls.wpa3_no_downgrade)
+
+    @classmethod
     def get_monitor_mode_interface(cls):
         if cls.interface is None:
             # Interface wasn't defined, select it!
             from ..tools.airmon import Airmon
             cls.interface = Airmon.ask()
             if cls.random_mac or cls.random_mac_vendor:
-                Macchanger.random(full_random=not cls.random_mac_vendor)
+                if cls.hcxdumptool_owns_radio():
+                    Color.pl('{!} {O}Skipping macchanger: hcxdumptool randomizes the MAC itself{W}')
+                else:
+                    Macchanger.random(full_random=not cls.random_mac_vendor)
         else:
             # -i/--interface bypasses Airmon.ask(), where monitor mode is
             # normally enabled.  Enable it here too: otherwise airodump-ng

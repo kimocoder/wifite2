@@ -508,9 +508,13 @@ class AttackWPA(Attack):
         from ..tools.airmon import Airmon
         from ..tools.hcxdumptool import HcxDumpTool
         
-        # Check if hcxdump mode is requested
+        # Check if hcxdump mode is requested (FT targets need pcapng capture)
         use_hcxdump_mode = False
-        if Configuration.use_hcxdump:
+        target_uses_ft = getattr(self.target, 'wpa_ft', False)
+        if Configuration.use_hcxdump or target_uses_ft:
+            if target_uses_ft and not Configuration.use_hcxdump:
+                Color.pl('{+} {C}WPA-FT (802.11r) target: using hcxdumptool capture{W}')
+                Color.pl('{!} {O}Cracking FT hashes requires hashcat 8.0.0+{W}')
             from ..util.logger import log_info, log_warning, log_debug
             log_debug('AttackWPA', 'Checking hcxdumptool availability for --hcxdump mode')
             
@@ -638,6 +642,8 @@ class AttackWPA(Attack):
         Returns:
             Handshake object if captured, None otherwise
         """
+        # airodump only reads the capture radio, so deauth may use both.
+        self._capture_owned_by_hcxdump = False
         handshake = None
         
         # Start Airodump on capture interface
@@ -959,11 +965,13 @@ class AttackWPA(Attack):
 
     def _deauth_parallel(self, target):
         """
-        Send deauthentication packets from both interfaces in parallel.
-        
-        This method sends deauth packets from both the primary and secondary
-        interfaces simultaneously using threads for better coverage.
-        
+        Send deauthentication packets from the dedicated deauth interface.
+
+        The capture interface is owned exclusively by hcxdumptool; sending
+        aireplay frames from it would fight hcxdumptool over the radio, so
+        deauth runs only on ``deauth_interface`` when hcxdumptool owns the
+        capture radio; airodump-based dual capture keeps both interfaces.
+
         Args:
             target: The Target to deauth, including clients
         """
@@ -974,6 +982,10 @@ class AttackWPA(Attack):
         
         # Get client list (broadcast if empty)
         clients = [None] + self.clients if self.clients else [None]
+
+        interfaces = [self.deauth_interface]
+        if not getattr(self, '_capture_owned_by_hcxdump', False):
+            interfaces.insert(0, self.capture_interface)
         
         def deauth_from_interface(interface, bssid, clients):
             """Thread function to send deauth from a single interface."""
@@ -996,29 +1008,24 @@ class AttackWPA(Attack):
         Color.pattack('WPA',
                       target,
                       'Handshake capture',
-                      'Deauthing from {C}%s{W} and {C}%s{W} [DUAL-HCX]' % (
-                          self.capture_interface, self.deauth_interface))
+                      'Deauthing from {C}%s{W} [DUAL-HCX]' % ', '.join(interfaces))
         
         if self.view:
-            self.view.add_log(f'Parallel deauth from {self.capture_interface} and {self.deauth_interface}')
+            self.view.add_log(
+                f'Deauth from {", ".join(interfaces)} '
+                '(capture interface reserved for hcxdumptool)' if
+                getattr(self, '_capture_owned_by_hcxdump', False) else
+                f'Deauth from {", ".join(interfaces)}')
         
-        # Start threads for both interfaces
-        thread1 = threading.Thread(
-            target=deauth_from_interface,
-            args=(self.capture_interface, target.bssid, clients)
-        )
-        thread2 = threading.Thread(
-            target=deauth_from_interface,
-            args=(self.deauth_interface, target.bssid, clients)
-        )
-        
-        # Start both threads
-        thread1.start()
-        thread2.start()
-        
-        # Wait for both to complete
-        thread1.join()
-        thread2.join()
+        threads = [
+            threading.Thread(target=deauth_from_interface,
+                             args=(interface, target.bssid, clients))
+            for interface in interfaces
+        ]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
 
     def _capture_handshake_dual_hcxdump(self):
         """
@@ -1032,6 +1039,9 @@ class AttackWPA(Attack):
         """
         from ..tools.hcxdumptool import HcxDumpTool, HcxPcapngTool
         
+        # hcxdumptool owns the capture radio exclusively: no aireplay on it.
+        self._capture_owned_by_hcxdump = True
+
         handshake = None
         
         # Check for existing handshake if not ignoring old ones
@@ -1058,7 +1068,9 @@ class AttackWPA(Attack):
                         target_bssid=None,  # Full spectrum capture (no BSSID filter)
                         output_file=output_file,
                         enable_deauth=False,  # We'll use aireplay-ng for deauth
-                        pmf_required=pmf_required) as hcxdump:
+                        pmf_required=pmf_required,
+                        manage_interface=True,
+                        band=getattr(self.target, 'band', None)) as hcxdump:
             
             Color.clear_entire_line()
             Color.pattack('WPA', self.target, 'Handshake capture', 
@@ -1275,7 +1287,8 @@ class AttackWPA(Attack):
                         output_file=output_file,
                         enable_deauth=True,  # Use hcxdumptool's built-in deauth
                         pmf_required=pmf_required,
-                        manage_interface=True) as hcxdump:
+                        manage_interface=True,
+                        band=getattr(self.target, 'band', None)) as hcxdump:
             
             Color.clear_entire_line()
             Color.pattack('WPA', self.target, 'Handshake capture', 
@@ -1414,8 +1427,12 @@ class AttackWPA(Attack):
 
     def capture_handshake(self):
         """Returns captured or stored handshake, otherwise None."""
-        # Check if hcxdump mode is requested for single interface
-        if Configuration.use_hcxdump:
+        # Check if hcxdump mode is requested for single interface (FT needs it)
+        target_uses_ft = getattr(self.target, 'wpa_ft', False)
+        if Configuration.use_hcxdump or target_uses_ft:
+            if target_uses_ft and not Configuration.use_hcxdump:
+                Color.pl('{+} {C}WPA-FT (802.11r) target: using hcxdumptool capture{W}')
+                Color.pl('{!} {O}Cracking FT hashes requires hashcat 8.0.0+{W}')
             from ..tools.hcxdumptool import HcxDumpTool
             from ..util.logger import log_info, log_warning, log_debug
             

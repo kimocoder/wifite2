@@ -245,6 +245,51 @@ class TestNativeInterface:
         
         # Unknown frequency
         assert NativeInterface._freq_to_channel(9999) is None
+
+    def test_six_ghz_band_override(self):
+        """Channel numbers overlap between 2.4 and 6 GHz; band disambiguates."""
+        from wifite.native.interface import NativeInterface
+
+        assert NativeInterface._channel_to_freq(5, band='2') == 2432
+        assert NativeInterface._channel_to_freq(5, band='2.4') == 2432
+        assert NativeInterface._channel_to_freq(5, band='6') == 5975
+        assert NativeInterface._channel_to_freq(37, band='6') == 6135
+
+    def test_six_ghz_freq_channel_mapping(self):
+        from wifite.native.interface import NativeInterface
+
+        assert NativeInterface._freq_to_channel(5955) == 1
+        assert NativeInterface._freq_to_channel(6135) == 37
+
+    def test_target_band_from_frequency(self):
+        from wifite.model.target import Target
+
+        fields = ['AA:BB:CC:DD:EE:FF', '', '', '6', '54', 'WPA2', 'CCMP',
+                  'PSK', '-60', '1', '0', '0.0.0.0', '4', 'Test', '']
+        target = Target(fields)
+        assert target.frequency is None
+        assert target.band is None
+        assert target.wpa_ft is False
+
+        target.frequency = 6135
+        assert target.band == '6'
+        target.frequency = 5180
+        assert target.band == '5'
+        target.frequency = 2437
+        assert target.band == '2.4'
+
+    def test_native_targets_carry_frequency(self):
+        from wifite.util.scanner import Scanner
+        from wifite.native.scanner import AccessPoint
+
+        scanner = Scanner.__new__(Scanner)
+        scanner.band = '6'
+        ap = AccessPoint(bssid='AA:BB:CC:DD:EE:FF', essid='Test', channel=37,
+                         frequency=0, encryption='WPA2', auth='PSK')
+        targets = scanner._convert_native_targets([ap])
+
+        assert targets[0].frequency == 6135
+        assert targets[0].band == '6'
     
     def test_mode_names(self):
         """Test wireless mode name mapping."""

@@ -19,16 +19,26 @@ BAND_6GHZ = 'c'
 _HASH_TYPES = ('01', '02', '03', '04')
 
 
-def channel_spec(channel):
+def channel_spec(channel, band=None):
     """Return an hcxdumptool ``-c`` value with its band suffix.
 
     hcxdumptool 7+ requires ``1a`` (2.4 GHz), ``36b`` (5 GHz) or ``5c``
     (6 GHz). A bare channel number is ambiguous between 2.4 and 6 GHz
-    (both start at 1), so callers that know the band may pass a string
-    such as ``'5c'`` and it is returned unchanged.
+    (both start at 1), so callers that know the band pass ``band``
+    ('2.4', '5' or '6'); a string such as ``'5c'`` is returned unchanged.
     """
     if channel is None:
         return None
+
+    suffix = None
+    if band:
+        normalized = str(band).lower().replace('ghz', '').strip()
+        suffix = {
+            '2': BAND_24GHZ, '2.4': BAND_24GHZ,
+            '5': BAND_5GHZ,
+            '6': BAND_6GHZ,
+            'a': BAND_24GHZ, 'b': BAND_5GHZ, 'c': BAND_6GHZ,
+        }.get(normalized)
 
     if isinstance(channel, str):
         value = channel.strip()
@@ -40,6 +50,9 @@ def channel_spec(channel):
     if number <= 0:
         # Airodump reports -1 when the channel could not be parsed.
         return str(number)
+
+    if suffix:
+        return f'{number}{suffix}'
     if number <= 14:
         return f'{number}{BAND_24GHZ}'
     if number <= 177:

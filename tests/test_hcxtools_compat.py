@@ -52,6 +52,12 @@ class TestChannelSpec(unittest.TestCase):
         self.assertEqual(channel_spec('5c'), '5c')
         self.assertEqual(channel_spec('36b'), '36b')
 
+    def test_band_argument_selects_suffix(self):
+        self.assertEqual(channel_spec(5, band='6'), '5c')
+        self.assertEqual(channel_spec(37, band='6'), '37c')
+        self.assertEqual(channel_spec(36, band='5'), '36b')
+        self.assertEqual(channel_spec(6, band='2.4'), '6a')
+
     def test_none_passthrough(self):
         self.assertIsNone(channel_spec(None))
 
@@ -193,6 +199,10 @@ class TestHcxDumpToolPassiveFlags(unittest.TestCase):
         command = self._command(enable_deauth=True)
         self.assertIn('-A', command)
         self.assertNotIn('--associationmax=0', command)
+
+    def test_band_argument_selects_6ghz_channel(self):
+        command = self._command(channel=5, band='6')
+        self.assertEqual(command[command.index('-c') + 1], '5c')
 
 
 if __name__ == '__main__':

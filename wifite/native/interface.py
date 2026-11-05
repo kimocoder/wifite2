@@ -107,6 +107,9 @@ class NativeInterface:
         132: 5660, 136: 5680, 140: 5700, 144: 5720,
         149: 5745, 153: 5765, 157: 5785, 161: 5805, 165: 5825
     }
+
+    # 6 GHz channels: channel 1 is 5955 MHz, 20 MHz spacing up to 233.
+    CHANNEL_FREQ_6 = {ch: 5950 + (5 * ch) for ch in range(1, 234)}
     
     @classmethod
     def list_interfaces(cls, wireless_only: bool = False) -> List[str]:
@@ -267,18 +270,21 @@ class NativeInterface:
         return None
     
     @classmethod
-    def set_channel(cls, interface: str, channel: int) -> Tuple[bool, str]:
+    def set_channel(cls, interface: str, channel: int,
+                    band: Optional[str] = None) -> Tuple[bool, str]:
         """
         Set channel on wireless interface through the single state owner.
         
         Args:
             interface: Wireless interface name
             channel: Channel number
+            band: Optional band ('2.4', '5', '6'); 6 GHz shares channel
+                  numbers with 2.4 GHz, so pass it to disambiguate.
             
         Returns:
             Tuple of (success, message)
         """
-        freq = cls._channel_to_freq(channel)
+        freq = cls._channel_to_freq(channel, band=band)
         if not freq:
             return False, f'Invalid channel: {channel}'
 
@@ -391,14 +397,28 @@ class NativeInterface:
         return None
     
     @classmethod
-    def _channel_to_freq(cls, channel: int) -> Optional[int]:
-        """Convert channel number to frequency in MHz."""
+    def _channel_to_freq(cls, channel: int, band: Optional[str] = None) -> Optional[int]:
+        """Convert channel number to frequency in MHz.
+
+        6 GHz reuses channel numbers 1-233, so channel 1-14 is ambiguous
+        between 2.4 GHz and 6 GHz. ``band`` ('2.4', '5', '6') selects the
+        mapping explicitly; without it the historical 2.4 -> 5 -> 6 order
+        is used.
+        """
+        normalized = (band or '').lower().replace('ghz', '')
+        if normalized in ('2', '2.4'):
+            return cls.CHANNEL_FREQ_24.get(channel)
+        if normalized == '5':
+            return cls.CHANNEL_FREQ_5.get(channel)
+        if normalized == '6':
+            return cls.CHANNEL_FREQ_6.get(channel)
+
         if channel in cls.CHANNEL_FREQ_24:
             return cls.CHANNEL_FREQ_24[channel]
         if channel in cls.CHANNEL_FREQ_5:
             return cls.CHANNEL_FREQ_5[channel]
-        return None
-    
+        return cls.CHANNEL_FREQ_6.get(channel)
+
     @classmethod
     def _freq_to_channel(cls, freq_mhz: int) -> Optional[int]:
         """Convert frequency in MHz to channel number."""
@@ -410,6 +430,11 @@ class NativeInterface:
         for ch, f in cls.CHANNEL_FREQ_5.items():
             if abs(f - freq_mhz) < 5:
                 return ch
+        # Search 6 GHz (5955-7115 MHz)
+        if 5950 <= freq_mhz <= 7120:
+            for ch, f in cls.CHANNEL_FREQ_6.items():
+                if abs(f - freq_mhz) < 5:
+                    return ch
         return None
 
 

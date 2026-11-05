@@ -2,6 +2,11 @@
 # -*- coding: utf-8 -*-
 
 from .dependency import Dependency
+from .hcxdumptool import (
+    HcxDumpTool as _CanonicalHcxDumpTool,
+    _hand_over_monitor_mode,
+    _return_monitor_mode,
+)
 from ..config import Configuration
 from ..util.process import Process
 from ..util.color import Color
@@ -439,10 +444,19 @@ class HcxDumpTool(Dependency):
         if os.path.exists(pcapng_file):
             os.remove(pcapng_file)
 
+        paired, warning = _CanonicalHcxDumpTool.check_tool_pairing()
+        if not paired:
+            log_warning('HcxDumpTool', warning)
+            Color.pl('{!} {O}%s{W}' % warning)
+
+        # hcxdumptool owns the monitor lifecycle; hand it a managed radio.
+        self._monitor_restore = _hand_over_monitor_mode([Configuration.interface])
+
         command = [
             'hcxdumptool',
             '-i', Configuration.interface,
-            '-c', channel_spec(target.channel),
+            '-c', channel_spec(target.channel,
+                               band=getattr(target, 'band', None)),
             '-w', pcapng_file
         ]
 
@@ -460,6 +474,7 @@ class HcxDumpTool(Dependency):
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.interrupt()
+        _return_monitor_mode(self._monitor_restore)
 
 
 class HcxPcapngTool(Dependency):
@@ -644,17 +659,29 @@ class HcxPcapngTool(Dependency):
             # hash*bssid*station*essid
 
         # Note: The dumptool will record *anything* it finds, ignoring the filterlist.
-        # Check that we got the right target (filter by BSSID)
-        matching_pmkid_hash = None
+        # Check that we got the right target (filter by BSSID). Prefer PMKID
+        # records (WPA*01, WPA*03) over EAPOL records (WPA*02, WPA*04): the
+        # PMKID attack must return the PMKID hash even when a 4-way handshake
+        # for the same AP appears earlier in the file.
+        pmkid_hash = None
+        eapol_fallback = None
         for line in output.split('\n'):
+            line = line.strip()
+            if not line:
+                continue
             fields = line.split('*')
-            if len(fields) >= 4 and fields[3].lower() == self.bssid:
-                # Found it
-                matching_pmkid_hash = line
+            if len(fields) < 4 or fields[0] != 'WPA':
+                continue
+            if fields[3].lower() != self.bssid:
+                continue
+            if fields[1] in ('01', '03'):
+                pmkid_hash = line
                 break
+            if fields[1] in ('02', '04') and eapol_fallback is None:
+                eapol_fallback = line
 
         os.remove(self.pmkid_file)
-        return matching_pmkid_hash
+        return pmkid_hash or eapol_fallback
 
     @staticmethod
     def extract_all_pmkids(pcapng_file):
