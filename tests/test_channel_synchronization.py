@@ -151,17 +151,21 @@ class TestChannelSynchronization(unittest.TestCase):
         attack.deauth_interface = 'wlan1mon'
         attack.view = None
         
-        # Mock successful process execution
+        # Mock successful process execution; readback reports the target
+        # channel immediately (FullMAC readback verification).
         mock_proc = MagicMock()
+        mock_proc.stdout.return_value = 'channel 6 (2437 MHz), width: 20 MHz'
         mock_process.return_value = mock_proc
         
         # Execute
         attack._set_interface_channels()
         
-        # Verify both interfaces were set
-        self.assertEqual(mock_process.call_count, 2)
+        # Verify both interfaces were set (set + readback per interface)
+        self.assertEqual(mock_process.call_count, 4)
         mock_process.assert_any_call(['iw', 'wlan0mon', 'set', 'channel', '6'])
         mock_process.assert_any_call(['iw', 'wlan1mon', 'set', 'channel', '6'])
+        mock_process.assert_any_call(['iw', 'dev', 'wlan0mon', 'info'])
+        mock_process.assert_any_call(['iw', 'dev', 'wlan1mon', 'info'])
         
         # Should show success message
         success_calls = [c for c in mock_color.pl.call_args_list 
@@ -259,6 +263,35 @@ class TestChannelSynchronization(unittest.TestCase):
         both_fail_calls = [c for c in mock_color.pl.call_args_list 
                           if 'Failed to set channel on both' in str(c)]
         self.assertGreater(len(both_fail_calls), 0)
+
+
+    @patch('wifite.attack.wpa.time.sleep')
+    @patch('wifite.util.process.Process')
+    @patch('wifite.attack.wpa.Color')
+    def test_set_interface_channels_retries_deferred_readback(self, mock_color,
+                                                               mock_process, _sleep):
+        """FullMAC readback can lag the set; the helper retries until it settles."""
+        attack = AttackWPA(self.mock_target)
+        attack.capture_interface = 'wlan0mon'
+        attack.deauth_interface = 'wlan1mon'
+        attack.view = None
+
+        readbacks = ['channel 4 (2427 MHz)'] * 2 + ['channel 6 (2437 MHz)'] * 10
+
+        def fake_process(cmd):
+            proc = MagicMock()
+            if cmd[:3] == ['iw', 'dev', 'wlan0mon']:
+                proc.stdout.return_value = readbacks.pop(0)
+            else:
+                proc.stdout.return_value = 'channel 6 (2437 MHz)'
+            return proc
+
+        mock_process.side_effect = fake_process
+        attack._set_interface_channels()
+
+        success_calls = [c for c in mock_color.pl.call_args_list
+                         if 'Both interfaces set' in str(c)]
+        self.assertGreater(len(success_calls), 0)
 
 
 if __name__ == '__main__':

@@ -826,6 +826,14 @@ class AttackWPA(Attack):
         try:
             log_debug('AttackWPA', f'Setting {self.capture_interface} to channel {target_channel}')
             Process(['iw', self.capture_interface, 'set', 'channel', str(target_channel)]).wait()
+            # FullMAC drivers (brcmfmac/Nexmon) can apply channel changes
+            # asynchronously; confirm the readback before starting capture,
+            # otherwise the whole attack can run on the wrong channel.
+            for _ in range(4):
+                info = Process(['iw', 'dev', self.capture_interface, 'info']).stdout()
+                if f'channel {target_channel}' in (info or ''):
+                    break
+                time.sleep(0.5)
             capture_success = True
             log_info('AttackWPA', f'Successfully set {self.capture_interface} to channel {target_channel}')
         except Exception as e:
@@ -839,6 +847,11 @@ class AttackWPA(Attack):
         try:
             log_debug('AttackWPA', f'Setting {self.deauth_interface} to channel {target_channel}')
             Process(['iw', self.deauth_interface, 'set', 'channel', str(target_channel)]).wait()
+            for _ in range(4):
+                info = Process(['iw', 'dev', self.deauth_interface, 'info']).stdout()
+                if f'channel {target_channel}' in (info or ''):
+                    break
+                time.sleep(0.5)
             deauth_success = True
             log_info('AttackWPA', f'Successfully set {self.deauth_interface} to channel {target_channel}')
         except Exception as e:
