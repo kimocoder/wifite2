@@ -232,8 +232,8 @@ class SystemCheck:
             ('tshark', False, 'inspection', '3.0.0', 'apt install tshark'),
             ('hashcat', False, 'cracking', '6.0.0', 'https://hashcat.net/hashcat/'),
             ('john', False, 'cracking', '1.9.0', 'apt install john'),
-            ('hcxdumptool', False, 'wpa3', '6.2.0', 'apt install hcxdumptool'),
-            ('hcxpcapngtool', False, 'wpa3', '6.2.0', 'apt install hcxtools'),
+            ('hcxdumptool', False, 'wpa3', '7.0.0', 'apt install hcxdumptool'),
+            ('hcxpcapngtool', False, 'wpa3', '7.0.0', 'apt install hcxtools'),
             ('cowpatty', False, 'cracking', None, 'apt install cowpatty'),
             ('macchanger', False, 'misc', None, 'apt install macchanger'),
             ('hostapd', False, 'eviltwin', '2.9', 'apt install hostapd'),
@@ -550,6 +550,8 @@ class SystemCheck:
 
     def assess_attack_readiness(self) -> Dict[str, CheckStatus]:
         """Determine which attack types are available based on checks."""
+        from ..tools.dependency import Dependency
+
         readiness = {}
 
         has_monitor = any(r.supports_monitor for r in self.interface_results)
@@ -600,6 +602,17 @@ class SystemCheck:
         else:
             readiness['WPS Attack'] = CheckStatus.FAIL
 
+        # hcxdumptool and hcxpcapngtool must come from the same suite release;
+        # mixing them produces unreadable or missing hashes.
+        def major_minor(version):
+            return '.'.join(str(version).split('.')[:2]) if version else None
+
+        dump_tool = next((t for t in self.tool_results if t.name == 'hcxdumptool'), None)
+        cap_tool = next((t for t in self.tool_results if t.name == 'hcxpcapngtool'), None)
+        pairing_ok = True
+        if dump_tool and cap_tool and dump_tool.version and cap_tool.version:
+            pairing_ok = major_minor(dump_tool.version) == major_minor(cap_tool.version)
+
         # PMKID
         if has_interface and has_monitor and tool_ok('hcxdumptool'):
             readiness['PMKID Capture'] = CheckStatus.PASS
@@ -608,8 +621,26 @@ class SystemCheck:
         else:
             readiness['PMKID Capture'] = CheckStatus.FAIL
 
+        # PMKID cracking needs an actual cracker, not just the capture tool
+        if tool_ok('hashcat') or tool_ok('aircrack-ng'):
+            readiness['PMKID Crack'] = CheckStatus.PASS
+        elif tool_found('hashcat') or tool_found('aircrack-ng'):
+            readiness['PMKID Crack'] = CheckStatus.WARN
+        else:
+            readiness['PMKID Crack'] = CheckStatus.FAIL
+
+        # WPA-FT (802.11r) records only load in hashcat 8.0.0+
+        hashcat_tool = next((t for t in self.tool_results if t.name == 'hashcat'), None)
+        if (hashcat_tool and hashcat_tool.found and hashcat_tool.version and
+                Dependency._compare_versions(hashcat_tool.version, '8.0.0') >= 0):
+            readiness['WPA-FT (802.11r)'] = CheckStatus.PASS
+        elif hashcat_tool and hashcat_tool.found:
+            readiness['WPA-FT (802.11r)'] = CheckStatus.WARN
+        else:
+            readiness['WPA-FT (802.11r)'] = CheckStatus.FAIL
+
         # WPA3 / SAE
-        if (has_interface and has_monitor and
+        if (has_interface and has_monitor and pairing_ok and
                 tool_ok('hcxdumptool') and tool_ok('hcxpcapngtool')):
             readiness['WPA3/SAE'] = CheckStatus.PASS
         elif has_interface and has_monitor:

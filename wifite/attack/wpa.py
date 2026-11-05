@@ -521,12 +521,12 @@ class AttackWPA(Attack):
                 Color.pl('{!} {O}Install from: {C}%s{W}' % HcxDumpTool.dependency_url)
                 Color.pl('{!} {O}Falling back to airodump-ng mode{W}')
             else:
-                # Check minimum version requirement (6.2.0+)
-                if not HcxDumpTool.check_minimum_version('6.2.0'):
+                # Check minimum version requirement (7.0.0+)
+                if not HcxDumpTool.check_minimum_version('7.0.0'):
                     current_version = HcxDumpTool.check_version()
-                    log_warning('AttackWPA', f'hcxdumptool version {current_version} is insufficient (need 6.2.0+), falling back to airodump-ng')
+                    log_warning('AttackWPA', f'hcxdumptool version {current_version} is insufficient (need 7.0.0+), falling back to airodump-ng')
                     Color.pl('{!} {O}hcxdumptool version {R}%s{O} is insufficient{W}' % (current_version or 'unknown'))
-                    Color.pl('{!} {O}Minimum required version: {G}6.2.0{W}')
+                    Color.pl('{!} {O}Minimum required version: {G}7.0.0{W}')
                     Color.pl('{!} {O}Falling back to airodump-ng mode{W}')
                 else:
                     # All checks passed, use hcxdump mode
@@ -1274,7 +1274,8 @@ class AttackWPA(Attack):
                         target_bssid=self.target.bssid,
                         output_file=output_file,
                         enable_deauth=True,  # Use hcxdumptool's built-in deauth
-                        pmf_required=pmf_required) as hcxdump:
+                        pmf_required=pmf_required,
+                        manage_interface=True) as hcxdump:
             
             Color.clear_entire_line()
             Color.pattack('WPA', self.target, 'Handshake capture', 
@@ -1424,10 +1425,10 @@ class AttackWPA(Attack):
             if not HcxDumpTool.exists():
                 log_warning('AttackWPA', 'hcxdumptool not found, falling back to airodump-ng')
                 Color.pl('{!} {O}hcxdumptool not found, falling back to airodump-ng{W}')
-            elif not HcxDumpTool.check_minimum_version('6.2.0'):
+            elif not HcxDumpTool.check_minimum_version('7.0.0'):
                 current_version = HcxDumpTool.check_version()
-                log_warning('AttackWPA', f'hcxdumptool version {current_version} is insufficient (need 6.2.0+), falling back to airodump-ng')
-                Color.pl('{!} {O}hcxdumptool version {R}%s{O} is insufficient (need 6.2.0+){W}' % (current_version or 'unknown'))
+                log_warning('AttackWPA', f'hcxdumptool version {current_version} is insufficient (need 7.0.0+), falling back to airodump-ng')
+                Color.pl('{!} {O}hcxdumptool version {R}%s{O} is insufficient (need 7.0.0+){W}' % (current_version or 'unknown'))
                 Color.pl('{!} {O}Falling back to airodump-ng{W}')
             else:
                 # Use hcxdumptool for single interface capture

@@ -508,7 +508,7 @@ against the real AP and captures valid passwords.
                                       'Creates .pcapng files with better compatibility for Hashcat. '
                                       'Provides PMF-aware capture and built-in deauth capabilities. '
                                       'Falls back to airodump-ng if hcxdumptool is unavailable. '
-                                      'Requires hcxdumptool v6.2.0+ (default: {G}off{W})'))
+                                      'Requires hcxdumptool v7.0.0+ (default: {G}off{W})'))
 
     def _add_eviltwin_args(self, group):
         group.add_argument('--eviltwin',

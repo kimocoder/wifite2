@@ -92,7 +92,7 @@ class TestWPACaptureRouting(unittest.TestCase):
         
         # Verify hcxdump checks were performed
         mock_hcxdump.exists.assert_called_once()
-        mock_hcxdump.check_minimum_version.assert_called_once_with('6.2.0')
+        mock_hcxdump.check_minimum_version.assert_called_once_with('7.0.0')
         
         # Verify hcxdump capture method was called (task 4 implemented)
         mock_capture.assert_called_once()
@@ -172,7 +172,7 @@ class TestWPACaptureRouting(unittest.TestCase):
         
         # Verify checks were performed
         mock_hcxdump.exists.assert_called_once()
-        mock_hcxdump.check_minimum_version.assert_called_once_with('6.2.0')
+        mock_hcxdump.check_minimum_version.assert_called_once_with('7.0.0')
         mock_hcxdump.check_version.assert_called_once()
         
         # Verify fallback to airodump

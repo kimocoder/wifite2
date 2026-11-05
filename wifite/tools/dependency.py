@@ -155,8 +155,10 @@ class Dependency:
     
     # Known minimum versions for critical functionality
     MINIMUM_VERSIONS = {
-        'hcxdumptool': '6.2.0',
-        'hcxpcapngtool': '6.2.0',
+        # Wifite drives the hcxdumptool -w / -c <channel><band> syntax, which
+        # was introduced in 7.0.0; older releases silently fail to capture.
+        'hcxdumptool': '7.0.0',
+        'hcxpcapngtool': '7.0.0',
         'hashcat': '6.0.0',
         'aircrack-ng': '1.6',
         'reaver': '1.6.5',

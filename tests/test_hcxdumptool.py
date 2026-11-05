@@ -229,7 +229,7 @@ class TestHcxDumpToolPassive(unittest.TestCase):
         
         with tool:
             # Verify Process was called
-            mock_process.assert_called_once()
+            self.assertTrue(mock_process.called)
             
             # Get the command that was passed to Process
             call_args = mock_process.call_args[0][0]

@@ -11,11 +11,59 @@ handshakes and other wireless frames with PMF awareness.
 from .dependency import Dependency
 from ..util.process import Process
 from ..util.hcxtools import channel_spec, filter_hash_lines
+from ..util.color import Color
+from ..util.logger import log_warning
 from ..config import Configuration
 
 import os
 import time
 import signal
+
+
+def _hand_over_monitor_mode(interfaces):
+    """Return wifite-owned monitor interfaces to managed mode.
+
+    hcxdumptool 7+ sets (and restores) monitor mode itself. An interface
+    wifite already armed makes hcxdumptool fight over mode and channel,
+    which is what upstream warns against. Returns the interfaces that were
+    handed over so they can be re-armed when hcxdumptool exits.
+    """
+    handed_over = []
+    try:
+        version = HcxDumpTool.check_version()
+        if not version or int(version.split('.')[0]) < 7:
+            return handed_over
+        manager = Configuration.get_interface_manager()
+    except Exception:
+        return handed_over
+
+    for iface in interfaces:
+        try:
+            state = manager.get_interface_state(iface)
+            if state.get('mode') != 'monitor':
+                continue
+            if not manager.is_managed(iface):
+                continue
+            if manager.set_interface_mode(iface, 'managed'):
+                handed_over.append(iface)
+        except Exception:
+            continue
+    return handed_over
+
+
+def _return_monitor_mode(interfaces):
+    """Re-arm interfaces after hcxdumptool restored them to managed."""
+    if not interfaces:
+        return
+    try:
+        manager = Configuration.get_interface_manager()
+    except Exception:
+        return
+    for iface in interfaces:
+        try:
+            manager.set_interface_mode(iface, 'monitor')
+        except Exception:
+            pass
 
 
 class HcxDumpTool(Dependency):
@@ -26,7 +74,8 @@ class HcxDumpTool(Dependency):
     dependency_url = 'https://github.com/ZerBea/hcxdumptool'
 
     def __init__(self, interface=None, channel=None, target_bssid=None,
-                 output_file=None, enable_deauth=True, pmf_required=False):
+                 output_file=None, enable_deauth=True, pmf_required=False,
+                 manage_interface=False):
         """
         Initialize hcxdumptool wrapper.
 
@@ -37,6 +86,9 @@ class HcxDumpTool(Dependency):
             output_file: Output pcapng file path
             enable_deauth: Enable deauth attacks (default: True)
             pmf_required: Target has PMF required (disables deauth)
+            manage_interface: Hand a wifite-armed monitor interface back to
+                managed mode so hcxdumptool can own the monitor lifecycle.
+                Only use when no other tool shares the interface.
         """
         Configuration.initialize()
 
@@ -64,6 +116,10 @@ class HcxDumpTool(Dependency):
         self.target_bssid = target_bssid
         self.enable_deauth = enable_deauth and not pmf_required
         self.pmf_required = pmf_required
+        self.manage_interface = manage_interface
+        # Interfaces handed back to managed mode for hcxdumptool; re-armed
+        # on __exit__ so the rest of wifite keeps its monitor interface.
+        self._monitor_restore = []
 
         # Generate output file if not provided
         if output_file is None:
@@ -100,6 +156,14 @@ class HcxDumpTool(Dependency):
                 os.remove(self.output_file)
         except OSError:
             pass
+
+        paired, pairing_warning = HcxDumpTool.check_tool_pairing()
+        if not paired:
+            log_warning('HcxDumpTool', pairing_warning)
+            Color.pl('{!} {O}%s{W}' % pairing_warning)
+
+        if self.manage_interface:
+            self._monitor_restore = _hand_over_monitor_mode(self.interfaces)
 
         # Build the command
         # Note: hcxdumptool 7.x has simplified significantly
@@ -176,6 +240,8 @@ class HcxDumpTool(Dependency):
                 from ..util.logger import log_debug
                 log_debug('HcxDumpTool', f'Kill process error: {e}')
 
+        _return_monitor_mode(self._monitor_restore)
+
     def is_running(self) -> bool:
         """Check if hcxdumptool process is still running."""
         return self.proc is not None and self.proc.poll() is None
@@ -248,12 +314,41 @@ class HcxDumpTool(Dependency):
             return None
 
     @staticmethod
-    def check_minimum_version(min_version='6.0.0') -> bool:
+    def check_tool_pairing():
+        """Check that hcxdumptool and hcxpcapngtool are the same suite release.
+
+        hcxtools requires both binaries to come from the same release;
+        mixing them yields unreadable or silently missing hashes.
+
+        Returns:
+            (paired, warning): paired is False only when both versions are
+            readable and disagree. Unknown versions are not an error.
+        """
+        try:
+            dump_version = HcxDumpTool.check_version()
+            cap_version = HcxPcapngTool.check_version()
+            if not dump_version or not cap_version:
+                return True, None
+
+            def series(version):
+                return '.'.join(str(version).split('.')[:2])
+
+            if series(dump_version) != series(cap_version):
+                return False, (
+                    'hcxdumptool %s and hcxpcapngtool %s are from different '
+                    'releases; install both from the same hcxtools suite' %
+                    (dump_version, cap_version))
+            return True, None
+        except Exception:
+            return True, None
+
+    @staticmethod
+    def check_minimum_version(min_version='7.0.0') -> bool:
         """
         Check if installed version meets minimum requirement.
 
         Args:
-            min_version: Minimum required version (default: 6.0.0)
+            min_version: Minimum required version (default: 7.0.0)
 
         Returns:
             True if version is sufficient, False otherwise
@@ -312,6 +407,8 @@ class HcxDumpToolPassive:
 
         self.pid = None
         self.proc = None
+        # Interfaces handed to hcxdumptool; re-armed on exit.
+        self._monitor_restore = []
 
     def __enter__(self):
         """
@@ -325,6 +422,8 @@ class HcxDumpToolPassive:
                 os.remove(self.output_file)
         except OSError:
             pass
+
+        self._monitor_restore = _hand_over_monitor_mode([self.interface])
 
         command = [
             'hcxdumptool',
@@ -366,6 +465,8 @@ class HcxDumpToolPassive:
             except Exception as e:
                 from ..util.logger import log_debug
                 log_debug('HcxDumpToolPassive', f'Kill process error: {e}')
+
+        _return_monitor_mode(self._monitor_restore)
 
     def is_running(self) -> bool:
         """Check if hcxdumptool process is still running."""

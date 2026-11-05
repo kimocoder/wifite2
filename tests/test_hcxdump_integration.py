@@ -96,7 +96,7 @@ class TestCompleteWPAAttackFlow(unittest.TestCase):
         
         # Verify hcxdump was checked
         mock_hcxdump.exists.assert_called_once()
-        mock_hcxdump.check_minimum_version.assert_called_once_with('6.2.0')
+        mock_hcxdump.check_minimum_version.assert_called_once_with('7.0.0')
         
         # Verify hcxdump capture was called
         mock_capture.assert_called_once()
@@ -232,7 +232,7 @@ class TestFallbackScenarios(unittest.TestCase):
         
         # Verify version checks were performed
         mock_hcxdump.exists.assert_called_once()
-        mock_hcxdump.check_minimum_version.assert_called_once_with('6.2.0')
+        mock_hcxdump.check_minimum_version.assert_called_once_with('7.0.0')
         
         # Verify fallback to airodump was called
         mock_airodump.assert_called_once()
@@ -340,7 +340,7 @@ class TestPerformanceValidation(unittest.TestCase):
         
         # Check availability
         available = mock_hcxdump.exists()
-        version_ok = mock_hcxdump.check_minimum_version('6.2.0')
+        version_ok = mock_hcxdump.check_minimum_version('7.0.0')
         
         # Verify checks are efficient (single call each)
         self.assertTrue(available)

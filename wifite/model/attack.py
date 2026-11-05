@@ -22,9 +22,16 @@ class Attack:
     def run(self):
         raise Exception('Unimplemented method: run')
 
-    def wait_for_target(self, airodump):
-        """Waits for target to appear in airodump."""
-        target_wait = Attack._get_target_wait()
+    def wait_for_target(self, airodump, timeout=None):
+        """Waits for target to appear in airodump.
+
+        Args:
+            airodump: Airodump instance to poll
+            timeout: Optional bound in seconds; defaults to the configured
+                     attack timeout. Callers inside a polling loop pass a
+                     short value so the call does not block the loop.
+        """
+        target_wait = timeout if timeout is not None else Attack._get_target_wait()
         start_time = time.time()
         targets = airodump.get_targets(apply_filter=False)
         while len(targets) == 0:

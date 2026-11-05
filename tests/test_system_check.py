@@ -173,7 +173,7 @@ class TestSystemCheckTools(unittest.TestCase):
         self.assertIsNotNone(hcx)
         self.assertTrue(hcx.found)
         self.assertEqual(hcx.version, '5.1.0')
-        self.assertFalse(hcx.version_ok)  # Needs >= 6.2.0
+        self.assertFalse(hcx.version_ok)  # Needs >= 7.0.0
 
     @patch('shutil.which')
     @patch('subprocess.run')

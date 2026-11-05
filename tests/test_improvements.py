@@ -119,7 +119,7 @@ class TestDependencyVersionChecking(unittest.TestCase):
         
         min_version = HcxDumpTool.get_minimum_version()
         self.assertIsNotNone(min_version)
-        self.assertEqual(min_version, '6.2.0')
+        self.assertEqual(min_version, '7.0.0')
     
     def test_check_version_meets_minimum(self):
         """Test version requirement checking."""
