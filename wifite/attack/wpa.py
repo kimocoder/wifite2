@@ -1151,8 +1151,11 @@ class AttackWPA(Attack):
                 except (OSError, IOError):
                     pass
                 
-                # Convert pcapng to hashcat format for validation
-                temp_hash_file = Configuration.temp('handshake_check.22000')
+                # Convert pcapng to hashcat format for validation. Keep the
+                # file per-target so a stale hash from another network can
+                # never be mistaken for this target's handshake.
+                temp_hash_file = Configuration.temp(
+                    'handshake_check_%s.22000' % self.target.bssid.replace(':', ''))
                 
                 # Filter by target BSSID when converting
                 from ..util.logger import log_debug

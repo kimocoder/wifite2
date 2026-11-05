@@ -5,6 +5,7 @@ from .dependency import Dependency
 from ..config import Configuration
 from ..util.process import Process
 from ..util.color import Color
+from ..util.hcxtools import channel_spec
 from ..util.logger import log_debug, log_info, log_warning, log_error
 import os
 import re
@@ -235,6 +236,73 @@ class Hashcat(Dependency):
             log_warning('Hashcat', 'Hashcat %d.%d.%d does not support mode 22000 (requires 6.0.0+)' % version)
         return supported
 
+    # hcxtools 8 emits WPA*03/WPA*04 (WPA-FT-PSK, 802.11r) records and may
+    # keep EAPOL frames up to 512 bytes. Hashcat only loads those since 8.0.0.
+    HASHCAT_MIN_FT_VERSION = (8, 0, 0)
+    MAX_EAPOL_BYTES_PRE_8 = 255
+
+    @staticmethod
+    def supports_ft_hashes():
+        """Return True when hashcat can load WPA-FT and >255-byte EAPOL records."""
+        version = Hashcat.get_version()
+        if version == (0, 0, 0):
+            # Version unknown - assume current (fail at runtime if not)
+            return True
+        return version >= Hashcat.HASHCAT_MIN_FT_VERSION
+
+    @staticmethod
+    def inspect_hash_file(hash_file):
+        """Summarize the mode-22000 records in a hash file.
+
+        Returns:
+            dict with ``types`` (set of record types), ``needs_hashcat8``
+            (WPA-FT records or EAPOL > 255 bytes present) and
+            ``max_eapol_bytes``.
+        """
+        info = {'types': set(), 'needs_hashcat8': False, 'max_eapol_bytes': 0}
+        try:
+            with open(hash_file, 'r', errors='replace') as handle:
+                lines = handle.readlines()
+        except OSError:
+            return info
+
+        for line in lines:
+            fields = line.strip().split('*')
+            if len(fields) < 8 or fields[0] != 'WPA':
+                continue
+            hash_type = fields[1]
+            if hash_type not in ('01', '02', '03', '04'):
+                continue
+            info['types'].add(hash_type)
+            if hash_type in ('03', '04'):
+                info['needs_hashcat8'] = True
+            eapol = fields[7]
+            if hash_type in ('02', '04') and eapol and eapol != '00':
+                size = len(eapol) // 2
+                info['max_eapol_bytes'] = max(info['max_eapol_bytes'], size)
+                if size > Hashcat.MAX_EAPOL_BYTES_PRE_8:
+                    info['needs_hashcat8'] = True
+        return info
+
+    @staticmethod
+    def check_hash_file_compat(hash_file):
+        """Warn when a hash file needs hashcat 8.0.0+.
+
+        Returns:
+            True if the installed hashcat can load the file, False otherwise.
+        """
+        info = Hashcat.inspect_hash_file(hash_file)
+        if not info['needs_hashcat8'] or Hashcat.supports_ft_hashes():
+            return True
+
+        version = Hashcat.get_version()
+        log_warning('Hashcat', 'Hash file requires hashcat 8.0.0+ '
+                    '(WPA-FT records or EAPOL > 255 bytes)')
+        Color.pl('{!} {O}This capture contains WPA-FT (802.11r) hashes or EAPOL frames')
+        Color.pl('{!} {O}longer than 255 bytes, which hashcat %d.%d.%d cannot load.{W}' % version)
+        Color.pl('{!} {O}Upgrade to hashcat 8.0.0+ to crack it.{W}')
+        return False
+
     @staticmethod
     def should_use_force():
         command = ['hashcat', '-I']
@@ -310,6 +378,12 @@ class Hashcat(Dependency):
                 from .aircrack import Aircrack
                 return Aircrack.crack_handshake(handshake_obj, show_command=show_command, wordlist=wordlist)
 
+            if not Hashcat.check_hash_file_compat(hash_file):
+                # aircrack-ng can still read the capture even when hashcat
+                # cannot parse the WPA-FT / oversized-EAPOL records.
+                from .aircrack import Aircrack
+                return Aircrack.crack_handshake(handshake_obj, show_command=show_command, wordlist=wordlist)
+
             Color.pl(f"{{+}} {{C}}Attempting to crack {file_type_msg} using Hashcat mode {hashcat_mode}{{W}}")
 
             # Live cracking with streamed progress
@@ -342,6 +416,9 @@ class Hashcat(Dependency):
             Color.pl('{!} {R}Hashcat %d.%d.%d does not support mode 22000 (requires 6.0.0+){W}' % version)
             return None
 
+        if not Hashcat.check_hash_file_compat(pmkid_file):
+            return None
+
         wordlist = wordlist or Configuration.wordlist
 
         # Live cracking with streamed progress
@@ -365,7 +442,7 @@ class HcxDumpTool(Dependency):
         command = [
             'hcxdumptool',
             '-i', Configuration.interface,
-            '-c', str(target.channel) + 'a',
+            '-c', channel_spec(target.channel),
             '-w', pcapng_file
         ]
 
@@ -571,7 +648,7 @@ class HcxPcapngTool(Dependency):
         matching_pmkid_hash = None
         for line in output.split('\n'):
             fields = line.split('*')
-            if len(fields) >= 3 and fields[3].lower() == self.bssid:
+            if len(fields) >= 4 and fields[3].lower() == self.bssid:
                 # Found it
                 matching_pmkid_hash = line
                 break

@@ -10,6 +10,7 @@ handshakes and other wireless frames with PMF awareness.
 
 from .dependency import Dependency
 from ..util.process import Process
+from ..util.hcxtools import channel_spec, filter_hash_lines
 from ..config import Configuration
 
 import os
@@ -92,6 +93,14 @@ class HcxDumpTool(Dependency):
         - Reduces memory usage by filtering early in capture pipeline
         - Supports multiple interfaces for simultaneous monitoring
         """
+        # hcxdumptool refuses to overwrite an existing capture file, so a
+        # leftover file from a previous run would silently capture nothing.
+        try:
+            if os.path.exists(self.output_file):
+                os.remove(self.output_file)
+        except OSError:
+            pass
+
         # Build the command
         # Note: hcxdumptool 7.x has simplified significantly
         # --rcascan is for scanning/assessment only (no capture)
@@ -107,26 +116,22 @@ class HcxDumpTool(Dependency):
         for iface in self.interfaces:
             command.extend(['-i', iface])
 
-        # Add channel if specified (must include band suffix for v7.x: 1a, 6a, 11a, etc.)
+        # Channel needs an explicit band suffix: 1a (2.4 GHz), 36b (5 GHz), 5c (6 GHz)
         if self.channel:
-            # Add band suffix 'a' for 2.4GHz (most common)
-            channel_str = str(self.channel)
-            if channel_str.isdigit():
-                if int(channel_str) <= 14:
-                    channel_str += 'a'  # Default to 2.4GHz band
-                else:
-                    channel_str += 'b'
-            command.extend(['-c', channel_str])
+            command.extend(['-c', channel_spec(self.channel)])
 
         # Note: hcxdumptool 7.x removed --filterlist_ap option
         # BSSID filtering must be done post-capture with hcxpcapngtool
         # or using BPF filters (complex, skipping for now)
         # The tool will capture all traffic on the channel
 
-        # Enable ACK for active monitor mode support (if available)
-        # This allows the interface to ACK incoming frames
+        # Active capture ACKs incoming frames. hcxdumptool transmits
+        # association/disassociation/rogue M1M2 by default, so "no deauth"
+        # has to disable those explicitly instead of merely dropping -A.
         if self.enable_deauth and not self.pmf_required:
             command.append('-A')  # ACK incoming frames (requires active monitor mode support)
+        else:
+            command.extend(HcxDumpToolPassive.PASSIVE_OPTIONS)
 
         # Start the process
         self.proc = Process(command, devnull=False)
@@ -268,9 +273,19 @@ class HcxDumpTool(Dependency):
 
 class HcxDumpToolPassive:
     """
-    Wrapper for hcxdumptool in passive mode.
-    Uses --rds=3 flag for passive PMKID capture without deauth.
+    Wrapper for hcxdumptool in receive-only ("passive") mode.
+
+    hcxdumptool transmits by default. These options disable the active
+    behaviors wifite promises not to use: association attempts, probe
+    responses, disassociation frames, and rogue M1M2 replies.
     """
+
+    PASSIVE_OPTIONS = (
+        '--associationmax=0',       # never attempt to associate with an AP
+        '--proberesponsetx=0',      # never transmit PROBERESPONSE frames
+        '--disable_disassociation',  # never transmit DISASSOCIATION frames
+        '--m2max=0',                # reject clients instead of rogue M1M2
+    )
 
     def __init__(self, interface=None, output_file=None):
         """
@@ -303,13 +318,19 @@ class HcxDumpToolPassive:
         Start hcxdumptool in passive mode.
         Called at start of 'with HcxDumpToolPassive(...) as x:'
         """
-        # Build the command for passive PMKID capture
+        # Build the receive-only command for PMKID capture. The explicit
+        # no-transmit flags are required: hcxdumptool is active by default.
+        try:
+            if os.path.exists(self.output_file):
+                os.remove(self.output_file)
+        except OSError:
+            pass
+
         command = [
             'hcxdumptool',
             '-i', self.interface,
-            #'--rds=3',  # Passive mode with PMKID capture
-            '-w', self.output_file
-            #'--enable_status=15'  # Enable all status messages
+            *self.PASSIVE_OPTIONS,
+            '-w', self.output_file,
         ]
 
         # Start the process
@@ -375,10 +396,25 @@ class HcxPcapngTool(Dependency):
         return Process.exists('hcxpcapngtool')
 
     @staticmethod
+    def _remove_file(path: str) -> None:
+        """Best-effort unlink; hcxpcapngtool appends to existing files."""
+        if not path:
+            return
+        try:
+            if os.path.exists(path):
+                os.remove(path)
+        except OSError:
+            pass
+
+    @staticmethod
     def convert_to_hashcat(input_file: str, output_file: str,
                           bssid: str = None, essid: str = None) -> bool:
         """
         Convert pcapng capture to hashcat format (mode 22000).
+
+        hcxpcapngtool 7+ no longer accepts --bssid/--essid, so matching
+        records are filtered here after conversion: MAC_AP is field 3 and
+        the hex-encoded ESSID is field 5 of a mode-22000 line.
 
         Args:
             input_file: Input pcapng file
@@ -387,31 +423,51 @@ class HcxPcapngTool(Dependency):
             essid: Filter by ESSID (optional)
 
         Returns:
-            True if conversion successful, False otherwise
+            True if at least one matching hash was written, False otherwise
         """
         if not HcxPcapngTool.exists():
             return False
 
+        HcxPcapngTool._remove_file(output_file)
+
+        wants_filter = bool(bssid or essid)
+        raw_output = f'{output_file}.raw' if wants_filter else output_file
+        if wants_filter:
+            HcxPcapngTool._remove_file(raw_output)
+
         command = [
             'hcxpcapngtool',
-            '-o', output_file,
+            '-o', raw_output,
             input_file
         ]
 
-        # Add filters if specified
-        if bssid:
-            command.extend(['--bssid', bssid.replace(':', '')])
-        if essid:
-            command.extend(['--essid', essid])
-
         try:
             proc = Process(command, devnull=False)
-            proc.wait()
-
-            # Check if output file was created
-            return os.path.exists(output_file) and os.path.getsize(output_file) > 0
+            return_code = proc.wait()
         except (OSError, RuntimeError):
+            HcxPcapngTool._remove_file(raw_output)
             return False
+
+        if return_code != 0:
+            HcxPcapngTool._remove_file(raw_output)
+            return False
+
+        if wants_filter:
+            try:
+                with open(raw_output, 'r', errors='replace') as handle:
+                    matches = filter_hash_lines(handle.readlines(), bssid, essid)
+            except OSError:
+                matches = []
+            finally:
+                HcxPcapngTool._remove_file(raw_output)
+
+            if not matches:
+                return False
+
+            with open(output_file, 'w') as handle:
+                handle.writelines(matches)
+
+        return os.path.exists(output_file) and os.path.getsize(output_file) > 0
 
     @staticmethod
     def check_version() -> str:

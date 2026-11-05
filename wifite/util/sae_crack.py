@@ -15,6 +15,7 @@ from typing import Optional, Dict
 from ..config import Configuration
 from ..model.sae_handshake import SAEHandshake
 from ..tools.hashcat import Hashcat, HashcatCracker
+from ..tools.hcxdumptool import HcxPcapngTool
 from ..util.color import Color
 from ..util.process import Process
 
@@ -101,30 +102,15 @@ class SAECracker:
         self.hash_file = Configuration.temp(f'sae_{essid_part}_{bssid_part}.22000')
         
         try:
-            command = [
-                'hcxpcapngtool',
-                '-o', self.hash_file,
-                self.sae_handshake.capfile
-            ]
-            
-            # Add BSSID filter
-            if self.sae_handshake.bssid:
-                command.extend(['--bssid', self.sae_handshake.bssid.replace(':', '')])
-            
-            # Add ESSID filter
-            if self.sae_handshake.essid:
-                command.extend(['--essid', self.sae_handshake.essid])
-            
-            proc = Process(command, devnull=False)
-            proc.wait()
-            
-            # Verify hash file was created
-            if not os.path.exists(self.hash_file) or os.path.getsize(self.hash_file) == 0:
+            if not HcxPcapngTool.convert_to_hashcat(
+                    self.sae_handshake.capfile, self.hash_file,
+                    bssid=self.sae_handshake.bssid,
+                    essid=self.sae_handshake.essid):
                 Color.pl('{!} {R}Failed to generate hash file from SAE handshake{W}')
                 return False
-            
+
             return True
-            
+
         except Exception as e:
             Color.pl('{!} {R}Error preparing hash file:{W} %s' % str(e))
             return False

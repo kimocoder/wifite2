@@ -22,7 +22,7 @@ PMKID Location in EAPOL M1:
     - PMKID is 16 bytes
 
 Output Format (hashcat mode 22000):
-    WPA*02*PMKID*MAC_AP*MAC_STA*ESSID_HEX***
+    WPA*01*PMKID*MAC_AP*MAC_STA*ESSID_HEX***
 
 Note: This is a simplified implementation. For production use with
 difficult targets, hcxdumptool is recommended as it handles edge cases
@@ -59,8 +59,12 @@ class PMKIDResult:
     def to_hashcat_22000(self) -> str:
         """
         Convert to hashcat 22000 format.
-        
-        Format: WPA*02*PMKID*MAC_AP*MAC_STA*ESSID_HEX***
+
+        Format: WPA*01*PMKID*MAC_AP*MAC_STA*ESSID_HEX***
+
+        ``WPA*01`` is the PMKID record; ``WPA*02`` is reserved for EAPOL
+        MIC records (which require ANonce and EAPOL fields) and hashcat
+        rejects a PMKID written that way.
         """
         essid_hex = binascii.hexlify(
             self.essid.encode('utf-8') if self.essid else b''
@@ -70,7 +74,7 @@ class PMKIDResult:
         mac_sta = self.client_mac.replace(':', '').lower()
         pmkid = self.pmkid.lower()
         
-        return f"WPA*02*{pmkid}*{mac_ap}*{mac_sta}*{essid_hex}***"
+        return f"WPA*01*{pmkid}*{mac_ap}*{mac_sta}*{essid_hex}***"
     
     def to_hashcat_16800(self) -> str:
         """
@@ -393,24 +397,22 @@ class ScapyPMKID:
             else:
                 return None
             
-            # EAPOL-Key frame structure:
+            # EAPOL-Key frame structure (raw payload after the EAPOL header):
             # Key Descriptor Type (1) + Key Information (2) + Key Length (2) +
             # Key Replay Counter (8) + Key Nonce (32) + Key IV (16) +
-            # Key RSC (8) + Key ID (8) + Key MIC (16) + Key Data Length (2) + Key Data
-            
-            if len(raw) < 77:  # Minimum for EAPOL-Key with some data
+            # Key RSC (8) + Key ID (8) + Key MIC (16) +
+            # Key Data Length (2) + Key Data
+            #
+            # Key Data Length therefore starts at offset 93 and Key Data at 95.
+            if len(raw) < 95:
                 return None
-            
-            # Key Data Length is at offset 77 (2 bytes, big-endian)
-            key_data_len = (raw[76] << 8) | raw[77] if len(raw) > 77 else 0
-            
+
+            key_data_len = int.from_bytes(raw[93:95], 'big')
             if key_data_len == 0:
                 return None
-            
-            # Key Data starts at offset 78
-            key_data = raw[78:78 + key_data_len] if len(raw) >= 78 + key_data_len else b''
-            
-            if not key_data:
+
+            key_data = raw[95:95 + key_data_len]
+            if len(key_data) < key_data_len:
                 return None
             
             # Parse Key Data for PMKID

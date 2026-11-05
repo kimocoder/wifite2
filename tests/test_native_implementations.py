@@ -328,7 +328,7 @@ class TestScapyPMKID:
         
         # Test 22000 format
         hashcat_22000 = result.to_hashcat_22000()
-        assert hashcat_22000.startswith('WPA*02*')
+        assert hashcat_22000.startswith('WPA*01*')
         assert 'aabbccddeeff' in hashcat_22000
         assert '112233445566' in hashcat_22000
         
@@ -336,6 +336,22 @@ class TestScapyPMKID:
         hashcat_16800 = result.to_hashcat_16800()
         assert '0123456789abcdef' in hashcat_16800
         assert '*' in hashcat_16800
+
+    def test_extract_pmkid_uses_eapol_key_data_offsets(self):
+        """Key Data Length is at 93 and Key Data starts at 95."""
+        pytest.importorskip('scapy.all')
+        from scapy.all import Ether, EAPOL, Raw
+        from wifite.native.pmkid import ScapyPMKID
+
+        pmkid = '0123456789abcdef0123456789abcdef'
+        key_data = b'\xdd\x14\x00\x0f\xac\x04' + bytes.fromhex(pmkid)
+
+        raw = bytearray(95)
+        raw[93:95] = len(key_data).to_bytes(2, 'big')
+        raw.extend(key_data)
+
+        pkt = Ether() / EAPOL() / Raw(bytes(raw))
+        assert ScapyPMKID._extract_pmkid(pkt) == pmkid
 
 
 class TestNativeScanner:

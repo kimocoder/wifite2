@@ -23,6 +23,34 @@ from wifite.util.process import Process
 
 pytestmark = pytest.mark.timeout(30)
 
+BSSID_HEX = 'aabbccddeeff'
+ESSID_HEX = '5465737457504133'  # 'TestWPA3'
+MATCHING_HASH = (
+    f'WPA*01*0123456789abcdef0123456789abcdef*{BSSID_HEX}'
+    f'*112233445566*{ESSID_HEX}***'
+)
+
+
+def mock_hcxpcapngtool(mock_process_class, write_hashes=True):
+    """Make the mocked hcxpcapngtool write one matching record to -o."""
+    mock_process_class.exists.return_value = True
+
+    def fake_process(command, devnull=False):
+        instance = Mock()
+
+        def wait():
+            if write_hashes:
+                target = command[command.index('-o') + 1]
+                with open(target, 'w') as fh:
+                    fh.write(MATCHING_HASH + '\n')
+            return 0
+
+        instance.wait.side_effect = wait
+        return instance
+
+    mock_process_class.side_effect = fake_process
+    return mock_process_class
+
 
 class TestSAEHandshake(unittest.TestCase):
     """Test suite for SAEHandshake functionality."""
@@ -61,59 +89,29 @@ class TestSAEHandshake(unittest.TestCase):
         self.assertEqual(hs.bssid, self.bssid)
         self.assertIsNone(hs.essid)
 
-    @patch('wifite.model.sae_handshake.Process')
+    @patch('wifite.tools.hcxdumptool.Process')
     def test_validate_with_hcxpcapngtool_success(self, mock_process_class):
         """Test validation with hcxpcapngtool when handshake is valid."""
-        # Mock Process.exists to return True
-        mock_process_class.exists.return_value = True
-        
-        # Mock process execution
-        mock_proc = Mock()
-        mock_proc.wait.return_value = None
-        mock_process_class.return_value = mock_proc
-        
-        # Create a mock hash file
-        temp_hash = f'{self.capfile}.temp.22000'
-        with open(temp_hash, 'w') as f:
-            f.write('mock_hash_data')
-        
-        try:
-            hs = SAEHandshake(self.capfile, self.bssid, self.essid)
-            result = hs._validate_with_hcxpcapngtool()
-            
-            # Should return True if hash file was created
-            self.assertTrue(result)
-        finally:
-            if os.path.exists(temp_hash):
-                os.remove(temp_hash)
+        mock_hcxpcapngtool(mock_process_class)
 
-    @patch('wifite.model.sae_handshake.Process')
+        hs = SAEHandshake(self.capfile, self.bssid, self.essid)
+        self.assertTrue(hs._validate_with_hcxpcapngtool())
+
+    @patch('wifite.tools.hcxdumptool.Process')
     def test_validate_with_hcxpcapngtool_failure(self, mock_process_class):
         """Test validation with hcxpcapngtool when handshake is invalid."""
-        # Mock Process.exists to return True
-        mock_process_class.exists.return_value = True
-        
-        # Mock process execution
-        mock_proc = Mock()
-        mock_proc.wait.return_value = None
-        mock_process_class.return_value = mock_proc
-        
-        hs = SAEHandshake(self.capfile, self.bssid, self.essid)
-        result = hs._validate_with_hcxpcapngtool()
-        
-        # Should return False if hash file was not created
-        self.assertFalse(result)
+        mock_hcxpcapngtool(mock_process_class, write_hashes=False)
 
-    @patch('wifite.model.sae_handshake.Process')
+        hs = SAEHandshake(self.capfile, self.bssid, self.essid)
+        self.assertFalse(hs._validate_with_hcxpcapngtool())
+
+    @patch('wifite.tools.hcxdumptool.Process')
     def test_validate_with_hcxpcapngtool_not_installed(self, mock_process_class):
         """Test validation when hcxpcapngtool is not installed."""
-        # Mock Process.exists to return False
         mock_process_class.exists.return_value = False
-        
+
         hs = SAEHandshake(self.capfile, self.bssid, self.essid)
-        result = hs._validate_with_hcxpcapngtool()
-        
-        self.assertFalse(result)
+        self.assertFalse(hs._validate_with_hcxpcapngtool())
 
     @patch('wifite.model.sae_handshake.Tshark')
     @patch('wifite.model.sae_handshake.Process')
@@ -229,86 +227,61 @@ class TestSAEHandshake(unittest.TestCase):
         self.assertIsNone(result)
 
     @patch('wifite.model.sae_handshake.Color')
-    @patch('wifite.model.sae_handshake.Process')
+    @patch('wifite.tools.hcxdumptool.Process')
     def test_convert_to_hashcat_success(self, mock_process_class, mock_color):
         """Test conversion to hashcat format."""
-        # Mock Process.exists to return True
-        mock_process_class.exists.return_value = True
-        
-        # Mock process execution
-        mock_proc = Mock()
-        mock_proc.wait.return_value = None
-        mock_process_class.return_value = mock_proc
-        
-        # Create output file
+        mock_hcxpcapngtool(mock_process_class)
+
         output_file = f'{self.capfile}.22000'
-        with open(output_file, 'w') as f:
-            f.write('mock_hash_data')
-        
         try:
             hs = SAEHandshake(self.capfile, self.bssid, self.essid)
             result = hs.convert_to_hashcat(output_file)
-            
+
             self.assertEqual(result, output_file)
             self.assertEqual(hs.hash_file, output_file)
+            with open(output_file) as fh:
+                self.assertIn(MATCHING_HASH, fh.read())
         finally:
             if os.path.exists(output_file):
                 os.remove(output_file)
 
     @patch('wifite.model.sae_handshake.Color')
-    @patch('wifite.model.sae_handshake.Process')
+    @patch('wifite.tools.hcxdumptool.Process')
     def test_convert_to_hashcat_failure(self, mock_process_class, mock_color):
         """Test conversion to hashcat format when it fails."""
-        # Mock Process.exists to return True
-        mock_process_class.exists.return_value = True
-        
-        # Mock process execution
-        mock_proc = Mock()
-        mock_proc.wait.return_value = None
-        mock_process_class.return_value = mock_proc
-        
+        mock_hcxpcapngtool(mock_process_class, write_hashes=False)
+
         output_file = f'{self.capfile}.22000'
-        
+
         hs = SAEHandshake(self.capfile, self.bssid, self.essid)
         result = hs.convert_to_hashcat(output_file)
-        
+
         self.assertIsNone(result)
 
     @patch('wifite.model.sae_handshake.Color')
-    @patch('wifite.model.sae_handshake.Process')
+    @patch('wifite.tools.hcxdumptool.Process')
     def test_convert_to_hashcat_no_tool(self, mock_process_class, mock_color):
         """Test conversion when hcxpcapngtool is not installed."""
-        # Mock Process.exists to return False
         mock_process_class.exists.return_value = False
-        
+
         hs = SAEHandshake(self.capfile, self.bssid, self.essid)
         result = hs.convert_to_hashcat()
-        
+
         self.assertIsNone(result)
 
     @patch('wifite.model.sae_handshake.Color')
-    @patch('wifite.model.sae_handshake.Process')
+    @patch('wifite.tools.hcxdumptool.Process')
     def test_convert_to_hashcat_auto_filename(self, mock_process_class, mock_color):
         """Test conversion with auto-generated filename."""
-        # Mock Process.exists to return True
-        mock_process_class.exists.return_value = True
-        
-        # Mock process execution
-        mock_proc = Mock()
-        mock_proc.wait.return_value = None
-        mock_process_class.return_value = mock_proc
-        
+        mock_hcxpcapngtool(mock_process_class)
+
         # Expected filename
         expected_file = f'sae_handshake_{self.essid}_{self.bssid.replace(":", "-")}.22000'
-        
-        # Create output file
-        with open(expected_file, 'w') as f:
-            f.write('mock_hash_data')
-        
+
         try:
             hs = SAEHandshake(self.capfile, self.bssid, self.essid)
             result = hs.convert_to_hashcat()
-            
+
             self.assertEqual(result, expected_file)
         finally:
             if os.path.exists(expected_file):

@@ -181,7 +181,7 @@ class TestNativePMKIDIntegration(unittest.TestCase):
             
             # Test 22000 format
             hash_22000 = result.to_hashcat_22000()
-            self.assertIn('WPA*02*', hash_22000)
+            self.assertIn('WPA*01*', hash_22000)
             self.assertIn('aabbccddeeff', hash_22000.lower())
             
             # Test 16800 format

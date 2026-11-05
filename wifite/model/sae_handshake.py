@@ -76,37 +76,24 @@ class SAEHandshake:
         Returns:
             True if hcxpcapngtool can extract valid SAE data
         """
-        if not Process.exists('hcxpcapngtool'):
+        from ..tools.hcxdumptool import HcxPcapngTool
+
+        if not HcxPcapngTool.exists():
             return False
 
+        temp_hash = f'{self.capfile}.temp.22000'
         try:
-            # Try to convert to hashcat format
-            # If successful, we have a valid handshake
-            temp_hash = f'{self.capfile}.temp.22000'
-
-            command = [
-                'hcxpcapngtool',
-                '-o', temp_hash,
-                self.capfile
-            ]
-
-            if self.bssid:
-                # Filter by BSSID if specified
-                command.extend(['--bssid', self.bssid.replace(':', '')])
-
-            proc = Process(command, devnull=False)
-            proc.wait()
-
-            # Check if hash file was created and has content
-            if os.path.exists(temp_hash) and os.path.getsize(temp_hash) > 0:
-                # Clean up temp file
-                os.remove(temp_hash)
-                return True
-
-            return False
-
+            # The shared converter filters out other networks' hashes.
+            return HcxPcapngTool.convert_to_hashcat(
+                self.capfile, temp_hash, bssid=self.bssid)
         except Exception:
             return False
+        finally:
+            try:
+                if os.path.exists(temp_hash):
+                    os.remove(temp_hash)
+            except OSError:
+                pass
 
     def _validate_with_tshark(self) -> bool:
         """
@@ -240,7 +227,9 @@ class SAEHandshake:
         Returns:
             Path to hash file if successful, None otherwise
         """
-        if not Process.exists('hcxpcapngtool'):
+        from ..tools.hcxdumptool import HcxPcapngTool
+
+        if not HcxPcapngTool.exists():
             Color.pl('{!} {R}hcxpcapngtool not found - cannot convert SAE handshake{W}')
             return None
 
@@ -251,32 +240,16 @@ class SAEHandshake:
             output_file = f'sae_handshake_{essid_part}_{bssid_part}.22000'
 
         try:
-            command = [
-                'hcxpcapngtool',
-                '-o', output_file,
-                self.capfile
-            ]
-
-            # Add BSSID filter if specified
-            if self.bssid:
-                command.extend(['--bssid', self.bssid.replace(':', '')])
-
-            # Add ESSID filter if specified
-            if self.essid:
-                command.extend(['--essid', self.essid])
-
             Color.pl('{+} Converting SAE handshake to hashcat format...')
-            proc = Process(command, devnull=False)
-            proc.wait()
-
-            # Check if conversion was successful
-            if os.path.exists(output_file) and os.path.getsize(output_file) > 0:
+            if HcxPcapngTool.convert_to_hashcat(
+                    self.capfile, output_file,
+                    bssid=self.bssid, essid=self.essid):
                 Color.pl('{+} {G}Successfully converted to hashcat format:{W} {C}%s{W}' % output_file)
                 self.hash_file = output_file
                 return output_file
-            else:
-                Color.pl('{!} {R}Failed to convert SAE handshake{W}')
-                return None
+
+            Color.pl('{!} {R}Failed to convert SAE handshake{W}')
+            return None
 
         except Exception as e:
             Color.pl('{!} {R}Error converting SAE handshake:{W} %s' % str(e))
