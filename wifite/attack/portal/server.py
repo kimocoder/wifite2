@@ -8,6 +8,7 @@ Serves login pages and handles credential submissions for Evil Twin attacks.
 """
 
 import os
+import errno
 import threading
 import time
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
@@ -512,12 +513,37 @@ class PortalServer:
             PortalRequestHandler.server_instance = self
             PortalRequestHandler.credential_handler = self.credential_handler
             
-            # Create HTTP server
+            # Create HTTP server, falling back to a free port when the
+            # requested one is already in use (e.g. another web server).
             # ThreadingHTTPServer handles each client in its own thread, so one
             # slow/stalled client can't block the captive portal for everyone
             # else. daemon_threads=True (set by ThreadingHTTPServer) lets the
             # process exit without waiting on in-flight request threads.
-            self.server = ThreadingHTTPServer((self.host, self.port), PortalRequestHandler)
+            requested_port = self.port
+            candidates = [requested_port]
+            if requested_port != 0:
+                candidates += [p for p in (8080, 8081, 8888, 8000)
+                               if p != requested_port]
+                candidates.append(0)  # last resort: any free port
+
+            for candidate in candidates:
+                try:
+                    self.server = ThreadingHTTPServer(
+                        (self.host, candidate), PortalRequestHandler)
+                    self.port = self.server.server_address[1]
+                    break
+                except OSError as e:
+                    if e.errno != errno.EADDRINUSE:
+                        raise
+                    log_warning('Portal',
+                                f'Port {candidate} already in use; trying another port')
+
+            if self.server is None:
+                raise OSError(errno.EADDRINUSE, 'no free port available')
+
+            if self.port != requested_port:
+                Color.pl('{!} {O}Port %d already in use; using port {G}%d{W} instead{W}'
+                         % (requested_port, self.port))
             
             # Start server in background thread
             self.server_thread = threading.Thread(target=self._run_server, daemon=True)

@@ -812,7 +812,10 @@ class EvilTwin(Attack):
             Color.pl('{+} {G}Evil Twin attack started{W}')
             Color.pl('{+} {C}Rogue AP:{W} {G}%s{W} on channel {G}%s{W}' % (
                 self.target.essid, self.target.channel))
-            Color.pl('{+} {C}Captive Portal:{W} http://192.168.100.1')
+            portal_url = 'http://192.168.100.1'
+            if self.portal_server and self.portal_server.port != 80:
+                portal_url += f':{self.portal_server.port}'
+            Color.pl('{+} {C}Captive Portal:{W} %s' % portal_url)
             Color.pl('')
             Color.pl('{+} {O}Waiting for clients to connect...{W}')
             Color.pl('{!} {O}Press Ctrl+C to stop{W}')
@@ -820,7 +823,7 @@ class EvilTwin(Attack):
             
             if self.attack_view:
                 self.attack_view.add_log(f"Rogue AP started: {self.target.essid} on channel {self.target.channel}", timestamp=True)
-                self.attack_view.add_log("Captive portal running at http://192.168.100.1", timestamp=True)
+                self.attack_view.add_log(f"Captive portal running at {portal_url}", timestamp=True)
                 self.attack_view.add_log("Waiting for clients to connect...", timestamp=True)
             
             self.state = AttackState.RUNNING
