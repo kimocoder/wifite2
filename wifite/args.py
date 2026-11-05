@@ -1146,6 +1146,17 @@ against the real AP and captures valid passwords.
                               dest='update_db',
                               help=Color.s('Update the local MAC address prefix database from IEEE registries'))
 
+        commands.add_argument('--update',
+                              action='store_true',
+                              dest='update',
+                              help=Color.s('Check the {C}GitHub{W} repository for a newer commit and, if found, '
+                                         'fast-forward this checkout to the latest commit, then exit'))
+
+        commands.add_argument('--no-update',
+                              action='store_true',
+                              dest='no_update',
+                              help=Color.s('Disable the automatic update check performed on startup'))
+
         commands.add_argument('--resume',
                               action='store_true',
                               dest='resume',

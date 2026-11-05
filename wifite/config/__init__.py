@@ -61,6 +61,8 @@ class Configuration:
     show_ignored = None
     tx_power = None
     update_db = None
+    no_update = None  # --no-update: disable the startup auto-update check
+    update = None     # --update: check GitHub and update, then exit
     db_filename = None
     show_manufacturers = None
     detect_honeypots = None
@@ -263,6 +265,10 @@ class Configuration:
             cls.crack_handshake = True
         if args.update_db:
             cls.update_db = True
+        if getattr(args, 'no_update', False):
+            cls.no_update = True
+        if getattr(args, 'update', False):
+            cls.update = True
         if hasattr(args, 'syscheck') and args.syscheck:
             cls.syscheck = True
 
