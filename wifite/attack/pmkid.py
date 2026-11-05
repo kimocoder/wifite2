@@ -34,6 +34,8 @@ class AttackPMKID(Attack):
         self.keep_capturing = None
         self.pcapng_file = Configuration.temp('pmkid.pcapng')
         self.success = False
+        self.capture_success = False
+        self.crack_error = False
         self.timer = None
 
         # Initialize TUI view if in TUI mode
@@ -196,6 +198,9 @@ class AttackPMKID(Attack):
             if self.view:
                 self.view.add_log("Failed to capture PMKID")
             return False  # No hash found.
+
+        # A valid hash exists on disk even if cracking later fails.
+        self.capture_success = True
 
         # Log that we have a PMKID and will proceed to crack
         if self.view:
@@ -565,6 +570,7 @@ class AttackPMKID(Attack):
                             time.sleep(2)
 
                         key = cracker.get_result()
+                        device_error = cracker.device_error
                 except KeyboardInterrupt:
                     return self._handle_hashcat_failure(
                         '\n{!} {R}Failed to crack PMKID: {O}Cracking interrupted by user{W}'
@@ -575,11 +581,25 @@ class AttackPMKID(Attack):
 
                 if key is not None:
                     break
+                if device_error:
+                    self.crack_error = True
+                    log_error('AttackPMKID',
+                              'hashcat has no usable OpenCL device; '
+                              'PMKID was captured but not tested')
+                    Color.pl('{!} {R}Cracking could not run: hashcat has no usable device{W}')
+                    Color.pl('{!} {O}The PMKID hash was saved; retry on a machine '
+                             'with a working hashcat backend{W}')
+                    break
                 Color.pl('{!} {O}%s did not contain password{W}' % wordlist_name)
 
         if key is not None:
             log_info('AttackPMKID', f'PMKID cracked successfully! Password: {mask_sensitive(key)}')
             return self._handle_pmkid_crack_success(key, pmkid_file)
+        if self.crack_error:
+            Color.pattack('PMKID', self.target, '{R}CRACK',
+                          '{R}Cracking unavailable{O} (no usable hashcat device); '
+                          'capture kept\n')
+            return False
         # Failed to crack.
         if Configuration.wordlist is not None:
             log_warning('AttackPMKID', 'PMKID crack failed: passphrase not found in wordlist')

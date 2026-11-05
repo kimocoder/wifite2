@@ -207,12 +207,18 @@ class AttackAll:
             return True  # Keep attacking other targets (skip)
 
         attack_successful = False
+        capture_successful = False
+        crack_error = False
         while attacks:
             # Needed by infinite attack mode in order to count how many targets were attacked
             target.attacked = True
             attack = attacks.pop(0)
             try:
                 result = attack.run()
+                if getattr(attack, 'capture_success', False):
+                    capture_successful = True
+                if getattr(attack, 'crack_error', False):
+                    crack_error = True
                 if result:
                     attack_successful = True
                     break  # Attack was successful, stop other attacks.
@@ -274,8 +280,16 @@ class AttackAll:
                 session_mgr.mark_target_complete(session, target.bssid, crack_result)
                 session_mgr.save_session(session)
                 Color.pl('{+} {D}Session updated: target {C}%s{D} marked as {G}completed{W}' % target.bssid)
+            elif capture_successful:
+                # Capture exists; only cracking failed or could not run.
+                reason = ('crack tool unavailable; capture kept'
+                          if crack_error else 'captured but not cracked')
+                session_mgr.mark_target_captured(session, target.bssid, reason)
+                session_mgr.save_session(session)
+                Color.pl('{+} {D}Session updated: target {C}%s{D} marked as '
+                         '{C}captured{W} ({O}not cracked{W})' % target.bssid)
             else:
-                # All attacks failed, mark as failed
+                # All attacks failed
                 session_mgr.mark_target_failed(session, target.bssid, "All attacks failed")
                 session_mgr.save_session(session)
                 Color.pl('{+} {D}Session updated: target {C}%s{D} marked as {R}failed{W}' % target.bssid)

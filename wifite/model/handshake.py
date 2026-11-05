@@ -65,6 +65,10 @@ class Handshake:
                     self.essid = essid
                     break
 
+    # EAPOL message-number pairs that can actually be cracked.
+    # M1+M2 and M2+M3 are sufficient; M1+M3 is not.
+    CRACKABLE_MESSAGE_PAIRS = ((1, 2), (2, 3))
+
     def has_handshake(self):
         if not self.bssid or not self.essid:
             self.divine_bssid_and_essid()
@@ -72,21 +76,92 @@ class Handshake:
         log_debug('Handshake', 'Checking %s for handshake (bssid=%s essid=%s)' % (
             self.capfile, self.bssid, self.essid))
 
-        # Prefer strict validators. Do NOT accept aircrack alone as proof.
-        # Tshark requires the full 4-way (strict) — keep it.
-        tshark_results = self.tshark_handshakes()
-        if len(tshark_results) > 0:
-            log_info('Handshake', 'tshark confirmed handshake in %s' % self.capfile)
+        # With no validator available nothing can be verified; never accept
+        # an unchecked capture.
+        try:
+            from ..tools.hcxdumptool import HcxPcapngTool
+            hcx_available = HcxPcapngTool.exists()
+        except ImportError:
+            hcx_available = False
+        if not Tshark.exists() and not hcx_available:
+            log_debug('Handshake', 'No EAPOL validator available; rejecting capture')
+            return False
+
+        if not self._has_crackable_pair():
+            log_debug('Handshake',
+                      'No crackable EAPOL message pair for %s in %s'
+                      % (self.bssid, self.capfile))
+            return False
+
+        # Cross-check with hcxpcapngtool: only accept captures that the
+        # conversion tool can turn into an EAPOL hash for this BSSID. This
+        # rejects rogue/partial captures that tshark may still summarize.
+        if not self._hcx_writes_target_eapol():
+            log_debug('Handshake',
+                      'hcxpcapngtool wrote no target EAPOL hash for %s in %s'
+                      % (self.bssid, self.capfile))
+            return False
+
+        log_info('Handshake',
+                 'crackable EAPOL pair confirmed in %s' % self.capfile)
+        return True
+
+    def _has_crackable_pair(self):
+        """Return True when M1+M2 or M2+M3 exists for the target BSSID."""
+        if not Tshark.exists():
+            # Let hcxpcapngtool decide when tshark is unavailable.
             return True
 
-        # cowpatty can be reliable for 2&3 captures
-        cowpatty_results = self.cowpatty_handshakes()
-        if len(cowpatty_results) > 0:
-            log_info('Handshake', 'cowpatty confirmed handshake in %s' % self.capfile)
+        summary = Tshark.eapol_message_summary(self.capfile, bssid=self.bssid)
+        if not summary:
+            return False
+
+        if self.bssid:
+            message_sets = [summary.get(self.bssid.lower(), set())]
+        else:
+            message_sets = list(summary.values())
+
+        return any(
+            all(message in messages for message in pair)
+            for messages in message_sets
+            for pair in self.CRACKABLE_MESSAGE_PAIRS
+        )
+
+    def _hcx_writes_target_eapol(self):
+        """Return True when hcxpcapngtool emits WPA*02/03/04 for the target."""
+        try:
+            from ..tools.hcxdumptool import HcxPcapngTool
+        except ImportError:
             return True
 
-        log_debug('Handshake', 'No valid handshake found in %s' % self.capfile)
-        return False
+        if not HcxPcapngTool.exists() or not self.bssid:
+            return True
+
+        import tempfile
+        handle, tmp_path = tempfile.mkstemp(
+            suffix='.22000', prefix='wifite_hscheck_')
+        os.close(handle)
+        try:
+            if not HcxPcapngTool.convert_to_hashcat(
+                    self.capfile, tmp_path, bssid=self.bssid):
+                return False
+
+            target = self.bssid.lower().replace(':', '')
+            with open(tmp_path, 'r', errors='replace') as hash_file:
+                for line in hash_file:
+                    fields = line.split('*')
+                    if (len(fields) > 3 and fields[0] == 'WPA' and
+                            fields[1] in ('02', '03', '04') and
+                            fields[3].lower() == target):
+                        return True
+            return False
+        except OSError:
+            return False
+        finally:
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
 
     def tshark_handshakes(self):
         """Returns list[tuple] of BSSID & ESSID pairs (ESSIDs are always `None`)."""

@@ -36,6 +36,9 @@ Module.symvers
 *.pcap
 *.cap
 *.log
+# Downloaded wpa-sec dictionaries (very large, fetch on demand)
+wordlists/*.txt
+!wordlists/wordlist-probable.txt
 
 # kimocoder
 .claude/

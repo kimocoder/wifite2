@@ -218,6 +218,7 @@ class SessionState:
     targets: List[TargetState] = field(default_factory=list)
     completed_targets: List[str] = field(default_factory=list)  # BSSIDs
     failed_targets: Dict[str, str] = field(default_factory=dict)  # BSSID -> reason
+    captured_targets: Dict[str, str] = field(default_factory=dict)  # BSSID -> reason
     current_target_index: int = 0
     
     def to_dict(self) -> Dict[str, Any]:
@@ -230,6 +231,7 @@ class SessionState:
             'targets': [t.to_dict() for t in self.targets],
             'completed_targets': self.completed_targets,
             'failed_targets': self.failed_targets,
+            'captured_targets': self.captured_targets,
             'current_target_index': self.current_target_index
         }
     
@@ -245,6 +247,7 @@ class SessionState:
             targets=targets,
             completed_targets=data.get('completed_targets', []),
             failed_targets=data.get('failed_targets', {}),
+            captured_targets=data.get('captured_targets', {}),
             current_target_index=data.get('current_target_index', 0)
         )
     
@@ -253,12 +256,14 @@ class SessionState:
         total = len(self.targets)
         completed = len(self.completed_targets)
         failed = len(self.failed_targets)
-        remaining = total - completed - failed
+        captured = len(self.captured_targets)
+        remaining = total - completed - failed - captured
         
         return {
             'total': total,
             'completed': completed,
             'failed': failed,
+            'captured': captured,
             'remaining': remaining,
             'progress_percent': (completed / total * 100) if total > 0 else 0,
             'created_at': datetime.fromtimestamp(self.created_at).strftime('%Y-%m-%d %H:%M:%S'),
@@ -571,7 +576,8 @@ class SessionManager:
                 raise ValueError(f"Target {i} has invalid BSSID format: {bssid}")
             
             # Validate status is valid
-            valid_statuses = ['pending', 'in_progress', 'completed', 'failed']
+            valid_statuses = ['pending', 'in_progress', 'completed',
+                              'captured', 'failed']
             if target['status'] not in valid_statuses:
                 raise ValueError(f"Target {i} has invalid status: {target['status']}")
         
@@ -583,6 +589,10 @@ class SessionManager:
         if 'failed_targets' in data:
             if not isinstance(data['failed_targets'], dict):
                 raise ValueError("failed_targets must be a dictionary")
+
+        if 'captured_targets' in data:
+            if not isinstance(data['captured_targets'], dict):
+                raise ValueError("captured_targets must be a dictionary")
     
     def list_sessions(self) -> List[Dict[str, Any]]:
         """
@@ -616,6 +626,7 @@ class SessionManager:
                     'total_targets': summary['total'],
                     'completed': summary['completed'],
                     'failed': summary['failed'],
+                    'captured': summary['captured'],
                     'remaining': summary['remaining'],
                     'progress_percent': summary['progress_percent'],
                     'age_hours': summary['age_hours']
@@ -699,9 +710,32 @@ class SessionManager:
                 target.last_attempt = time.time()
                 target.attempts += 1
                 break
-    
+
+    def mark_target_captured(self, session: SessionState, bssid: str,
+                             reason: str) -> None:
+        """
+        Mark a target as captured but not cracked.
+
+        The handshake/PMKID artifact is on disk; only the crack phase
+        failed or could not run. This is distinct from a failed attack.
+
+        Args:
+            session: SessionState to update
+            bssid: BSSID of captured target
+            reason: Why cracking did not complete
+        """
+        session.captured_targets[bssid] = reason
+
+        for target in session.targets:
+            if target.bssid == bssid:
+                target.status = 'captured'
+                target.last_attempt = time.time()
+                target.attempts += 1
+                break
+
     def get_remaining_targets(
-        self, session: SessionState, include_failed: bool = False
+        self, session: SessionState, include_failed: bool = False,
+        include_captured: bool = False
     ) -> List[TargetState]:
         """
         Get list of targets that still need to be attacked.
@@ -709,6 +743,8 @@ class SessionManager:
         Filters targets based on their status:
         - Excludes completed targets (successfully attacked)
         - Excludes failed targets by default (unless include_failed=True)
+        - Excludes captured-but-uncracked targets by default
+          (unless include_captured=True)
         - Includes pending targets (not yet attacked)
         - Includes in_progress targets (interrupted during attack)
         - Preserves original target order from session
@@ -716,6 +752,7 @@ class SessionManager:
         Args:
             session: SessionState to query
             include_failed: If True, include previously failed targets for retry
+            include_captured: If True, include captured-but-uncracked targets
             
         Returns:
             List of TargetState objects for remaining targets, in original order
@@ -730,7 +767,11 @@ class SessionManager:
             # Skip failed targets unless retry is enabled
             if target.bssid in session.failed_targets and not include_failed:
                 continue
-            
+
+            # Captures already exist; don't recapture automatically.
+            if target.bssid in session.captured_targets and not include_captured:
+                continue
+
             # Include pending and in_progress targets
             remaining.append(target)
         

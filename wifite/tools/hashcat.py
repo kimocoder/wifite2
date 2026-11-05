@@ -28,6 +28,16 @@ class HashcatCracker:
 
     STATUS_TIMER_SECONDS = 2
 
+    # hcxdumptool-style device failures. Hashcat exits 255 and prints one of
+    # these when every OpenCL device is unusable (e.g. rusticl on V3D with
+    # CL_INVALID_QUEUE_PROPERTIES). It must not be reported as "not found".
+    DEVICE_ERROR_MARKERS = (
+        'no devices found',
+        'cl_invalid_queue_properties',
+        'no opencl devices found',
+        'unstable opencl driver',
+    )
+
     def __init__(self, hash_file, wordlist, mode='22000', target_is_wpa3_sae=False):
         self.hash_file = hash_file
         self.wordlist = wordlist
@@ -39,6 +49,29 @@ class HashcatCracker:
         self._status_lock = threading.Lock()
         self._reader_thread = None
         self._stop_reader = threading.Event()
+        self.cpu_fallback = False
+        self.device_error = False
+        self.error_text = ''
+        self._finish_checked = False
+        self._stdout_tail = []
+
+    def _build_command(self):
+        """Build the hashcat argv for the current backend selection."""
+        command = [
+            'hashcat',
+            '-m', self.mode,
+            '--status',
+            '--status-timer', str(self.STATUS_TIMER_SECONDS),
+            '--machine-readable',
+            '-w', '3',
+        ]
+        if self.cpu_fallback:
+            # The OpenCL GPU device is unusable; PoCL exposes a CPU device.
+            command.extend(['-D', '1'])
+        command.extend([self.hash_file, self.wordlist])
+        if Hashcat.should_use_force():
+            command.append('--force')
+        return command
 
     def start(self, show_command=False):
         """Launch hashcat with periodic machine-readable status output."""
@@ -47,22 +80,13 @@ class HashcatCracker:
         # never see any STATUS lines and progress would stay at 0%.
         # The reader thread filters for STATUS / WPA* lines and drops
         # everything else, so the banner noise is invisible to the user.
-        command = [
-            'hashcat',
-            '-m', self.mode,
-            '--status',
-            '--status-timer', str(self.STATUS_TIMER_SECONDS),
-            '--machine-readable',
-            '-w', '3',
-            self.hash_file,
-            self.wordlist,
-        ]
-        if Hashcat.should_use_force():
-            command.append('--force')
+        command = self._build_command()
 
         if show_command:
             Color.pl(f'{{+}} {{D}}Running: {{W}}{{P}}{" ".join(command)}{{W}}')
 
+        self._finish_checked = False
+        self._stdout_tail = []
         self.proc = Process(command)
         self._reader_thread = threading.Thread(
             target=self._read_output, daemon=True)
@@ -90,6 +114,9 @@ class HashcatCracker:
                     # Cracked hash line: <hash>:<password>. The hash itself
                     # uses '*' as field separator, so rsplit on ':' is safe.
                     self._result_key = line.rsplit(':', 1)[-1].strip()
+                else:
+                    self._stdout_tail.append(line)
+                    del self._stdout_tail[:-20]
         except Exception as e:
             log_debug('HashcatCracker', f'Reader thread error: {e}')
 
@@ -151,10 +178,79 @@ class HashcatCracker:
         with self._status_lock:
             return dict(self._status)
 
+    @classmethod
+    def is_device_error(cls, text):
+        """Return True when hashcat output indicates no usable OpenCL device."""
+        if not text:
+            return False
+        lowered = text.lower()
+        return any(marker in lowered for marker in cls.DEVICE_ERROR_MARKERS)
+
+    def _read_stderr(self):
+        try:
+            stream = self.proc.pid.stderr if self.proc and self.proc.pid else None
+            if not stream or stream.closed:
+                return ''
+            data = stream.read()
+            if isinstance(data, bytes):
+                data = data.decode('utf-8', errors='replace')
+            return data or ''
+        except (OSError, ValueError):
+            return ''
+
+    def _handle_exit(self):
+        """Inspect a finished run and retry on CPU when no device was usable."""
+        if self._finish_checked:
+            return
+        self._finish_checked = True
+        if self._reader_thread and self._reader_thread.is_alive():
+            self._reader_thread.join(timeout=1.0)
+        stderr = self._read_stderr()
+        self.error_text = '\n'.join(
+            part for part in (stderr, '\n'.join(self._stdout_tail)) if part)
+        if not self.is_device_error(self.error_text):
+            return
+        if self.cpu_fallback:
+            self.device_error = True
+            log_error('HashcatCracker',
+                      'No usable OpenCL device, including CPU (-D 1)')
+            Color.pl('{!} {R}hashcat could not open any usable OpenCL device{W}')
+            Color.pl('{!} {O}Cracking did not run; the capture was NOT tested{W}')
+            return
+        self._restart_on_cpu()
+
+    def _restart_on_cpu(self):
+        """Retry the job on the PoCL CPU device (-D 1)."""
+        log_warning('HashcatCracker',
+                    'No usable OpenCL device; retrying on CPU (-D 1)')
+        Color.pl('{!} {O}hashcat could not open an OpenCL device '
+                 '(driver/backend failure){W}')
+        Color.pl('{!} {O}Falling back to the {C}CPU{W} device '
+                 '({C}-D 1{W}){W}')
+        Color.pl('{!} {O}CPU cracking is very slow (often hundreds of H/s); '
+                 'large wordlists can take hours or days{W}')
+        Color.pl('{!} {O}Watch the live speed/ETA and stop with Ctrl+C '
+                 'if it is impractical{W}')
+
+        try:
+            if self.proc:
+                self.proc.wait()
+        except Exception:
+            pass
+
+        self.cpu_fallback = True
+        self._result_key = None
+        self._status = {'progress': 0.0, 'speed': 'Unknown', 'eta': 'Unknown'}
+        self._stop_reader.clear()
+        self.start(show_command=False)
+
     def is_finished(self):
-        """Check if the process has exited."""
+        """Check if hashcat has exited; retry on CPU if no device was usable."""
         if not self.proc:
             return True
+        if self.proc.poll() is None:
+            return False
+        self._handle_exit()
         return self.proc.poll() is not None
 
     def get_result(self):
@@ -165,6 +261,8 @@ class HashcatCracker:
         """
         if self._reader_thread and self._reader_thread.is_alive():
             self._reader_thread.join(timeout=2.0)
+        if self.proc and self.proc.poll() is not None:
+            self._handle_exit()
         return self._result_key
 
     def interrupt(self):
@@ -188,6 +286,8 @@ class Hashcat(Dependency):
     dependency_url = 'https://hashcat.net/hashcat/'
 
     _cached_version = None  # Cache parsed version tuple
+    _force_cache = None  # Cache the one-time -I device probe
+    last_error = None  # Set when the last crack could not run at all
 
     @staticmethod
     def get_version():
@@ -310,14 +410,19 @@ class Hashcat(Dependency):
 
     @staticmethod
     def should_use_force():
+        if Hashcat._force_cache is not None:
+            return Hashcat._force_cache
         command = ['hashcat', '-I']
         stderr = Process(command).stderr()
-        return 'No devices found/left' in stderr or 'Unstable OpenCL driver detected!' in stderr
+        Hashcat._force_cache = ('No devices found/left' in stderr or
+                                'Unstable OpenCL driver detected!' in stderr)
+        return Hashcat._force_cache
 
     @staticmethod
     def _live_crack(hash_file, wordlist, mode='22000', show_command=False):
         """Run hashcat via HashcatCracker with live progress printed on one line."""
         import time
+        Hashcat.last_error = None
         with HashcatCracker(hash_file, wordlist, mode=mode) as cracker:
             cracker.start(show_command=show_command)
             try:
@@ -331,7 +436,12 @@ class Hashcat(Dependency):
                 Color.pl('')
                 raise
             Color.pl('')  # terminate the progress line
-            return cracker.get_result()
+            key = cracker.get_result()
+            if key is None and cracker.device_error:
+                Hashcat.last_error = (cracker.error_text or
+                                      'hashcat has no usable OpenCL device')
+                log_error('Hashcat', 'Cracking could not run: no usable device')
+            return key
 
     @staticmethod
     def _check_potfile(hash_file, mode='22000'):

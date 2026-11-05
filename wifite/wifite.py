@@ -682,9 +682,9 @@ class Wifite:
                     # Multiple sessions, let user choose
                     Color.pl('{+} Found {C}%d{W} session(s):' % len(sessions))
                     for i, s in enumerate(sessions, 1):
-                        Color.pl('  {G}%d{W}. %s - {C}%d{W} targets ({G}%d{W} completed, {R}%d{W} failed, {O}%d{W} remaining)' % (
-                            i, s['session_id'], s['total_targets'], 
-                            s['completed'], s['failed'], s['remaining']
+                        Color.pl('  {G}%d{W}. %s - {C}%d{W} targets ({G}%d{W} completed, {C}%d{W} captured, {R}%d{W} failed, {O}%d{W} remaining)' % (
+                            i, s['session_id'], s['total_targets'],
+                            s['completed'], s['captured'], s['failed'], s['remaining']
                         ))
 
                     Color.p('{+} Select session to resume [{G}1{W}]: ')
@@ -710,6 +710,7 @@ class Wifite:
             Color.pl('  {W}Last Updated: {C}%s{W}' % summary['updated_at'])
             Color.pl('  {W}Total Targets: {C}%d{W}' % summary['total'])
             Color.pl('  {W}Completed: {G}%d{W}' % summary['completed'])
+            Color.pl('  {W}Captured (uncracked): {C}%d{W}' % summary['captured'])
             Color.pl('  {W}Failed: {R}%d{W}' % summary['failed'])
             Color.pl('  {W}Remaining: {O}%d{W}' % summary['remaining'])
             Color.pl('  {W}Progress: {C}%.1f%%{W}' % summary['progress_percent'])
@@ -851,23 +852,26 @@ class Wifite:
                 if final_summary['remaining'] == 0:
                     Color.pl('')
                     Color.pl('{+} {G}Session completed! All targets attacked.{W}')
-                    Color.pl('{+} {G}Completed: {C}%d{G}, Failed: {R}%d{W}' % 
-                            (final_summary['completed'], final_summary['failed']))
+                    Color.pl('{+} {G}Completed: {C}%d{G}, Captured: {C}%d{G}, Failed: {R}%d{W}' %
+                            (final_summary['completed'], final_summary['captured'],
+                             final_summary['failed']))
                     session_mgr.delete_session(session.session_id)
                     Color.pl('{+} Session file deleted')
                 else:
                     Color.pl('')
                     Color.pl('{+} {O}Session paused. Progress saved.{W}')
-                    Color.pl('{+} {G}Completed: {C}%d{G}, Failed: {R}%d{G}, Remaining: {O}%d{W}' % 
-                            (final_summary['completed'], final_summary['failed'], final_summary['remaining']))
+                    Color.pl('{+} {G}Completed: {C}%d{G}, Captured: {C}%d{G}, Failed: {R}%d{G}, Remaining: {O}%d{W}' %
+                            (final_summary['completed'], final_summary['captured'],
+                             final_summary['failed'], final_summary['remaining']))
                     Color.pl('{+} Use {C}--resume{W} to continue later.')
 
             except KeyboardInterrupt:
                 Color.pl('')
                 Color.pl('{!} {O}Attack interrupted by user{W}')
                 final_summary = session.get_progress_summary()
-                Color.pl('{+} {G}Completed: {C}%d{G}, Failed: {R}%d{G}, Remaining: {O}%d{W}' % 
-                        (final_summary['completed'], final_summary['failed'], final_summary['remaining']))
+                Color.pl('{+} {G}Completed: {C}%d{G}, Captured: {C}%d{G}, Failed: {R}%d{G}, Remaining: {O}%d{W}' %
+                        (final_summary['completed'], final_summary['captured'],
+                         final_summary['failed'], final_summary['remaining']))
                 Color.pl('{+} Session saved. Use {C}--resume{O} to continue later.{W}')
             except Exception as e:
                 Color.pl('')

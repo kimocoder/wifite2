@@ -32,6 +32,8 @@ class AttackWPA(Attack):
         self.clients = []
         self.crack_result = None
         self.success = False
+        self.capture_success = False
+        self.crack_error = False
 
         # Interface assignment for dual interface support
         self.interface_assignment = None
@@ -342,6 +344,10 @@ class AttackWPA(Attack):
             self.success = False
             return self.success
 
+        # A validated capture exists (new or reused); crack failure must not
+        # be reported as "no capture".
+        self.capture_success = True
+
         # Analyze handshake
         Color.pl('\n{+} analysis of captured handshake file:')
         handshake.analyze()
@@ -416,9 +422,11 @@ class AttackWPA(Attack):
                 # First, generate the hash file (we use the existing HcxPcapngTool logic via a helper)
                 hash_file = HcxPcapngTool.generate_hash_file(handshake, target_is_wpa3_sae, show_command=Configuration.verbose > 1)
 
+                device_error = False
                 if hash_file is None:
                     # Fallback to aircrack-ng if hash file generation failed
                     key = Hashcat.crack_handshake(handshake, target_is_wpa3_sae, show_command=Configuration.verbose > 1, wordlist=wordlist)
+                    device_error = bool(key is None and Hashcat.last_error)
                 else:
                     try:
                         with HashcatCracker(hash_file, wordlist, target_is_wpa3_sae=target_is_wpa3_sae) as cracker:
@@ -437,6 +445,7 @@ class AttackWPA(Attack):
                                 time.sleep(2)
 
                             key = cracker.get_result()
+                            device_error = cracker.device_error
                     finally:
                         if hash_file and os.path.exists(hash_file):
                             try:
@@ -452,19 +461,41 @@ class AttackWPA(Attack):
 
             if key is not None:
                 break
+            if device_error:
+                self.crack_error = True
+                log_error('AttackWPA',
+                          'hashcat has no usable OpenCL device; '
+                          'handshake was captured but not tested')
+                Color.pl('{!} {R}Cracking could not run: '
+                         'hashcat has no usable device{W}')
+                Color.pl('{!} {O}The handshake was saved; retry on a machine '
+                         'with a working hashcat backend{W}')
+                break
 
             Color.pl(f'{{!}} {{O}}{wordlist_name} did not contain password{{W}}')
 
         if key is None:
-            fail_msg = 'Failed to crack handshake: password not found in any wordlist'
-            Color.pl(f"{{!}} {{R}}{fail_msg}{{W}}")
-            if self.view:
-                self.view.add_log(fail_msg)
-                self.view.update_progress({
-                    'status': 'Cracking failed',
-                    'progress': 0.0
-                })
-            self.success = False
+            if self.crack_error:
+                fail_msg = ('Cracking unavailable: hashcat has no usable '
+                            'OpenCL device (capture kept)')
+                Color.pl(f"{{!}} {{R}}{fail_msg}{{W}}")
+                if self.view:
+                    self.view.add_log(fail_msg)
+                    self.view.update_progress({
+                        'status': 'Cracking unavailable',
+                        'progress': 0.0
+                    })
+                self.success = False
+            else:
+                fail_msg = 'Failed to crack handshake: password not found in any wordlist'
+                Color.pl(f"{{!}} {{R}}{fail_msg}{{W}}")
+                if self.view:
+                    self.view.add_log(fail_msg)
+                    self.view.update_progress({
+                        'status': 'Cracking failed',
+                        'progress': 0.0
+                    })
+                self.success = False
         else:
             success_msg = f"Cracked {'WPA3-SAE' if target_is_wpa3_sae else 'WPA/WPA2'} Handshake Key: {key}"
             Color.pl(f"[+] {success_msg}\n")
@@ -1624,13 +1655,22 @@ class AttackWPA(Attack):
 
         return None
 
-    @staticmethod
-    def save_handshake(handshake):
+    def save_handshake(self, handshake):
         """
             Saves a copy of the handshake file to hs/
             Args:
                 handshake - Instance of Handshake containing bssid, essid, capfile
         """
+        # Never persist a capture that has no crackable EAPOL hash for the
+        # target: stale or partial caps would poison later runs.
+        if not handshake.has_handshake():
+            log_warning('AttackWPA',
+                        'Refusing to save capture without a target EAPOL hash: %s'
+                        % handshake.capfile)
+            Color.pl('{!} {O}Not saving capture: no crackable handshake '
+                     'for the target{W}')
+            return False
+
         # Create handshake dir
         if not os.path.exists(Configuration.wpa_handshake_dir):
             os.makedirs(Configuration.wpa_handshake_dir)
@@ -1652,8 +1692,10 @@ class AttackWPA(Attack):
             Color.p('{+} saving copy of {C}handshake{W} to {C}%s{W} ' % cap_filename)
             copy(handshake.capfile, cap_filename)
         Color.pl('{G}saved{W}')
+        self.capture_success = True
         # Update handshake to use the stored handshake file for future operations
         handshake.capfile = cap_filename
+        return True
 
     def deauth(self, target):
         """
