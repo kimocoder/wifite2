@@ -483,7 +483,6 @@ class TestIntegrationWithExistingTools:
     
     def test_dependency_native_alternative_check(self):
         """Test dependency native alternative checking."""
-        from wifite.tools.dependency import Dependency
         from wifite.tools.macchanger import Macchanger
         from wifite.tools.tshark import Tshark
         

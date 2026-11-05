@@ -200,6 +200,7 @@ class John(Dependency):
         Falls back to 'wpapsk' when --list=formats is unsupported (non-jumbo).
         The caller should check is_wpapsk_capable() before invoking this.
         """
+        from ..util.logger import log_debug
         try:
             result = subprocess.run(
                 ['john', '--list=formats'],
@@ -207,7 +208,20 @@ class John(Dependency):
             )
             combined = result.stdout + result.stderr
             if 'wpapsk-opencl' in combined:
-                return 'wpapsk-opencl'
+                # OpenCL support being compiled in does not mean a device
+                # exists; verify before selecting the GPU format.
+                try:
+                    devices = subprocess.run(
+                        ['john', '--list=opencl-devices'],
+                        capture_output=True, text=True, timeout=10
+                    )
+                    device_out = (devices.stdout + devices.stderr).lower()
+                    if ('no opencl-capable' not in device_out and
+                            'error: no' not in device_out):
+                        return 'wpapsk-opencl'
+                    log_debug('John', 'john has wpapsk-opencl but no usable OpenCL device')
+                except Exception as error:
+                    log_debug('John', f'john OpenCL device probe failed: {error}')
             if 'wpapsk-cuda' in combined:
                 return 'wpapsk-cuda'
         except Exception:

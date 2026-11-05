@@ -14,8 +14,7 @@ import os
 import sys
 import ast
 import unittest
-from unittest.mock import Mock, patch, MagicMock
-from dataclasses import dataclass
+from unittest.mock import Mock, patch
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
@@ -26,7 +25,7 @@ class TestMemoryMonitor(unittest.TestCase):
     
     def test_memory_module_imports(self):
         """Test that memory module imports correctly."""
-        from wifite.util.memory import MemoryMonitor, InfiniteModeMonitor
+        from wifite.util.memory import MemoryMonitor
         self.assertTrue(hasattr(MemoryMonitor, 'get_memory_usage_mb'))
         self.assertTrue(hasattr(MemoryMonitor, 'periodic_check'))
         self.assertTrue(hasattr(MemoryMonitor, 'force_cleanup'))
@@ -283,7 +282,7 @@ class TestSyntaxValidation(unittest.TestCase):
         if not os.path.exists(filepath):
             return True  # Skip if file doesn't exist
         
-        with open(filepath, 'r') as f:
+        with open(filepath) as f:
             source = f.read()
         
         try:

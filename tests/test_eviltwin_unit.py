@@ -9,8 +9,6 @@ Tests core functionality of hostapd, dnsmasq, portal templates, and credential v
 
 import unittest
 import os
-import tempfile
-from unittest.mock import Mock, patch, MagicMock
 
 import pytest
 
@@ -107,7 +105,7 @@ class TestHostapdConfiguration(unittest.TestCase):
             self.assertTrue(os.path.exists(config_file))
             
             # Check file content
-            with open(config_file, 'r') as f:
+            with open(config_file) as f:
                 content = f.read()
             
             self.assertIn('interface=wlan0', content)
@@ -177,7 +175,7 @@ class TestDnsmasqConfiguration(unittest.TestCase):
             self.assertTrue(os.path.exists(dnsmasq.lease_file))
             
             # Check config content
-            with open(config_file, 'r') as f:
+            with open(config_file) as f:
                 content = f.read()
             
             self.assertIn('interface=wlan0', content)
@@ -340,7 +338,7 @@ class TestCredentialValidator(unittest.TestCase):
             self.assertTrue(os.path.exists(config_file))
             
             # Check content
-            with open(config_file, 'r') as f:
+            with open(config_file) as f:
                 content = f.read()
             
             self.assertIn('ssid=546573744e6574776f726b', content)
@@ -363,7 +361,7 @@ class TestCredentialValidator(unittest.TestCase):
 
         try:
             config_file = validator._create_wpa_config('IEEE', 'password')
-            with open(config_file, 'r') as f:
+            with open(config_file) as f:
                 content = f.read()
 
             self.assertIn('ssid=49454545', content)

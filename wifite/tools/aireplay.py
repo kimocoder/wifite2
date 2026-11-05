@@ -149,7 +149,7 @@ class Aireplay(Thread, Dependency):
                     self.stdout += lines
                     fid.seek(0)
                     fid.truncate()
-            except (OSError, IOError):
+            except OSError:
                 continue
 
             if Configuration.verbose > 1 and lines.strip() != '':

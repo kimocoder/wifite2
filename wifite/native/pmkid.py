@@ -32,7 +32,7 @@ and has better driver compatibility.
 import time
 import binascii
 from threading import Thread, Event
-from typing import Optional, List, Callable
+from typing import Optional, Callable
 from dataclasses import dataclass
 
 try:
@@ -283,7 +283,7 @@ class ScapyPMKID:
                      interface: str,
                      duration: int = 60,
                      bssid_filter: Optional[str] = None,
-                     callback: Optional[Callable[[PMKIDResult], None]] = None) -> List[PMKIDResult]:
+                     callback: Optional[Callable[[PMKIDResult], None]] = None) -> list[PMKIDResult]:
         """
         Passively scan for PMKIDs on multiple networks.
         
@@ -601,7 +601,7 @@ class ScapyPMKID:
     
     @classmethod
     def save_to_file(cls, 
-                     results: List[PMKIDResult], 
+                     results: list[PMKIDResult], 
                      filename: str,
                      format: str = '22000') -> bool:
         """
@@ -624,7 +624,7 @@ class ScapyPMKID:
                         line = result.to_hashcat_22000()
                     f.write(line + '\n')
             return True
-        except (OSError, IOError):
+        except OSError:
             return False
 
 
@@ -637,7 +637,7 @@ class PMKIDCapture(Thread):
     
     def __init__(self,
                  interface: str,
-                 channels: Optional[List[int]] = None,
+                 channels: Optional[list[int]] = None,
                  bssid_filter: Optional[str] = None,
                  callback: Optional[Callable[[PMKIDResult], None]] = None):
         """
@@ -759,7 +759,7 @@ class PMKIDCapture(Thread):
         if self.is_alive():
             self.join(timeout=2)
     
-    def get_results(self) -> List[PMKIDResult]:
+    def get_results(self) -> list[PMKIDResult]:
         """Get captured PMKIDs."""
         return self.results.copy()
     
@@ -780,7 +780,7 @@ def capture_pmkid(interface: str, bssid: str, timeout: int = 30) -> Optional[PMK
     return ScapyPMKID.capture(interface, bssid, timeout=timeout)
 
 
-def passive_scan(interface: str, duration: int = 60) -> List[PMKIDResult]:
+def passive_scan(interface: str, duration: int = 60) -> list[PMKIDResult]:
     """Passively scan for PMKIDs."""
     return ScapyPMKID.passive_scan(interface, duration=duration)
 

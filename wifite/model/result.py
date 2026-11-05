@@ -44,13 +44,13 @@ class CrackResult:
         name = CrackResult.cracked_file
         saved_results = []
         if os.path.exists(name):
-            with open(name, 'r') as fid:
+            with open(name) as fid:
                 text = fid.read()
             try:
                 saved_results = loads(text)
             except (ValueError, TypeError) as e:
                 Color.pl('{!} JSON parsing error in %s: %s' % (name, str(e)))
-            except (OSError, IOError) as e:
+            except OSError as e:
                 Color.pl('{!} File access error for %s: %s' % (name, str(e)))
             except Exception as e:
                 Color.pl('{!} Unexpected error loading %s: %s' % (name, str(e)))
@@ -122,7 +122,7 @@ class CrackResult:
     def load_all(cls):
         if not os.path.exists(cls.cracked_file):
             return []
-        with open(cls.cracked_file, 'r') as json_file:
+        with open(cls.cracked_file) as json_file:
             try:
                 json = loads(json_file.read())
             except ValueError:

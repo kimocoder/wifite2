@@ -24,7 +24,7 @@ class AttackWEP(Attack):
     fakeauth_wait = 5
 
     def __init__(self, target):
-        super(AttackWEP, self).__init__(target)
+        super().__init__(target)
         self.crack_result = None
         self.success = False
         
@@ -280,7 +280,7 @@ class AttackWEP(Attack):
                     self.success = False
                     return self.success
 
-            except (OSError, IOError) as e:
+            except OSError as e:
                 Color.pl('\r {!} {R}File System Error{W}: %s' % str(e))
                 continue
             except subprocess.CalledProcessError as e:

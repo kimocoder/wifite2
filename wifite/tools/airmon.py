@@ -138,7 +138,7 @@ class Airmon(Dependency):
         # /sys/class/net/wlan0/type
         iface_type_path = os.path.join('/sys/class/net', interface, 'type')
         if os.path.exists(iface_type_path):
-            with open(iface_type_path, 'r') as f:
+            with open(iface_type_path) as f:
                 iface_type = f.read().strip()
                 if Configuration.verbose > 0:
                     Color.pl('{D}Interface type from sysfs: %s{W}' % iface_type)
@@ -241,7 +241,7 @@ class Airmon(Dependency):
                             # Attempt to revert if possible, or let subsequent methods handle it
                     except subprocess.CalledProcessError as e:
                         Color.pl('{R}failed (ICNSS2 specific command error: %s). Trying other methods...{W}' % e.stderr.decode().strip())
-                    except (OSError, IOError) as e:
+                    except OSError as e:
                         Color.pl('{R}failed (ICNSS2 I/O error: %s). Trying other methods...{W}' % str(e))
                     except ValueError as e:
                         Color.pl('{R}failed (ICNSS2 config error: %s). Trying other methods...{W}' % str(e))

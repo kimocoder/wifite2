@@ -13,7 +13,7 @@ import threading
 import time
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import parse_qs, urlparse
-from typing import Optional, Callable, Dict, Any
+from typing import Optional, Callable, Any
 import socket
 
 from ...util.color import Color
@@ -694,7 +694,7 @@ class PortalServer:
         log_warning('Portal', 'DNS redirect validation failed - captive portal detection may not trigger')
         return False
     
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """
         Get server statistics.
         

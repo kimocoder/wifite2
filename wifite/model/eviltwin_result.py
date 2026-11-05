@@ -18,7 +18,7 @@ class CrackResultEvilTwin(CrackResult):
         self.credential_attempts = credential_attempts
         self.validation_time = validation_time
         self.portal_template = portal_template
-        super(CrackResultEvilTwin, self).__init__()
+        super().__init__()
 
     def dump(self):
         if self.essid:

@@ -54,7 +54,7 @@ class Aircrack(Dependency):
         if not self.is_cracked():
             raise Exception('Cracked file not found')
 
-        with open(self.cracked_file, 'r') as fid:
+        with open(self.cracked_file) as fid:
             hex_raw = fid.read()
 
         return self._hex_and_ascii_key(hex_raw)
@@ -144,7 +144,7 @@ class Aircrack(Dependency):
 
         if not os.path.exists(key_file):
             return None
-        with open(key_file, 'r') as fid:
+        with open(key_file) as fid:
             key = fid.read().strip()
         os.remove(key_file)
 

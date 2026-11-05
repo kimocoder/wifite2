@@ -66,7 +66,7 @@ class OutputManager:
             else:  # classic
                 cls._mode = 'classic'
                 return False
-        except Exception as e:
+        except Exception:
             # Any unexpected error - fall back to classic mode
             cls._mode = 'classic'
             cls._controller = None

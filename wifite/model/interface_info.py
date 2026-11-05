@@ -9,7 +9,7 @@ capabilities, current state, and suitability for different roles.
 """
 
 from dataclasses import dataclass
-from typing import Optional, List
+from typing import Optional
 
 
 @dataclass
@@ -201,7 +201,7 @@ class InterfaceAssignment:
         """
         return self.secondary is not None
     
-    def get_interfaces(self) -> List[str]:
+    def get_interfaces(self) -> list[str]:
         """
         Get list of all assigned interfaces.
         

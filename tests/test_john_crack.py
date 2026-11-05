@@ -20,7 +20,6 @@ import shutil
 import subprocess
 import tempfile
 import threading
-import time
 import unittest
 
 # ── project root on path ──────────────────────────────────────────────────────
@@ -122,7 +121,6 @@ class TestGetFormat(unittest.TestCase):
 
     def setUp(self):
         # Minimal Configuration stub so imports don't fail
-        import types
         self._cfg_mod = sys.modules.get('wifite.config')
 
     def test_get_format_returns_string(self):
@@ -297,7 +295,6 @@ class TestJohnShowParsing(unittest.TestCase):
           ESSID:PLAINTEXT_PASSWORD:client_mac:ap_mac:...:capfile
         → parts[1] is the password.
         """
-        from wifite.tools.john import JohnCracker
         import unittest.mock as mock
 
         # john --show output: hash has been replaced by plaintext in field [1]
@@ -319,7 +316,6 @@ class TestJohnShowParsing(unittest.TestCase):
                          f'Expected "secretpassword", got {result!r}')
 
     def test_get_result_returns_none_on_no_crack(self):
-        from wifite.tools.john import JohnCracker
         import unittest.mock as mock
 
         jc = self._make_cracker()
@@ -423,7 +419,6 @@ class TestCrackHelperJohnDependency(unittest.TestCase):
 
     def test_crack_helper_excludes_john_when_not_wpapsk_capable(self):
         """When john lacks wpapsk, CrackHelper must NOT list it as available."""
-        import unittest.mock as mock
         from wifite.tools.john import John
 
         if John.is_wpapsk_capable():

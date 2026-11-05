@@ -9,7 +9,7 @@ for WPA3-SAE attack capabilities.
 """
 
 import re
-from typing import Dict, Optional, Tuple, List
+from typing import Optional
 
 from ..util.color import Color
 from ..util.process import Process
@@ -48,7 +48,7 @@ class WPA3ToolChecker:
     }
 
     @staticmethod
-    def check_all_tools() -> Dict[str, Dict[str, any]]:
+    def check_all_tools() -> dict[str, dict[str, any]]:
         """
         Check all WPA3-related tools.
 
@@ -81,7 +81,7 @@ class WPA3ToolChecker:
         return results
 
     @staticmethod
-    def check_tool(tool_name: str, required: bool = True) -> Dict[str, any]:
+    def check_tool(tool_name: str, required: bool = True) -> dict[str, any]:
         """
         Check if a specific tool is available and meets version requirements.
 
@@ -121,7 +121,7 @@ class WPA3ToolChecker:
         }
 
     @staticmethod
-    def get_tool_version(tool_name: str) -> Tuple[Optional[Tuple[int, ...]], Optional[str]]:
+    def get_tool_version(tool_name: str) -> tuple[Optional[tuple[int, ...]], Optional[str]]:
         """
         Get version of a tool.
 
@@ -150,7 +150,7 @@ class WPA3ToolChecker:
             return None, None
 
     @staticmethod
-    def _parse_version(output: str, tool_name: str) -> Tuple[Optional[Tuple[int, ...]], Optional[str]]:
+    def _parse_version(output: str, tool_name: str) -> tuple[Optional[tuple[int, ...]], Optional[str]]:
         """
         Parse version string from tool output.
 
@@ -262,7 +262,7 @@ class WPA3ToolChecker:
             Color.pl('\n{!} {R}WPA3 attacks will not be available until required tools are installed{W}')
 
     @staticmethod
-    def get_missing_tools() -> List[str]:
+    def get_missing_tools() -> list[str]:
         """
         Get list of missing required tools.
 

@@ -21,7 +21,7 @@ import os
 import re
 import subprocess
 import shutil
-from typing import Optional, List, Dict
+from typing import Optional
 from dataclasses import dataclass, field
 from enum import Enum
 
@@ -61,8 +61,8 @@ class InterfaceCheckResult:
     monitor_tested: Optional[bool] = None  # None = not tested
     bands_24ghz: bool = False
     bands_5ghz: bool = False
-    channels_24: List[int] = field(default_factory=list)
-    channels_5: List[int] = field(default_factory=list)
+    channels_24: list[int] = field(default_factory=list)
+    channels_5: list[int] = field(default_factory=list)
 
 
 @dataclass
@@ -95,16 +95,16 @@ class SystemCheck:
         """
         self.verbose = verbose
         self.run_smoke_test = run_smoke_test
-        self.tool_results: List[ToolCheckResult] = []
-        self.interface_results: List[InterfaceCheckResult] = []
-        self.env_results: List[CheckResult] = []
-        self.attack_readiness: Dict[str, CheckStatus] = {}
+        self.tool_results: list[ToolCheckResult] = []
+        self.interface_results: list[InterfaceCheckResult] = []
+        self.env_results: list[CheckResult] = []
+        self.attack_readiness: dict[str, CheckStatus] = {}
 
     # ================================================================
     # Environment Checks
     # ================================================================
 
-    def check_environment(self) -> List[CheckResult]:
+    def check_environment(self) -> list[CheckResult]:
         """Check OS, kernel, and runtime environment."""
         results = []
 
@@ -213,7 +213,7 @@ class SystemCheck:
     # Tool / Dependency Checks
     # ================================================================
 
-    def check_tools(self) -> List[ToolCheckResult]:
+    def check_tools(self) -> list[ToolCheckResult]:
         """Check all tool dependencies with versions."""
         from ..tools.dependency import Dependency
 
@@ -337,7 +337,7 @@ class SystemCheck:
     # Interface Checks
     # ================================================================
 
-    def check_interfaces(self) -> List[InterfaceCheckResult]:
+    def check_interfaces(self) -> list[InterfaceCheckResult]:
         """Check all wireless interfaces and their capabilities."""
         results = []
 
@@ -374,7 +374,7 @@ class SystemCheck:
             try:
                 driver_link = os.readlink(f'/sys/class/net/{iface}/device/driver')
                 result.driver = os.path.basename(driver_link)
-            except (OSError, IOError):
+            except OSError:
                 pass
 
             # Chipset (from airmon or driver map)
@@ -391,9 +391,9 @@ class SystemCheck:
 
             # MAC address
             try:
-                with open(f'/sys/class/net/{iface}/address', 'r') as f:
+                with open(f'/sys/class/net/{iface}/address') as f:
                     result.mac = f.read().strip().upper()
-            except (IOError, OSError):
+            except OSError:
                 pass
 
             # Current mode
@@ -413,9 +413,9 @@ class SystemCheck:
 
             # Interface up/down
             try:
-                with open(f'/sys/class/net/{iface}/operstate', 'r') as f:
+                with open(f'/sys/class/net/{iface}/operstate') as f:
                     result.is_up = f.read().strip().lower() in ('up', 'unknown')
-            except (IOError, OSError):
+            except OSError:
                 pass
 
             # Supported modes and bands from iw phy info
@@ -548,7 +548,7 @@ class SystemCheck:
     # Attack Readiness Assessment
     # ================================================================
 
-    def assess_attack_readiness(self) -> Dict[str, CheckStatus]:
+    def assess_attack_readiness(self) -> dict[str, CheckStatus]:
         """Determine which attack types are available based on checks."""
         from ..tools.dependency import Dependency
 

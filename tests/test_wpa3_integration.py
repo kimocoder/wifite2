@@ -9,7 +9,7 @@ and cracking integration.
 """
 
 import unittest
-from unittest.mock import Mock, patch, MagicMock, call
+from unittest.mock import Mock
 import sys
 import os
 
@@ -18,7 +18,7 @@ import pytest
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from wifite.util.wpa3 import WPA3Detector, WPA3Info
+from wifite.util.wpa3 import WPA3Detector
 from wifite.attack.wpa3_strategy import WPA3AttackStrategy
 
 pytestmark = pytest.mark.timeout(30)

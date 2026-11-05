@@ -7,8 +7,7 @@ Tests complete view workflows with mock data and interactions.
 """
 
 import unittest
-from unittest.mock import Mock, MagicMock, patch
-import time
+from unittest.mock import Mock
 
 
 class MockTarget:

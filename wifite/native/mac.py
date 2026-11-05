@@ -29,8 +29,7 @@ import secrets
 import fcntl
 import socket
 import struct
-from typing import Optional, Tuple
-from ..util.logger import log_debug
+from typing import Optional
 
 
 class NativeMac:
@@ -93,11 +92,11 @@ class NativeMac:
         # Method 1: Try sysfs (fastest)
         sysfs_path = f'/sys/class/net/{interface}/address'
         try:
-            with open(sysfs_path, 'r') as f:
+            with open(sysfs_path) as f:
                 mac = f.read().strip()
                 if cls._is_valid_mac(mac):
                     return mac.upper()
-        except (IOError, OSError):
+        except OSError:
             pass
         
         # Method 2: Try ioctl
@@ -113,7 +112,7 @@ class NativeMac:
                 return mac
             finally:
                 sock.close()
-        except (IOError, OSError):
+        except OSError:
             pass
         
         return None
@@ -134,18 +133,18 @@ class NativeMac:
         # Try reading from sysfs
         perm_path = f'/sys/class/net/{interface}/perm_hwaddr'
         try:
-            with open(perm_path, 'r') as f:
+            with open(perm_path) as f:
                 mac = f.read().strip()
                 if cls._is_valid_mac(mac):
                     return mac.upper()
-        except (IOError, OSError):
+        except OSError:
             pass
         
         # Fall back to cached original MAC
         return cls._original_macs.get(interface)
     
     @classmethod
-    def set_mac(cls, interface: str, mac: str) -> Tuple[bool, str]:
+    def set_mac(cls, interface: str, mac: str) -> tuple[bool, str]:
         """
         Set the MAC address of an interface through the single state owner.
         
@@ -179,7 +178,7 @@ class NativeMac:
         return False, f'Failed to change MAC address on {interface}'
     
     @classmethod
-    def random(cls, interface: str, keep_vendor: bool = False) -> Tuple[bool, str]:
+    def random(cls, interface: str, keep_vendor: bool = False) -> tuple[bool, str]:
         """
         Set a random MAC address on the interface.
         
@@ -208,7 +207,7 @@ class NativeMac:
         return False, msg
     
     @classmethod
-    def reset(cls, interface: str) -> Tuple[bool, str]:
+    def reset(cls, interface: str) -> tuple[bool, str]:
         """
         Reset MAC address to the original/permanent value.
         
@@ -268,12 +267,12 @@ class NativeMac:
                 return bool(flags & cls.IFF_UP)
             finally:
                 sock.close()
-        except (IOError, OSError):
+        except OSError:
             # Fall back to sysfs
             try:
-                with open(f'/sys/class/net/{interface}/operstate', 'r') as f:
+                with open(f'/sys/class/net/{interface}/operstate') as f:
                     return f.read().strip().lower() == 'up'
-            except (IOError, OSError):
+            except OSError:
                 return False
 
 
@@ -283,16 +282,16 @@ def get_mac(interface: str) -> Optional[str]:
     return NativeMac.get_mac(interface)
 
 
-def set_mac(interface: str, mac: str) -> Tuple[bool, str]:
+def set_mac(interface: str, mac: str) -> tuple[bool, str]:
     """Set MAC address of interface."""
     return NativeMac.set_mac(interface, mac)
 
 
-def random_mac(interface: str, keep_vendor: bool = False) -> Tuple[bool, str]:
+def random_mac(interface: str, keep_vendor: bool = False) -> tuple[bool, str]:
     """Set random MAC address on interface."""
     return NativeMac.random(interface, keep_vendor)
 
 
-def reset_mac(interface: str) -> Tuple[bool, str]:
+def reset_mac(interface: str) -> tuple[bool, str]:
     """Reset MAC to permanent/original value."""
     return NativeMac.reset(interface)

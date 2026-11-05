@@ -36,7 +36,7 @@ Reason Codes:
 
 import time
 from threading import Thread, Event
-from typing import Optional, Tuple, Callable
+from typing import Optional, Callable
 
 try:
     from scapy.all import (
@@ -86,7 +86,7 @@ class ScapyDeauth:
                count: int = 5,
                reason: int = None,
                include_disassoc: bool = True,
-               verbose: bool = False) -> Tuple[bool, int]:
+               verbose: bool = False) -> tuple[bool, int]:
         """
         Send deauthentication frames to a target.
         
@@ -171,7 +171,7 @@ class ScapyDeauth:
             scapy_conf.verb = old_verbose
             return True, len(packets)
             
-        except Exception as e:
+        except Exception:
             return False, 0
     
     @classmethod
@@ -181,7 +181,7 @@ class ScapyDeauth:
                              client_mac: Optional[str] = None,
                              count: int = 5,
                              callback: Optional[Callable[[int], None]] = None,
-                             inter: float = 0.1) -> Tuple[bool, int]:
+                             inter: float = 0.1) -> tuple[bool, int]:
         """
         Send deauth frames with per-packet callback.
         
@@ -238,7 +238,7 @@ class ScapyDeauth:
             
             return True, packets_sent
             
-        except Exception as e:
+        except Exception:
             return False, packets_sent
     
     @classmethod
@@ -413,7 +413,7 @@ class ContinuousDeauth(Thread):
 def deauth(interface: str, 
            bssid: str, 
            client_mac: Optional[str] = None,
-           count: int = 5) -> Tuple[bool, int]:
+           count: int = 5) -> tuple[bool, int]:
     """
     Convenience function: send deauth packets.
     

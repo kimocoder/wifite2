@@ -6,7 +6,7 @@ Reusable UI components for wifite2 TUI.
 Provides common visual elements used across different views.
 """
 
-from typing import List, Optional
+from typing import Optional
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
@@ -206,7 +206,7 @@ class LogPanel:
             max_entries: Maximum number of log entries to keep
         """
         self.max_entries = max_entries
-        self.logs: List[str] = []
+        self.logs: list[str] = []
         self.auto_scroll = True
 
     def add_log(self, message: str):
@@ -302,7 +302,7 @@ class HelpOverlay:
         )
 
     @staticmethod
-    def _get_shortcuts(context: str) -> List[tuple]:
+    def _get_shortcuts(context: str) -> list[tuple]:
         """
         Get keyboard shortcuts for the given context.
 

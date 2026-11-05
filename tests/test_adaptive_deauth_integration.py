@@ -9,8 +9,7 @@ into the Evil Twin attack flow.
 """
 
 import unittest
-import time
-from unittest.mock import Mock, MagicMock, patch, call
+from unittest.mock import Mock, patch
 
 
 class TestAdaptiveDeauthIntegration(unittest.TestCase):

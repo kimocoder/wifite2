@@ -8,7 +8,6 @@ Tests for resume information display.
 import unittest
 import tempfile
 import shutil
-from unittest.mock import Mock, patch, call
 from wifite.util.session import SessionManager, SessionState, TargetState
 
 

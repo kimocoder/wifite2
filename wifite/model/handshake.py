@@ -171,7 +171,7 @@ class Handshake:
                 return False
 
             target = self.bssid.lower().replace(':', '')
-            with open(tmp_path, 'r', errors='replace') as hash_file:
+            with open(tmp_path, errors='replace') as hash_file:
                 for line in hash_file:
                     fields = line.split('*')
                     if (len(fields) > 3 and fields[0] == 'WPA' and

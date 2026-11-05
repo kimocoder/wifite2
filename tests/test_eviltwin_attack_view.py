@@ -6,7 +6,7 @@ Tests for Evil Twin Attack View TUI integration.
 """
 
 import unittest
-from unittest.mock import Mock, MagicMock
+from unittest.mock import Mock
 import time
 
 

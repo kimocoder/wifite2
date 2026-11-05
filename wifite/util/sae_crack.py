@@ -10,7 +10,7 @@ Supports dictionary attacks, rule-based attacks, and mask attacks.
 
 import os
 import time
-from typing import Optional, Dict
+from typing import Optional
 
 from ..config import Configuration
 from ..model.sae_handshake import SAEHandshake
@@ -358,7 +358,7 @@ class SAECracker:
         return None
     
     @staticmethod
-    def check_dependencies() -> Dict[str, bool]:
+    def check_dependencies() -> dict[str, bool]:
         """
         Check if required tools for SAE cracking are available.
         

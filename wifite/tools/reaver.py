@@ -19,7 +19,7 @@ class Reaver(Attack, Dependency):
     dependency_url = 'https://github.com/t6x/reaver-wps-fork-t6x'
 
     def __init__(self, target, pixie_dust=True, null_pin=False):
-        super(Reaver, self).__init__(target)
+        super().__init__(target)
 
         self.pixie_dust = pixie_dust
         self.null_pin = null_pin
@@ -93,7 +93,7 @@ class Reaver(Attack, Dependency):
         except subprocess.CalledProcessError as e:
             # Reaver command failed
             self.pattack('{R}Failed:{O} Reaver command error: %s' % str(e), newline=True)
-        except (OSError, IOError) as e:
+        except OSError as e:
             # System or file errors
             self.pattack('{R}Failed:{O} System error: %s' % str(e), newline=True)
         except ValueError as e:
@@ -510,7 +510,7 @@ class Reaver(Attack, Dependency):
         if self.output_write:
             self.output_write.flush()
 
-        with open(self.output_filename, 'r') as fid:
+        with open(self.output_filename) as fid:
             stdout = fid.read()
 
         if Configuration.verbose > 1:

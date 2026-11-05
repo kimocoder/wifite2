@@ -241,7 +241,7 @@ class Airodump(Dependency):
         except ImportError:
             encoding = 'utf-8'
 
-        with open(csv_filename, 'r', encoding=encoding, errors='ignore') as csvopen:
+        with open(csv_filename, encoding=encoding, errors='ignore') as csvopen:
             lines = []
             has_null = False
             for line in csvopen:

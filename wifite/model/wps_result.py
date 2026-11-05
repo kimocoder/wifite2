@@ -22,7 +22,7 @@ class CrackResultWPS(CrackResult):
         self.essid = essid
         self.pin = pin
         self.psk = psk
-        super(CrackResultWPS, self).__init__()
+        super().__init__()
 
     def dump(self):
         if self.essid is not None:

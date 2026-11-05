@@ -7,8 +7,6 @@ Tests for client monitoring and statistics tracking.
 
 import unittest
 import time
-import tempfile
-import os
 from wifite.util.client_monitor import ClientConnection, ClientMonitor, AttackStatistics
 
 

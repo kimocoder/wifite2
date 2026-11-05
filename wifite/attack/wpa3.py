@@ -42,7 +42,7 @@ class AttackWPA3SAE(Attack):
     """
 
     def __init__(self, target):
-        super(AttackWPA3SAE, self).__init__(target)
+        super().__init__(target)
         self.clients = []
         self.crack_result = None
         self.success = False
@@ -624,7 +624,7 @@ class AttackWPA3SAE(Attack):
         """
         candidates = []
         try:
-            with open(wordlist_path, 'r', errors='replace') as fh:
+            with open(wordlist_path, errors='replace') as fh:
                 for line in fh:
                     word = line.rstrip('\n\r')
                     if 8 <= len(word) <= 63:
@@ -997,7 +997,7 @@ class AttackWPA3SAE(Attack):
                             return handshake
                         else:
                             handshake = None
-                except Exception as e:
+                except Exception:
                     # Error checking handshake, continue
                     handshake = None
                 

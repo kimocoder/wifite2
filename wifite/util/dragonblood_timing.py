@@ -26,7 +26,7 @@ import re
 import time
 import tempfile
 import statistics
-from typing import List, Dict, Optional
+from typing import Optional
 from dataclasses import dataclass, field
 
 from ..util.process import Process
@@ -57,8 +57,8 @@ class TimingAnalysis:
     median_us: float = 0.0
     stdev_us: float = 0.0
     threshold_us: float = 0.0  # dividing line between fast/slow
-    fast_passwords: List[str] = field(default_factory=list)
-    slow_passwords: List[str] = field(default_factory=list)
+    fast_passwords: list[str] = field(default_factory=list)
+    slow_passwords: list[str] = field(default_factory=list)
     confidence: float = 0.0   # 0.0-1.0, how separable the two clusters are
     partition_ratio: float = 0.0  # fraction of passwords in the fast bucket
 
@@ -106,15 +106,15 @@ class DragonbloodTimingAttack:
         self.target_channel = target_channel
         self.sae_group = sae_group
 
-        self.samples: List[TimingSample] = []
+        self.samples: list[TimingSample] = []
         self.analysis: Optional[TimingAnalysis] = None
-        self._temp_files: List[str] = []
+        self._temp_files: list[str] = []
 
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
 
-    def run(self, passwords: List[str],
+    def run(self, passwords: list[str],
             num_samples: int = 3,
             view=None) -> Optional[TimingAnalysis]:
         """
@@ -231,7 +231,7 @@ class DragonbloodTimingAttack:
             # First pass: separate fast and slow
             fast_lines = []
             slow_lines = []
-            with open(wordlist_path, 'r', errors='replace') as fh:
+            with open(wordlist_path, errors='replace') as fh:
                 for line in fh:
                     word = line.rstrip('\n\r')
                     if word in fast_set:
@@ -475,7 +475,7 @@ class DragonbloodTimingAttack:
             return analysis
 
         # Compute per-password average response times
-        pwd_times: Dict[str, List[float]] = {}
+        pwd_times: dict[str, list[float]] = {}
         for s in self.samples:
             pwd_times.setdefault(s.password, []).append(s.response_time_us)
         pwd_avg = {p: statistics.mean(ts) for p, ts in pwd_times.items()}
@@ -568,7 +568,7 @@ class DragonbloodTimingAttack:
 
     @staticmethod
     def extract_timing_from_pcap(capfile: str, bssid: str
-                                  ) -> List[Dict]:
+                                  ) -> list[dict]:
         """
         Extract SAE Commit/Confirm frame timestamps from a pcap file.
 
@@ -631,8 +631,8 @@ class DragonbloodTimingAttack:
             return []
 
     @staticmethod
-    def compute_pcap_response_times(frames: List[Dict], ap_bssid: str
-                                     ) -> List[float]:
+    def compute_pcap_response_times(frames: list[dict], ap_bssid: str
+                                     ) -> list[float]:
         """
         Compute AP response latencies from extracted pcap frame pairs.
 

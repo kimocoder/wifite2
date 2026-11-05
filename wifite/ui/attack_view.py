@@ -7,7 +7,7 @@ Displays real-time attack progress with target info, status, and logs.
 """
 
 import time
-from typing import Optional, Dict, Any
+from typing import Optional, Any
 from rich.layout import Layout
 from rich.panel import Panel
 from rich.table import Table
@@ -68,7 +68,7 @@ class AttackView:
         self.attack_type = attack_type
         self._render()
 
-    def update_progress(self, progress_data: Dict[str, Any]):
+    def update_progress(self, progress_data: dict[str, Any]):
         """
         Update attack progress with new data.
 

@@ -29,7 +29,7 @@ class AttackWPA(Attack):
     RETRY_DELAY_SECONDS = 2
 
     def __init__(self, target):
-        super(AttackWPA, self).__init__(target)
+        super().__init__(target)
         self.clients = []
         self.crack_result = None
         self.success = False
@@ -817,7 +817,7 @@ class AttackWPA(Attack):
                     max_cap_size = 50 * 1024 * 1024  # 50MB limit
                     if file_size > max_cap_size:
                         Color.pl('\n{!} {O}Warning: Capture file is large (%d MB), may cause memory issues{W}' % (file_size // (1024*1024)))
-                except (OSError, IOError):
+                except OSError:
                     pass
                 
                 copy(cap_file, temp_file)
@@ -1257,7 +1257,7 @@ class AttackWPA(Attack):
                         Color.pl('\n{!} {O}Warning: Capture file is large (%d MB), may cause memory issues{W}' % (file_size // (1024*1024)))
                         if self.view:
                             self.view.add_log(f'Warning: Large capture file ({file_size // (1024*1024)} MB)')
-                except (OSError, IOError):
+                except OSError:
                     pass
                 
                 # Convert pcapng to hashcat format for validation. Keep the
@@ -1649,7 +1649,7 @@ class AttackWPA(Attack):
                     max_cap_size = 50 * 1024 * 1024  # 50MB limit
                     if file_size > max_cap_size:
                         Color.pl('\n{!} {O}Warning: Capture file is large (%d MB), may cause memory issues{W}' % (file_size // (1024*1024)))
-                except (OSError, IOError):
+                except OSError:
                     pass
 
                 copy(cap_file, temp_file)

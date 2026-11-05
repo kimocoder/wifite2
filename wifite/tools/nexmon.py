@@ -37,7 +37,7 @@ import subprocess
 import threading
 import time
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple
+from typing import Optional
 
 from ..config.validators import validate_interface_name
 from ..util.logger import log_debug, log_error, log_info, log_warning
@@ -74,10 +74,10 @@ _CACHE_MAX_ENTRIES = 32
 _AP_P2P_MESH_MODES = frozenset({'AP', 'p2p', 'mesh', 'adhoc'})
 _MAX_INTERFACE_NAME = 15
 
-_cache: Dict[str, Tuple[float, Optional['NexmonCapabilities']]] = {}
+_cache: dict[str, tuple[float, Optional['NexmonCapabilities']]] = {}
 _cache_lock = threading.Lock()
 
-_sessions: Dict[str, 'NexmonSession'] = {}
+_sessions: dict[str, 'NexmonSession'] = {}
 _sessions_lock = threading.Lock()
 
 
@@ -148,7 +148,7 @@ class NexmonSession:
 # ---------------------------------------------------------------------------
 
 
-def _run(cmd: List[str], timeout: int = _CMD_TIMEOUT):
+def _run(cmd: list[str], timeout: int = _CMD_TIMEOUT):
     """Run a bounded command list; return CompletedProcess or None."""
     try:
         return Process.run_simple(cmd, timeout=timeout)
@@ -156,19 +156,19 @@ def _run(cmd: List[str], timeout: int = _CMD_TIMEOUT):
         return None
 
 
-def _run_ok(cmd: List[str], timeout: int = _CMD_TIMEOUT) -> bool:
+def _run_ok(cmd: list[str], timeout: int = _CMD_TIMEOUT) -> bool:
     result = _run(cmd, timeout=timeout)
     return result is not None and result.returncode == 0
 
 
-def _require_ok(cmd: List[str], message: str, timeout: int = _CMD_TIMEOUT) -> None:
+def _require_ok(cmd: list[str], message: str, timeout: int = _CMD_TIMEOUT) -> None:
     if not _run_ok(cmd, timeout=timeout):
         raise NexmonError(message)
 
 
 def _read_sysfs(path: str) -> Optional[str]:
     try:
-        with open(path, 'r', encoding='utf-8', errors='replace') as handle:
+        with open(path, encoding='utf-8', errors='replace') as handle:
             return handle.read().strip()
     except OSError:
         return None
@@ -612,8 +612,8 @@ def _create_monitor(station: str, phy: str, monitor: str) -> None:
         raise NexmonError(f'failed to create monitor interface {monitor}')
 
 
-def _restore_session(session: NexmonSession) -> List[str]:
-    errors: List[str] = []
+def _restore_session(session: NexmonSession) -> list[str]:
+    errors: list[str] = []
 
     if session.monitor:
         current_ifindex = _ifindex(session.monitor)
@@ -859,7 +859,7 @@ def stop(interface: str) -> bool:
     return True
 
 
-def cleanup_all() -> List[str]:
+def cleanup_all() -> list[str]:
     """Tear down every owned Nexmon session.
 
     Returns the list of station interfaces that were restored.  Sessions whose
@@ -868,7 +868,7 @@ def cleanup_all() -> List[str]:
     with _sessions_lock:
         sessions = list(_sessions.values())
 
-    restored: List[str] = []
+    restored: list[str] = []
     for session in sessions:
         if not session.owned:
             with _sessions_lock:

@@ -9,9 +9,6 @@ Tests verify that optimizations work correctly without breaking functionality.
 
 import unittest
 import time
-import tempfile
-import os
-from unittest.mock import Mock, patch, MagicMock
 
 
 class TestPortalCaching(unittest.TestCase):

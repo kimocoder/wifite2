@@ -34,7 +34,7 @@ class AttackPMKID(Attack):
     HANDSHAKE_GRACE_SECONDS = 10
 
     def __init__(self, target):
-        super(AttackPMKID, self).__init__(target)
+        super().__init__(target)
         self.crack_result = None
         self.do_airCRACK = False
         self.keep_capturing = None
@@ -82,7 +82,7 @@ class AttackPMKID(Attack):
 
             try:
                 log_debug('AttackPMKID', f'Checking file: {os.path.basename(pmkid_filename)}')
-                with open(pmkid_filename, 'r') as pmkid_handle:
+                with open(pmkid_filename) as pmkid_handle:
                     pmkid_hash = pmkid_handle.read().strip()
 
                     if Configuration.verbose > 2:
@@ -124,7 +124,7 @@ class AttackPMKID(Attack):
                             Color.pl('{+} {G}Found matching PMKID file: {C}%s{W}' % os.path.basename(pmkid_filename))
                         return pmkid_filename
 
-            except (IOError, OSError) as e:
+            except OSError as e:
                 log_warning('AttackPMKID', f'Error reading {os.path.basename(pmkid_filename)}: {str(e)}')
                 if Configuration.verbose > 2:
                     Color.pl('{+} {R}ERROR reading {C}%s{W}: %s' % (os.path.basename(pmkid_filename), str(e)))

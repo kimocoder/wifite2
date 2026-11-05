@@ -13,7 +13,7 @@ import os
 import time
 import re
 from threading import Thread, Lock
-from typing import Dict, List, Optional, Callable
+from typing import Optional, Callable
 from dataclasses import dataclass, field
 
 
@@ -225,7 +225,7 @@ class ClientMonitor(Thread):
         self.dnsmasq_log_path = dnsmasq_log_path
         
         # Client tracking
-        self.clients: Dict[str, ClientConnection] = {}
+        self.clients: dict[str, ClientConnection] = {}
         self.clients_lock = Lock()
         
         # Callbacks
@@ -272,7 +272,7 @@ class ClientMonitor(Thread):
     def _monitor_hostapd_log(self):
         """Monitor hostapd log for client events."""
         try:
-            with open(self.hostapd_log_path, 'r') as f:
+            with open(self.hostapd_log_path) as f:
                 # Seek to last position
                 f.seek(self.hostapd_file_pos)
                 
@@ -348,7 +348,7 @@ class ClientMonitor(Thread):
     def _monitor_dnsmasq_log(self):
         """Monitor dnsmasq log for DHCP leases."""
         try:
-            with open(self.dnsmasq_log_path, 'r') as f:
+            with open(self.dnsmasq_log_path) as f:
                 # Seek to last position
                 f.seek(self.dnsmasq_file_pos)
                 
@@ -498,7 +498,7 @@ class ClientMonitor(Thread):
             for mac in to_remove:
                 del self.clients[mac]
     
-    def get_connected_clients(self) -> List[ClientConnection]:
+    def get_connected_clients(self) -> list[ClientConnection]:
         """
         Get list of currently connected clients.
         
@@ -508,7 +508,7 @@ class ClientMonitor(Thread):
         with self.clients_lock:
             return [client for client in self.clients.values() if client.is_connected()]
     
-    def get_all_clients(self) -> List[ClientConnection]:
+    def get_all_clients(self) -> list[ClientConnection]:
         """
         Get list of all clients (connected and disconnected).
         

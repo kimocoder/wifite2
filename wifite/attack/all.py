@@ -229,7 +229,7 @@ class AttackAll:
                 if result:
                     attack_successful = True
                     break  # Attack was successful, stop other attacks.
-            except (OSError, IOError) as e:
+            except OSError as e:
                 # File system or process errors
                 Color.pl('\r {!} {R}System Error{W}: %s' % str(e))
                 continue

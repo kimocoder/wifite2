@@ -430,7 +430,7 @@ class TsharkMonitor:
                 'bssid': fields[4] if len(fields) > 4 else '',
                 'channel': fields[5] if len(fields) > 5 else ''
             }
-        except (OSError, IOError):
+        except OSError:
             return None
     
     def stop(self):

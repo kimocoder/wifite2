@@ -488,7 +488,7 @@ class Hashcat(Dependency):
         """
         info = {'types': set(), 'needs_hashcat8': False, 'max_eapol_bytes': 0}
         try:
-            with open(hash_file, 'r', errors='replace') as handle:
+            with open(hash_file, errors='replace') as handle:
                 lines = handle.readlines()
         except OSError:
             return info
@@ -852,7 +852,7 @@ class HcxPcapngTool(Dependency):
         if not os.path.exists(self.pmkid_file):
             return None
 
-        with open(self.pmkid_file, 'r') as f:
+        with open(self.pmkid_file) as f:
             output = f.read()
             # Each line looks like:
             # hash*bssid*station*essid
@@ -929,7 +929,7 @@ class HcxPcapngTool(Dependency):
 
         pmkids = []
         try:
-            with open(temp_hash_file, 'r') as f:
+            with open(temp_hash_file) as f:
                 for line in f:
                     line = line.strip()
 

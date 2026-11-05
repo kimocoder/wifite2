@@ -377,6 +377,13 @@ class Scanner:
 
             self._diagnose_no_targets()
 
+            # Infinite mode must keep cycling instead of crashing on an empty
+            # scan. A genuine scanner error still raises.
+            if Configuration.infinite_mode and not self.err_msg:
+                from ..util.logger import log_warning
+                log_warning('Scanner', 'No targets found in infinite mode; continuing scan cycle')
+                return []
+
             raise Exception('No targets found.'
                             + ' You may need to wait longer,'
                             + ' or you may have issues with your wifi card')
@@ -775,7 +782,7 @@ if __name__ == '__main__':
         s = Scanner()
         s.find_targets()
         targets = s.select_targets()
-    except (OSError, IOError) as e:
+    except OSError as e:
         Color.pl('\r {!} {R}Scanner I/O Error{W}: %s' % str(e))
         Configuration.exit_gracefully()
     except subprocess.CalledProcessError as e:

@@ -9,7 +9,7 @@ Used by Evil Twin attack to provide network services to connected clients.
 import os
 import time
 import tempfile
-from typing import Optional, List
+from typing import Optional
 
 from .dependency import Dependency
 from ..config import Configuration
@@ -376,7 +376,7 @@ class Dnsmasq(Dependency):
         
         return self.process.poll() is None
     
-    def get_leases(self) -> List[dict]:
+    def get_leases(self) -> list[dict]:
         """
         Get list of DHCP leases.
         
@@ -389,7 +389,7 @@ class Dnsmasq(Dependency):
             if not self.lease_file or not os.path.exists(self.lease_file):
                 return leases
             
-            with open(self.lease_file, 'r') as f:
+            with open(self.lease_file) as f:
                 for line in f:
                     line = line.strip()
                     if not line:
@@ -413,7 +413,7 @@ class Dnsmasq(Dependency):
             log_debug('Dnsmasq', f'Failed to get leases: {e}')
             return []
     
-    def get_connected_clients(self) -> List[str]:
+    def get_connected_clients(self) -> list[str]:
         """
         Get list of connected client MAC addresses.
         

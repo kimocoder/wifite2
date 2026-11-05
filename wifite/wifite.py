@@ -1302,7 +1302,7 @@ class Wifite:
             try:
                 session_mgr.delete_session(session.session_id)
                 Color.pl('{+} {G}Session completed and cleaned up{W}')
-            except (OSError, IOError) as e:
+            except OSError as e:
                 Color.pl('{!} {O}Warning: Could not delete session file: %s{W}' % str(e))
             except Exception as e:
                 Color.pl('{!} {O}Warning: Unexpected error during session cleanup: %s{W}' % str(e))
@@ -1358,7 +1358,7 @@ def main():
         else:
             print(e.code, file=sys.stderr)
             exit_code = 1
-    except (OSError, IOError) as e:
+    except OSError as e:
         exit_code = 1
         Color.pl('\n{!} {R}System Error{W}: %s' % str(e))
         Color.pl('\n{!} {R}Exiting{W}\n')

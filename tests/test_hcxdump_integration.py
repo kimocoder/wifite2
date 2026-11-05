@@ -13,7 +13,7 @@ Tests complete WPA attack flows with --hcxdump flag including:
 
 import unittest
 import sys
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 
 import pytest
 

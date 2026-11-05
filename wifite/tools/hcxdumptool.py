@@ -654,7 +654,7 @@ class HcxPcapngTool(Dependency):
 
         if wants_filter:
             try:
-                with open(raw_output, 'r', errors='replace') as handle:
+                with open(raw_output, errors='replace') as handle:
                     matches = filter_hash_lines(handle.readlines(), bssid, essid)
             except OSError:
                 matches = []

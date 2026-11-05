@@ -51,7 +51,7 @@ class TemplateRenderer:
             template_file = os.path.join(self.templates_dir, f'{self.template_name}_login.html')
             
             if os.path.exists(template_file):
-                with open(template_file, 'r') as f:
+                with open(template_file) as f:
                     template = f.read()
                 log_debug('TemplateRenderer', f'Loaded template from {template_file}')
             else:
@@ -80,7 +80,7 @@ class TemplateRenderer:
             template_file = os.path.join(self.templates_dir, f'{self.template_name}_success.html')
             
             if os.path.exists(template_file):
-                with open(template_file, 'r') as f:
+                with open(template_file) as f:
                     template = f.read()
             else:
                 template = self._get_builtin_success_template()
@@ -103,7 +103,7 @@ class TemplateRenderer:
             template_file = os.path.join(self.templates_dir, f'{self.template_name}_error.html')
             
             if os.path.exists(template_file):
-                with open(template_file, 'r') as f:
+                with open(template_file) as f:
                     template = f.read()
             else:
                 template = self._get_builtin_error_template()

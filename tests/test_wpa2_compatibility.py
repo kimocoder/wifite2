@@ -8,7 +8,6 @@ Ensures that WPA3 additions don't break existing WPA2 functionality.
 """
 
 import unittest
-from unittest.mock import Mock, patch, MagicMock
 import sys
 import os
 

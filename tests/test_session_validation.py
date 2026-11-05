@@ -10,7 +10,6 @@ import tempfile
 import os
 import shutil
 import json
-from unittest.mock import Mock, MagicMock, patch
 
 
 class TestSessionValidation(unittest.TestCase):

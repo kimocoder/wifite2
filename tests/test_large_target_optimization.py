@@ -7,7 +7,6 @@ Verifies that rendering is optimized for performance with many targets.
 """
 
 import unittest
-from unittest.mock import Mock
 
 
 class MockTarget:

@@ -35,7 +35,7 @@ class AttackOWE(Attack):
     """
 
     def __init__(self, target):
-        super(AttackOWE, self).__init__(target)
+        super().__init__(target)
         self.success = False
         self.crack_result = None
 

@@ -8,7 +8,7 @@ Tests for cleanup utilities.
 import unittest
 import tempfile
 import os
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 
 # Add parent directory to path
 import sys

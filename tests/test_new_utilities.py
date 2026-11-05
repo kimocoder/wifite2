@@ -19,8 +19,7 @@ class TestSignalTracker:
     def test_import(self):
         """Test that signal_tracker module can be imported."""
         from wifite.util.signal_tracker import (
-            SignalSample, SignalHistory, SignalTracker,
-            get_signal_tracker, reset_signal_tracker
+            SignalSample, SignalHistory, SignalTracker
         )
         assert SignalSample is not None
         assert SignalHistory is not None
@@ -158,8 +157,7 @@ class TestRetryUtilities:
     def test_import(self):
         """Test that retry module can be imported."""
         from wifite.util.retry import (
-            RetryExhausted, exponential_backoff, linear_backoff,
-            constant_delay, RetryConfig, retry_with_backoff, RetryContext
+            RetryExhausted, exponential_backoff
         )
         assert RetryExhausted is not None
         assert exponential_backoff is not None

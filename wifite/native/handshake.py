@@ -29,7 +29,7 @@ in sequential order.
 """
 
 import os
-from typing import Optional, List, Dict, Set, Tuple
+from typing import Optional
 from collections import defaultdict
 
 try:
@@ -67,7 +67,7 @@ class ScapyHandshake:
     @classmethod
     def bssids_with_handshakes(cls, 
                                 capfile: str, 
-                                bssid: Optional[str] = None) -> List[str]:
+                                bssid: Optional[str] = None) -> list[str]:
         """
         Find all BSSIDs with valid 4-way handshakes in a capture file.
         
@@ -96,7 +96,7 @@ class ScapyHandshake:
             
             return list(valid_bssids)
             
-        except Exception as e:
+        except Exception:
             return []
     
     @classmethod
@@ -117,7 +117,7 @@ class ScapyHandshake:
     @classmethod
     def get_handshake_info(cls, 
                            capfile: str, 
-                           bssid: Optional[str] = None) -> List[Dict]:
+                           bssid: Optional[str] = None) -> list[dict]:
         """
         Get detailed handshake information from capture file.
         
@@ -156,7 +156,7 @@ class ScapyHandshake:
     @classmethod
     def _extract_handshakes(cls, 
                             capfile: str, 
-                            bssid_filter: Optional[str] = None) -> Dict[Tuple[str, str], Set[int]]:
+                            bssid_filter: Optional[str] = None) -> dict[tuple[str, str], set[int]]:
         """
         Extract EAPOL handshake messages from capture file.
         
@@ -312,7 +312,7 @@ class ScapyHandshake:
             return 0
     
     @classmethod
-    def _is_complete_handshake(cls, messages: Set[int]) -> bool:
+    def _is_complete_handshake(cls, messages: set[int]) -> bool:
         """
         Check if a set of messages forms a complete handshake.
         
@@ -388,7 +388,7 @@ def has_handshake(capfile: str, bssid: str) -> bool:
     return ScapyHandshake.has_handshake(capfile, bssid)
 
 
-def bssids_with_handshakes(capfile: str, bssid: Optional[str] = None) -> List[str]:
+def bssids_with_handshakes(capfile: str, bssid: Optional[str] = None) -> list[str]:
     """Get list of BSSIDs with valid handshakes."""
     return ScapyHandshake.bssids_with_handshakes(capfile, bssid)
 

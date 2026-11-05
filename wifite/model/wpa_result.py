@@ -12,7 +12,7 @@ class CrackResultWPA(CrackResult):
         self.essid = essid
         self.handshake_file = handshake_file
         self.key = key
-        super(CrackResultWPA, self).__init__()
+        super().__init__()
 
     def dump(self):
         if self.essid:

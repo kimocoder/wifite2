@@ -22,7 +22,7 @@ References:
 - Wi-Fi Alliance Enhanced Open specification
 """
 
-from typing import Dict, List, Optional, Tuple
+from typing import Optional
 from ..util.color import Color
 
 
@@ -40,7 +40,7 @@ class OWEDetector:
     OWE_AKM = 18
 
     @staticmethod
-    def detect_owe_capability(target) -> Optional[Dict]:
+    def detect_owe_capability(target) -> Optional[dict]:
         """
         Detect if a target supports OWE.
 
@@ -93,7 +93,7 @@ class OWEDetector:
         return owe_info if owe_info['owe_enabled'] else None
 
     @staticmethod
-    def find_transition_pairs(targets: List) -> List[Tuple]:
+    def find_transition_pairs(targets: list) -> list[tuple]:
         """
         Find OWE transition mode pairs (OWE + Open networks).
 
@@ -190,7 +190,7 @@ class OWEDetector:
             return None
 
     @staticmethod
-    def print_owe_info(target, owe_info: Dict, verbose: bool = False):
+    def print_owe_info(target, owe_info: dict, verbose: bool = False):
         """
         Print OWE network information.
 
@@ -233,7 +233,7 @@ class OWEDetector:
             Color.pl('    {W}Encryption:{W} Automatic per-session keys')
 
     @staticmethod
-    def print_transition_pairs(pairs: List[Tuple], verbose: bool = False):
+    def print_transition_pairs(pairs: list[tuple], verbose: bool = False):
         """
         Print detected OWE transition mode pairs.
 
@@ -274,7 +274,7 @@ class OWEDetector:
         Color.pl('    {G}•{W} Monitor for rogue Open APs mimicking OWE networks')
 
     @staticmethod
-    def scan_owe_vulnerabilities(targets: List) -> Dict:
+    def scan_owe_vulnerabilities(targets: list) -> dict:
         """
         Scan targets for OWE vulnerabilities.
 
@@ -310,7 +310,7 @@ class OWEDetector:
         return results
 
     @staticmethod
-    def print_scan_summary(results: Dict):
+    def print_scan_summary(results: dict):
         """Print OWE vulnerability scan summary."""
         Color.pl('\n{+} {C}OWE Vulnerability Scan Summary{W}')
         Color.pl('{+} OWE networks found: {G}%d{W}' % len(results['owe_networks']))

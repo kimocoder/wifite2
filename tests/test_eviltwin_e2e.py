@@ -13,12 +13,10 @@ Tests realistic scenarios including:
 
 import hashlib
 import unittest
-import tempfile
-import shutil
 import os
 import time
 import sys
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 
 # Mock sys.argv to prevent argparse from reading test arguments
 original_argv = sys.argv
@@ -33,7 +31,7 @@ Configuration.eviltwin_timeout = 0
 Configuration.eviltwin_template = 'generic'
 Configuration.eviltwin_deauth_interval = 5
 
-from wifite.attack.eviltwin import EvilTwin, AttackState
+from wifite.attack.eviltwin import EvilTwin
 from wifite.model.target import Target
 from wifite.attack.portal.templates import TemplateRenderer
 from wifite.util.credential_validator import CredentialValidator
@@ -273,7 +271,7 @@ class TestPasswordFormatValidation(unittest.TestCase):
         try:
             self.assertTrue(os.path.exists(config_file))
             
-            with open(config_file, 'r') as f:
+            with open(config_file) as f:
                 content = f.read()
             
             self.assertIn('ssid=' + 'TestNet'.encode().hex(), content)
@@ -298,7 +296,7 @@ class TestPasswordFormatValidation(unittest.TestCase):
                 try:
                     self.assertTrue(os.path.exists(config_file))
                     
-                    with open(config_file, 'r') as f:
+                    with open(config_file) as f:
                         content = f.read()
                     
                     self.assertIn(f'psk={wpa_psk("TestNet", password)}', content)
@@ -321,7 +319,7 @@ class TestPasswordFormatValidation(unittest.TestCase):
                 try:
                     self.assertTrue(os.path.exists(config_file))
                     
-                    with open(config_file, 'r') as f:
+                    with open(config_file) as f:
                         content = f.read()
                     
                     # Only the derived hex PSK appears, never the raw password.
@@ -342,7 +340,7 @@ class TestPasswordFormatValidation(unittest.TestCase):
         try:
             self.assertTrue(os.path.exists(config_file))
             
-            with open(config_file, 'r') as f:
+            with open(config_file) as f:
                 content = f.read()
             
             self.assertIn('psk=' + wpa_psk('TestNet', '12345678'), content)
@@ -358,7 +356,7 @@ class TestPasswordFormatValidation(unittest.TestCase):
         try:
             self.assertTrue(os.path.exists(config_file))
             
-            with open(config_file, 'r') as f:
+            with open(config_file) as f:
                 content = f.read()
             
             self.assertIn(f'psk={wpa_psk("TestNet", password)}', content)
@@ -374,7 +372,7 @@ class TestPasswordFormatValidation(unittest.TestCase):
         try:
             self.assertTrue(os.path.exists(config_file))
             
-            with open(config_file, 'r') as f:
+            with open(config_file) as f:
                 content = f.read()
             
             self.assertIn('psk=' + wpa_psk('TestNet', 'My Password 123'), content)
@@ -390,7 +388,7 @@ class TestPasswordFormatValidation(unittest.TestCase):
         try:
             self.assertTrue(os.path.exists(config_file))
             
-            with open(config_file, 'r') as f:
+            with open(config_file) as f:
                 content = f.read()
             
             self.assertNotIn(password, content)
@@ -411,7 +409,7 @@ class TestPasswordFormatValidation(unittest.TestCase):
         config_file = self.validator._create_wpa_config(ssid, password)
 
         try:
-            with open(config_file, 'r') as f:
+            with open(config_file) as f:
                 content = f.read()
 
             self.assertNotIn(ssid, content)

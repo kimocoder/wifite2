@@ -8,8 +8,7 @@ Tests for configuration restoration from session.
 import unittest
 import tempfile
 import shutil
-import os
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 from wifite.util.session import SessionManager, SessionState, TargetState
 
 

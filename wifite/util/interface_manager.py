@@ -12,7 +12,7 @@ import json
 import os
 import re
 import threading
-from typing import Optional, List, Dict, Set
+from typing import Optional
 from dataclasses import dataclass, field
 
 from ..tools.iw import Iw
@@ -41,12 +41,12 @@ class InterfaceState:
     current_mode: str                   # Current mode
     current_up: bool                    # Current up/down state
     managed_by_wifite: bool = True      # Whether wifite is managing this interface
-    original_ips: List[str] = field(default_factory=list)
+    original_ips: list[str] = field(default_factory=list)
     original_ifindex: Optional[int] = None
     original_promisc: Optional[bool] = None
     original_allmulti: Optional[bool] = None
-    changed_fields: Set[str] = field(default_factory=set)
-    added_ips: Set[str] = field(default_factory=set)
+    changed_fields: set[str] = field(default_factory=set)
+    added_ips: set[str] = field(default_factory=set)
 
     def __str__(self):
         return (f'{self.name}: original={self.original_mode}({"up" if self.original_up else "down"}), '
@@ -148,8 +148,8 @@ class InterfaceManager:
     """
     
     def __init__(self):
-        self.interface_states: Dict[str, InterfaceState] = {}
-        self.assigned_ips: Dict[str, str] = {}
+        self.interface_states: dict[str, InterfaceState] = {}
+        self.assigned_ips: dict[str, str] = {}
         self.managed_interfaces = {}
         self._state_lock = threading.RLock()
         self._forwarding_state: Optional[ForwardingState] = None
@@ -169,7 +169,7 @@ class InterfaceManager:
         }.get(normalized, normalized)
 
     @classmethod
-    def _mode_command(cls, interface: str, mode: str) -> Optional[List[str]]:
+    def _mode_command(cls, interface: str, mode: str) -> Optional[list[str]]:
         canonical = cls._canonical_mode(mode)
         target = {
             'AP': '__ap',
@@ -181,7 +181,7 @@ class InterfaceManager:
         return ['iw', 'dev', interface, 'set', 'type', target]
 
     @staticmethod
-    def _run_checked(command: List[str], description: str = None) -> bool:
+    def _run_checked(command: list[str], description: str = None) -> bool:
         try:
             if description:
                 log_debug('InterfaceManager', description)
@@ -199,13 +199,13 @@ class InterfaceManager:
     @staticmethod
     def _get_interface_ifindex(interface: str) -> Optional[int]:
         try:
-            with open(f'/sys/class/net/{interface}/ifindex', 'r') as handle:
+            with open(f'/sys/class/net/{interface}/ifindex') as handle:
                 return int(handle.read().strip())
         except (OSError, ValueError):
             return None
 
     @staticmethod
-    def _get_interface_addresses(interface: str) -> Optional[List[str]]:
+    def _get_interface_addresses(interface: str) -> Optional[list[str]]:
         try:
             result = Process.run_simple(['ip', '-json', 'addr', 'show', 'dev', interface])
             if result.returncode != 0:
@@ -224,7 +224,7 @@ class InterfaceManager:
     @staticmethod
     def _read_ip_forwarding() -> Optional[bool]:
         try:
-            with open('/proc/sys/net/ipv4/ip_forward', 'r') as handle:
+            with open('/proc/sys/net/ipv4/ip_forward') as handle:
                 value = handle.read().strip()
             if value not in ('0', '1'):
                 return None
@@ -252,7 +252,7 @@ class InterfaceManager:
             state.changed_fields.add(field_name)
     
     @staticmethod
-    def _execute_verbose(command: List[str], description: str = None) -> Optional[str]:
+    def _execute_verbose(command: list[str], description: str = None) -> Optional[str]:
         """
         Execute a command with verbose logging support.
         
@@ -403,7 +403,7 @@ class InterfaceManager:
         return interface in self.interface_states and \
                self.interface_states[interface].managed_by_wifite
     
-    def get_managed_interfaces(self) -> List[str]:
+    def get_managed_interfaces(self) -> list[str]:
         """
         Get list of all interfaces currently managed by wifite.
         
@@ -693,7 +693,7 @@ class InterfaceManager:
                 state.changed_fields.discard('mac')
             return True
 
-    def set_interface_addresses(self, interface: str, addresses: List[str]) -> bool:
+    def set_interface_addresses(self, interface: str, addresses: list[str]) -> bool:
         with self._state_lock:
             try:
                 from ..config.validators import validate_interface_name
@@ -789,7 +789,7 @@ class InterfaceManager:
             return False
     
     @staticmethod
-    def get_wireless_interfaces() -> List[str]:
+    def get_wireless_interfaces() -> list[str]:
         """
         Get list of all wireless interfaces.
         
@@ -822,7 +822,7 @@ class InterfaceManager:
             return []
     
     @staticmethod
-    def get_ap_capable_interfaces() -> List[InterfaceCapabilities]:
+    def get_ap_capable_interfaces() -> list[InterfaceCapabilities]:
         """
         Get list of interfaces that support AP mode.
         
@@ -1305,7 +1305,7 @@ class InterfaceManager:
             return success
 
     def _verify_restored_state(self, interface: str, state: InterfaceState,
-                               changed: Set[str]) -> bool:
+                               changed: set[str]) -> bool:
         """Re-read the device and confirm every restored field matches.
 
         A restore is only successful when the kernel agrees with the
@@ -1703,7 +1703,7 @@ class InterfaceManager:
             True if administratively up, False otherwise
         """
         try:
-            with open(f'/sys/class/net/{interface}/flags', 'r') as handle:
+            with open(f'/sys/class/net/{interface}/flags') as handle:
                 return bool(int(handle.read().strip(), 16) & 0x1)
         except (OSError, ValueError):
             pass
@@ -1734,7 +1734,7 @@ class InterfaceManager:
             Raw IFF_* flag word, or None when it cannot be read.
         """
         try:
-            with open(f'/sys/class/net/{interface}/flags', 'r') as handle:
+            with open(f'/sys/class/net/{interface}/flags') as handle:
                 return int(handle.read().strip(), 16)
         except (OSError, ValueError):
             pass
@@ -2066,7 +2066,7 @@ class InterfaceManager:
             return True
     
     @staticmethod
-    def get_available_interfaces() -> List[InterfaceInfo]:
+    def get_available_interfaces() -> list[InterfaceInfo]:
         """
         Get all available wireless interfaces with their capabilities.
         

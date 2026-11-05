@@ -402,11 +402,11 @@ class Configuration:
                 try:
                     file_path = os.path.join(cls.temp_dir, f)
                     os.remove(file_path)
-                except (OSError, IOError):
+                except OSError:
                     pass  # Ignore errors during cleanup
             try:
                 os.rmdir(cls.temp_dir)
-            except (OSError, IOError):
+            except OSError:
                 pass  # Ignore errors during cleanup
 
     @classmethod

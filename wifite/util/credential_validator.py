@@ -12,7 +12,7 @@ import time
 import hashlib
 import tempfile
 import threading
-from typing import Optional, Tuple, Dict
+from typing import Optional
 from queue import Queue, Empty
 
 from ..tools.dependency import Dependency
@@ -115,7 +115,7 @@ class CredentialValidator:
         
         log_info('CredentialValidator', 'Validation thread stopped')
     
-    def validate_credentials(self, ssid: str, password: str, timeout=30) -> Tuple[bool, float, Optional[str]]:
+    def validate_credentials(self, ssid: str, password: str, timeout=30) -> tuple[bool, float, Optional[str]]:
         """
         Validate credentials against the legitimate AP.
         
@@ -613,7 +613,7 @@ class CredentialValidator:
         for file_path in self.temp_files[:]:
             self._remove_temp_file(file_path)
     
-    def get_statistics(self) -> Dict:
+    def get_statistics(self) -> dict:
         """
         Get validation statistics.
         

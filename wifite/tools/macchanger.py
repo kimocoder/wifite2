@@ -103,7 +103,7 @@ class Macchanger(Dependency):
                     cls.is_changed = False
                     return
                     
-            except Exception as e:
+            except Exception:
                 # Fall back to macchanger binary
                 pass
         
@@ -158,7 +158,7 @@ class Macchanger(Dependency):
                     Color.pl('\r{+} {C}macchanger{W}: changed mac address to {C}%s{W} on {C}%s{W} (native)' % (result, iface))
                     return
                     
-            except (OSError, RuntimeError) as e:
+            except (OSError, RuntimeError):
                 # Bring interface back up if it was taken down
                 try:
                     Ip.up(iface)

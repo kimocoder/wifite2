@@ -9,7 +9,7 @@ when --showm flag is used.
 """
 
 import unittest
-from unittest.mock import Mock, MagicMock, patch
+from unittest.mock import Mock, patch
 
 
 class TestSelectorManufacturerDisplay(unittest.TestCase):

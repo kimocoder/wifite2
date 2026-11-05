@@ -32,7 +32,7 @@ import re
 import socket
 import struct
 import fcntl
-from typing import Optional, List, Tuple
+from typing import Optional
 from dataclasses import dataclass
 
 
@@ -112,7 +112,7 @@ class NativeInterface:
     CHANNEL_FREQ_6 = {ch: 5950 + (5 * ch) for ch in range(1, 234)}
     
     @classmethod
-    def list_interfaces(cls, wireless_only: bool = False) -> List[str]:
+    def list_interfaces(cls, wireless_only: bool = False) -> list[str]:
         """
         List available network interfaces.
         
@@ -157,16 +157,16 @@ class NativeInterface:
         
         # MAC address
         try:
-            with open(f'{sysfs_base}/address', 'r') as f:
+            with open(f'{sysfs_base}/address') as f:
                 info.mac_address = f.read().strip().upper()
-        except (IOError, OSError):
+        except OSError:
             pass
         
         # Driver
         try:
             driver_link = os.readlink(f'{sysfs_base}/device/driver')
             info.driver = os.path.basename(driver_link)
-        except (IOError, OSError):
+        except OSError:
             pass
         
         # Check if wireless
@@ -174,16 +174,16 @@ class NativeInterface:
         
         # Interface state
         try:
-            with open(f'{sysfs_base}/operstate', 'r') as f:
+            with open(f'{sysfs_base}/operstate') as f:
                 info.is_up = f.read().strip().lower() in ('up', 'unknown')
-        except (IOError, OSError):
+        except OSError:
             info.is_up = cls._is_up_ioctl(interface)
         
         # PHY device
         try:
             phy_link = os.readlink(f'{sysfs_base}/phy80211')
             info.phy = os.path.basename(phy_link)
-        except (IOError, OSError):
+        except OSError:
             pass
         
         # Wireless-specific info
@@ -213,7 +213,7 @@ class NativeInterface:
         return mode == 'monitor' if mode else False
     
     @classmethod
-    def up(cls, interface: str) -> Tuple[bool, str]:
+    def up(cls, interface: str) -> tuple[bool, str]:
         """Bring interface up through the single state owner."""
         from ..config import Configuration
         if Configuration.get_interface_manager().set_interface_up(interface, True):
@@ -221,7 +221,7 @@ class NativeInterface:
         return False, f'Failed to bring {interface} up'
 
     @classmethod
-    def down(cls, interface: str) -> Tuple[bool, str]:
+    def down(cls, interface: str) -> tuple[bool, str]:
         """Bring interface down through the single state owner."""
         from ..config import Configuration
         if Configuration.get_interface_manager().set_interface_up(interface, False):
@@ -232,9 +232,9 @@ class NativeInterface:
     def get_mac(cls, interface: str) -> Optional[str]:
         """Get MAC address of interface."""
         try:
-            with open(f'/sys/class/net/{interface}/address', 'r') as f:
+            with open(f'/sys/class/net/{interface}/address') as f:
                 return f.read().strip().upper()
-        except (IOError, OSError):
+        except OSError:
             pass
         
         # Fallback to ioctl
@@ -247,7 +247,7 @@ class NativeInterface:
                 return ':'.join(f'{b:02X}' for b in mac_bytes)
             finally:
                 sock.close()
-        except (IOError, OSError):
+        except OSError:
             return None
     
     @classmethod
@@ -271,7 +271,7 @@ class NativeInterface:
     
     @classmethod
     def set_channel(cls, interface: str, channel: int,
-                    band: Optional[str] = None) -> Tuple[bool, str]:
+                    band: Optional[str] = None) -> tuple[bool, str]:
         """
         Set channel on wireless interface through the single state owner.
         
@@ -294,7 +294,7 @@ class NativeInterface:
         return False, f'Failed to set channel {channel} on {interface}'
     
     @classmethod
-    def set_mode(cls, interface: str, mode: str) -> Tuple[bool, str]:
+    def set_mode(cls, interface: str, mode: str) -> tuple[bool, str]:
         """
         Set wireless interface mode through the single state owner.
         
@@ -333,7 +333,7 @@ class NativeInterface:
                 return bool(flags & cls.IFF_UP)
             finally:
                 sock.close()
-        except (IOError, OSError):
+        except OSError:
             return False
     
     @classmethod
@@ -349,7 +349,7 @@ class NativeInterface:
                 return cls.MODE_NAMES.get(mode, 'unknown')
             finally:
                 sock.close()
-        except (IOError, OSError):
+        except OSError:
             pass
         
         # Fallback to iw command
@@ -391,7 +391,7 @@ class NativeInterface:
                     
             finally:
                 sock.close()
-        except (IOError, OSError):
+        except OSError:
             pass
         
         return None
@@ -439,7 +439,7 @@ class NativeInterface:
 
 
 # Convenience functions
-def list_interfaces(wireless_only: bool = False) -> List[str]:
+def list_interfaces(wireless_only: bool = False) -> list[str]:
     """List network interfaces."""
     return NativeInterface.list_interfaces(wireless_only)
 
@@ -449,12 +449,12 @@ def get_info(interface: str) -> Optional[InterfaceInfo]:
     return NativeInterface.get_info(interface)
 
 
-def up(interface: str) -> Tuple[bool, str]:
+def up(interface: str) -> tuple[bool, str]:
     """Bring interface up."""
     return NativeInterface.up(interface)
 
 
-def down(interface: str) -> Tuple[bool, str]:
+def down(interface: str) -> tuple[bool, str]:
     """Bring interface down."""
     return NativeInterface.down(interface)
 

@@ -12,7 +12,7 @@ import time
 import secrets
 _sysrng = secrets.SystemRandom()
 from functools import wraps
-from typing import Callable, Optional, Tuple, Type
+from typing import Callable, Optional
 
 
 class RetryExhausted(Exception):
@@ -89,7 +89,7 @@ class RetryConfig:
     def __init__(self,
                  max_attempts: int = 3,
                  backoff_func: Callable[[int], float] = None,
-                 retry_exceptions: Tuple[Type[Exception], ...] = (Exception,),
+                 retry_exceptions: tuple[type[Exception], ...] = (Exception,),
                  on_retry: Optional[Callable[[int, Exception], None]] = None,
                  on_failure: Optional[Callable[[int, Exception], None]] = None):
         """
@@ -112,7 +112,7 @@ class RetryConfig:
 def retry_with_backoff(config: Optional[RetryConfig] = None,
                        max_attempts: int = 3,
                        backoff_func: Callable[[int], float] = None,
-                       retry_exceptions: Tuple[Type[Exception], ...] = (Exception,)):
+                       retry_exceptions: tuple[type[Exception], ...] = (Exception,)):
     """
     Decorator to retry a function with backoff on failure.
 

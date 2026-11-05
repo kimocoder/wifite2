@@ -27,7 +27,7 @@ WPS Information Elements:
 """
 
 import os
-from typing import Optional, List, Dict
+from typing import Optional
 
 try:
     from scapy.all import (
@@ -99,7 +99,7 @@ class ScapyWPS:
         return SCAPY_AVAILABLE
     
     @classmethod
-    def detect_wps(cls, capfile: str) -> Dict[str, WPSInfo]:
+    def detect_wps(cls, capfile: str) -> dict[str, WPSInfo]:
         """
         Detect WPS-enabled networks from capture file.
         
@@ -154,7 +154,7 @@ class ScapyWPS:
             return {}
     
     @classmethod
-    def update_targets(cls, capfile: str, targets: List) -> None:
+    def update_targets(cls, capfile: str, targets: list) -> None:
         """
         Update target list with WPS information from capture.
         
@@ -322,12 +322,12 @@ class ScapyWPS:
 
 
 # Convenience functions
-def detect_wps(capfile: str) -> Dict[str, WPSInfo]:
+def detect_wps(capfile: str) -> dict[str, WPSInfo]:
     """Detect WPS-enabled networks from capture file."""
     return ScapyWPS.detect_wps(capfile)
 
 
-def update_targets(capfile: str, targets: List) -> None:
+def update_targets(capfile: str, targets: list) -> None:
     """Update targets with WPS information."""
     return ScapyWPS.update_targets(capfile, targets)
 

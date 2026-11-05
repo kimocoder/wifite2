@@ -8,7 +8,7 @@ Tests various terminal configurations and edge cases.
 
 import unittest
 import os
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 
 
 class TestTerminalSizeHandling(unittest.TestCase):

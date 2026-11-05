@@ -18,7 +18,6 @@ References:
 - https://papers.mathyvanhoef.com/dragonblood.pdf
 """
 
-from typing import Dict, List
 from ..util.color import Color
 
 
@@ -61,7 +60,7 @@ class DragonbloodDetector:
     }
     
     @staticmethod
-    def check_vulnerability(wpa3_info: Dict) -> Dict:
+    def check_vulnerability(wpa3_info: dict) -> dict:
         """
         Check if a WPA3 network is potentially vulnerable to Dragonblood.
         
@@ -149,7 +148,7 @@ class DragonbloodDetector:
     
     @staticmethod
     def print_vulnerability_report(target_essid: str, target_bssid: str, 
-                                   vulnerability_info: Dict, verbose: bool = False):
+                                   vulnerability_info: dict, verbose: bool = False):
         """
         Print a formatted vulnerability report.
         
@@ -203,12 +202,12 @@ class DragonbloodDetector:
         return group_id in DragonbloodDetector.WEAK_SAE_GROUPS
     
     @staticmethod
-    def get_secure_groups() -> List[int]:
+    def get_secure_groups() -> list[int]:
         """Get list of recommended secure SAE groups."""
         return list(DragonbloodDetector.SECURE_SAE_GROUPS.keys())
     
     @staticmethod
-    def is_timing_attack_viable(wpa3_info: Dict) -> bool:
+    def is_timing_attack_viable(wpa3_info: dict) -> bool:
         """
         Check whether the Dragonblood timing attack is worth attempting.
 
@@ -228,8 +227,8 @@ class DragonbloodDetector:
         return bool(modp_vulnerable.intersection(sae_groups))
 
     @staticmethod
-    def enrich_with_timing(vulnerability_info: Dict,
-                           timing_analysis) -> Dict:
+    def enrich_with_timing(vulnerability_info: dict,
+                           timing_analysis) -> dict:
         """
         Merge timing-attack results into an existing vulnerability report.
 
@@ -300,7 +299,7 @@ class DragonbloodDetector:
                      (timing_analysis.confidence * 100))
 
     @staticmethod
-    def scan_mode_check(targets: List) -> Dict:
+    def scan_mode_check(targets: list) -> dict:
         """
         Scan multiple targets for Dragonblood vulnerabilities.
         
@@ -339,7 +338,7 @@ class DragonbloodDetector:
         return results
     
     @staticmethod
-    def print_scan_summary(scan_results: Dict):
+    def print_scan_summary(scan_results: dict):
         """Print summary of vulnerability scan."""
         Color.pl('\n{+} {C}Dragonblood Vulnerability Scan Summary{W}')
         Color.pl('{+} Networks checked: {G}%d{W}' % scan_results['total_checked'])

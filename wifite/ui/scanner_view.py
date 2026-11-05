@@ -7,7 +7,7 @@ Displays real-time scanning interface with target list and statistics.
 """
 
 import time
-from typing import List, Optional
+from typing import Optional
 from rich.layout import Layout
 from rich.panel import Panel
 from rich.table import Table
@@ -35,7 +35,7 @@ class ScannerView:
         self.max_visible_targets = 50  # Limit displayed targets for performance
         self.session = session  # Store session for resume status display
 
-    def update_targets(self, targets: List, decloaking: bool = False):
+    def update_targets(self, targets: list, decloaking: bool = False):
         """
         Update target list and refresh display.
 

@@ -8,7 +8,7 @@ Verifies that session information is properly displayed in scanner and attack vi
 
 import unittest
 import time
-from unittest.mock import Mock, MagicMock, patch
+from unittest.mock import Mock
 from wifite.ui.scanner_view import ScannerView
 from wifite.ui.attack_view import AttackView, WPAAttackView, WPSAttackView
 from wifite.util.session import SessionState, TargetState

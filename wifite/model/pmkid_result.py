@@ -12,7 +12,7 @@ class CrackResultPMKID(CrackResult):
         self.essid = essid
         self.pmkid_file = pmkid_file
         self.key = key
-        super(CrackResultPMKID, self).__init__()
+        super().__init__()
 
     def dump(self):
         if self.essid:

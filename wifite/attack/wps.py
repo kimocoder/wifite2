@@ -18,7 +18,7 @@ class AttackWPS(Attack):
         return Reaver.exists() or Bully.exists()
 
     def __init__(self, target, pixie_dust=False, null_pin=False):
-        super(AttackWPS, self).__init__(target)
+        super().__init__(target)
         self.success = False
         self.crack_result = None
         self.pixie_dust = pixie_dust

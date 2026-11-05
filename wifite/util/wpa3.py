@@ -11,7 +11,7 @@ Dragonblood vulnerability indicators.
 
 import os
 import re
-from typing import Dict, List, Any, Optional
+from typing import Any, Optional
 
 
 class WPA3Detector:
@@ -44,7 +44,7 @@ class WPA3Detector:
 
     @staticmethod
     def detect_wpa3_capability(target, use_cache: bool = True,
-                               capfile: Optional[str] = None) -> Dict[str, Any]:
+                               capfile: Optional[str] = None) -> dict[str, Any]:
         """
         Detect WPA3 capability from target beacon/probe response.
 
@@ -104,7 +104,7 @@ class WPA3Detector:
             pmf_status = WPA3Detector.PMF_OPTIONAL
         else:
             pmf_status = WPA3Detector.PMF_REQUIRED
-        sae_groups: List[int] = [WPA3Detector.DEFAULT_SAE_GROUP]
+        sae_groups: list[int] = [WPA3Detector.DEFAULT_SAE_GROUP]
 
         # Precise layer: apply the RSN/SAE data parsed above.
         if parsed:
@@ -128,7 +128,7 @@ class WPA3Detector:
         }
 
     @staticmethod
-    def _parse_rsn_from_capture(capfile: str, bssid: str) -> Optional[Dict[str, Any]]:
+    def _parse_rsn_from_capture(capfile: str, bssid: str) -> Optional[dict[str, Any]]:
         """
         Parse precise WPA3 details from a pcap/pcapng capture via tshark.
 
@@ -162,7 +162,7 @@ class WPA3Detector:
         return result
 
     @staticmethod
-    def parse_capture_batch(capfile: str) -> Dict[str, Dict[str, Any]]:
+    def parse_capture_batch(capfile: str) -> dict[str, dict[str, Any]]:
         """Parse PMF and SAE details for every BSSID in one tshark pass."""
         from ..tools.tshark import Tshark
         from ..util.process import Process
@@ -264,7 +264,7 @@ class WPA3Detector:
         return None
 
     @staticmethod
-    def _parse_sae_groups_from_commits(capfile: str, bssid: str) -> List[int]:
+    def _parse_sae_groups_from_commits(capfile: str, bssid: str) -> list[int]:
         """
         Extract SAE groups actually observed in SAE Commit frames.
 
@@ -395,9 +395,9 @@ class WPA3Detector:
         bssid: str,
         essid: str,
         channel: int,
-        groups_to_probe: Optional[List[int]] = None,
+        groups_to_probe: Optional[list[int]] = None,
         per_group_timeout: int = 8,
-    ) -> Dict[int, str]:
+    ) -> dict[int, str]:
         """
         Actively probe an AP to discover which SAE groups it accepts.
 
@@ -443,7 +443,7 @@ class WPA3Detector:
         if groups_to_probe is None:
             groups_to_probe = list(WPA3Detector.DEFAULT_PROBE_GROUPS)
 
-        results: Dict[int, str] = {}
+        results: dict[int, str] = {}
         for group in groups_to_probe:
             status = WPA3Detector._probe_single_sae_group(
                 interface, bssid, essid, channel, group, per_group_timeout)
@@ -585,7 +585,7 @@ class WPA3Detector:
         return wpa3_info['pmf_status']
 
     @staticmethod
-    def get_supported_sae_groups(target) -> List[int]:
+    def get_supported_sae_groups(target) -> list[int]:
         """
         Extract supported SAE groups from target information.
         
@@ -678,7 +678,7 @@ class WPA3Detector:
         return False
 
     @staticmethod
-    def _check_dragonblood_vulnerability(sae_groups: List[int], has_wpa3: bool) -> bool:
+    def _check_dragonblood_vulnerability(sae_groups: list[int], has_wpa3: bool) -> bool:
         """
         Check for known Dragonblood vulnerability indicators.
         
@@ -713,7 +713,7 @@ class WPA3Info:
     
     def __init__(self, has_wpa3: bool = False, has_wpa2: bool = False,
                  is_transition: bool = False, pmf_status: str = WPA3Detector.PMF_DISABLED,
-                 sae_groups: Optional[List[int]] = None,
+                 sae_groups: Optional[list[int]] = None,
                  dragonblood_vulnerable: bool = False,
                  wpa_ft: bool = False):
         """
@@ -749,7 +749,7 @@ class WPA3Info:
         """
         return getattr(self, key, default)
     
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """
         Serialize WPA3Info to dictionary for storage.
         
@@ -767,7 +767,7 @@ class WPA3Info:
         }
     
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'WPA3Info':
+    def from_dict(cls, data: dict[str, Any]) -> 'WPA3Info':
         """
         Deserialize WPA3Info from dictionary.
         

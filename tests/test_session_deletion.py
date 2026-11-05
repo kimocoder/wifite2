@@ -9,7 +9,6 @@ import unittest
 import tempfile
 import os
 import shutil
-from unittest.mock import Mock, MagicMock, patch
 
 
 class TestSessionDeletion(unittest.TestCase):

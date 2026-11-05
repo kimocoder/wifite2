@@ -10,7 +10,7 @@ based on configuration and tool availability.
 
 import unittest
 import sys
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 
 import pytest
 

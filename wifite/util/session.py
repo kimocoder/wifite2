@@ -11,7 +11,7 @@ import re
 import json
 import time
 from dataclasses import dataclass, field, asdict
-from typing import List, Dict, Any, Optional
+from typing import Any, Optional
 from datetime import datetime
 
 
@@ -39,12 +39,12 @@ class EvilTwinClientState:
     credential_submitted: bool = False
     credential_valid: Optional[bool] = None
     
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         return asdict(self)
     
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'EvilTwinClientState':
+    def from_dict(cls, data: dict[str, Any]) -> 'EvilTwinClientState':
         """Create EvilTwinClientState from dictionary."""
         return cls(**data)
 
@@ -58,12 +58,12 @@ class EvilTwinCredentialAttempt:
     success: bool
     timestamp: float
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'EvilTwinCredentialAttempt':
+    def from_dict(cls, data: dict[str, Any]) -> 'EvilTwinCredentialAttempt':
         """Create EvilTwinCredentialAttempt from dictionary."""
         return cls(**data)
 
@@ -90,10 +90,10 @@ class EvilTwinAttackState:
     setup_time: Optional[float] = None
     
     # Client tracking
-    clients: List[EvilTwinClientState] = field(default_factory=list)
+    clients: list[EvilTwinClientState] = field(default_factory=list)
     
     # Credential attempts
-    credential_attempts: List[EvilTwinCredentialAttempt] = field(default_factory=list)
+    credential_attempts: list[EvilTwinCredentialAttempt] = field(default_factory=list)
     
     # Statistics
     total_clients_connected: int = 0
@@ -104,7 +104,7 @@ class EvilTwinAttackState:
     captured_password: Optional[str] = None
     validation_time: float = 0.0
     
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         return {
             'interface_ap': self.interface_ap,
@@ -132,7 +132,7 @@ class EvilTwinAttackState:
             attempt.clear_password()
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'EvilTwinAttackState':
+    def from_dict(cls, data: dict[str, Any]) -> 'EvilTwinAttackState':
         """Create EvilTwinAttackState from dictionary."""
         clients = [EvilTwinClientState.from_dict(c) for c in data.get('clients', [])]
         attempts = [EvilTwinCredentialAttempt.from_dict(a) for a in data.get('credential_attempts', [])]
@@ -170,7 +170,7 @@ class TargetState:
     last_attempt: Optional[float] = None
     
     # Evil Twin specific fields
-    evil_twin_state: Optional[Dict[str, Any]] = None  # Evil Twin attack state
+    evil_twin_state: Optional[dict[str, Any]] = None  # Evil Twin attack state
     
     @classmethod
     def from_target(cls, target) -> 'TargetState':
@@ -193,12 +193,12 @@ class TargetState:
             evil_twin_state=None
         )
     
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         return asdict(self)
     
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'TargetState':
+    def from_dict(cls, data: dict[str, Any]) -> 'TargetState':
         """Create TargetState from dictionary."""
         # Handle evil_twin_state deserialization
         evil_twin_data = data.get('evil_twin_state')
@@ -214,14 +214,14 @@ class SessionState:
     session_id: str
     created_at: float
     updated_at: float
-    config: Dict[str, Any]
-    targets: List[TargetState] = field(default_factory=list)
-    completed_targets: List[str] = field(default_factory=list)  # BSSIDs
-    failed_targets: Dict[str, str] = field(default_factory=dict)  # BSSID -> reason
-    captured_targets: Dict[str, str] = field(default_factory=dict)  # BSSID -> reason
+    config: dict[str, Any]
+    targets: list[TargetState] = field(default_factory=list)
+    completed_targets: list[str] = field(default_factory=list)  # BSSIDs
+    failed_targets: dict[str, str] = field(default_factory=dict)  # BSSID -> reason
+    captured_targets: dict[str, str] = field(default_factory=dict)  # BSSID -> reason
     current_target_index: int = 0
     
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Serialize to dictionary for JSON storage."""
         return {
             'session_id': self.session_id,
@@ -236,7 +236,7 @@ class SessionState:
         }
     
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'SessionState':
+    def from_dict(cls, data: dict[str, Any]) -> 'SessionState':
         """Deserialize from dictionary."""
         targets = [TargetState.from_dict(t) for t in data.get('targets', [])]
         return cls(
@@ -251,7 +251,7 @@ class SessionState:
             current_target_index=data.get('current_target_index', 0)
         )
     
-    def get_progress_summary(self) -> Dict[str, Any]:
+    def get_progress_summary(self) -> dict[str, Any]:
         """Get summary of session progress."""
         total = len(self.targets)
         completed = len(self.completed_targets)
@@ -310,7 +310,7 @@ class SessionManager:
             raise ValueError(f'Session ID resolves outside session directory: {session_id!r}')
         return path
     
-    def create_session(self, targets: List, config) -> SessionState:
+    def create_session(self, targets: list, config) -> SessionState:
         """
         Create a new session from targets and configuration.
         
@@ -435,7 +435,7 @@ class SessionManager:
                     pass
             
             # Re-raise with detailed context
-            raise IOError(f'Failed to save session {session.session_id}: {str(e)}') from e
+            raise OSError(f'Failed to save session {session.session_id}: {str(e)}') from e
     
     def load_session(self, session_id: str = None) -> SessionState:
         """
@@ -468,11 +468,11 @@ class SessionManager:
         self._validate_file_permissions(session_path)
         
         try:
-            with open(session_path, 'r') as f:
+            with open(session_path) as f:
                 data = json.load(f)
         except json.JSONDecodeError as e:
             raise ValueError(f"Corrupted session file (invalid JSON): {e}")
-        except (OSError, IOError) as e:
+        except OSError as e:
             raise ValueError(f"Cannot read session file: {e}")
         
         # Validate session data structure
@@ -518,7 +518,7 @@ class SessionManager:
             # If we can't check permissions, continue anyway
             pass
     
-    def _validate_session_data(self, data: Dict[str, Any], session_id: str) -> None:
+    def _validate_session_data(self, data: dict[str, Any], session_id: str) -> None:
         """
         Validate session data structure and content.
         
@@ -594,7 +594,7 @@ class SessionManager:
             if not isinstance(data['captured_targets'], dict):
                 raise ValueError("captured_targets must be a dictionary")
     
-    def list_sessions(self) -> List[Dict[str, Any]]:
+    def list_sessions(self) -> list[dict[str, Any]]:
         """
         List all available sessions with metadata.
         
@@ -613,7 +613,7 @@ class SessionManager:
             session_path = os.path.join(self.session_dir, filename)
             
             try:
-                with open(session_path, 'r') as f:
+                with open(session_path) as f:
                     data = json.load(f)
                 
                 session_state = SessionState.from_dict(data)
@@ -736,7 +736,7 @@ class SessionManager:
     def get_remaining_targets(
         self, session: SessionState, include_failed: bool = False,
         include_captured: bool = False
-    ) -> List[TargetState]:
+    ) -> list[TargetState]:
         """
         Get list of targets that still need to be attacked.
         
@@ -820,7 +820,7 @@ class SessionManager:
                 target.evil_twin_state = None
                 break
     
-    def handle_partial_evil_twin_completion(self, session: SessionState, bssid: str) -> Dict[str, Any]:
+    def handle_partial_evil_twin_completion(self, session: SessionState, bssid: str) -> dict[str, Any]:
         """
         Handle partial completion of Evil Twin attack.
         
@@ -886,7 +886,7 @@ class SessionManager:
             'attack_phase': evil_twin_state.attack_phase
         }
     
-    def restore_configuration(self, session: SessionState, config_obj) -> Dict[str, Any]:
+    def restore_configuration(self, session: SessionState, config_obj) -> dict[str, Any]:
         """
         Restore attack parameters from session to Configuration object.
         

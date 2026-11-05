@@ -30,7 +30,7 @@ Channel Frequencies:
 
 import time
 from threading import Thread, Event, Lock
-from typing import Optional, List, Dict, Callable
+from typing import Optional, Callable
 from dataclasses import dataclass, field
 
 try:
@@ -67,7 +67,7 @@ class AccessPoint:
     wps_locked: bool = False
     power: int = -100  # dBm
     beacons: int = 0
-    clients: List[str] = field(default_factory=list)
+    clients: list[str] = field(default_factory=list)
     last_seen: float = 0
     first_seen: float = 0
     
@@ -83,7 +83,7 @@ class Client:
     mac: str
     bssid: Optional[str] = None  # Associated AP
     power: int = -100
-    probes: List[str] = field(default_factory=list)
+    probes: list[str] = field(default_factory=list)
     last_seen: float = 0
     first_seen: float = 0
     packets: int = 0
@@ -99,7 +99,7 @@ class ChannelHopper(Thread):
     
     def __init__(self,
                  interface: str,
-                 channels: Optional[List[int]] = None,
+                 channels: Optional[list[int]] = None,
                  interval: float = 0.5,
                  band: str = '2.4'):
         """
@@ -238,7 +238,7 @@ class NativeScanner:
     
     def __init__(self,
                  interface: str,
-                 channels: Optional[List[int]] = None,
+                 channels: Optional[list[int]] = None,
                  band: str = '2.4',
                  hop_interval: float = 0.5):
         """
@@ -256,8 +256,8 @@ class NativeScanner:
         self.hop_interval = hop_interval
         
         # Data storage
-        self.access_points: Dict[str, AccessPoint] = {}
-        self.clients: Dict[str, Client] = {}
+        self.access_points: dict[str, AccessPoint] = {}
+        self.clients: dict[str, Client] = {}
         self._lock = Lock()
         
         # Components
@@ -725,12 +725,12 @@ class NativeScanner:
             pass
         return False
 
-    def get_targets(self) -> List[AccessPoint]:
+    def get_targets(self) -> list[AccessPoint]:
         """Get list of discovered access points."""
         with self._lock:
             return list(self.access_points.values())
     
-    def get_clients(self) -> List[Client]:
+    def get_clients(self) -> list[Client]:
         """Get list of discovered clients."""
         with self._lock:
             return list(self.clients.values())
@@ -757,7 +757,7 @@ def create_channel_hopper(interface: str, band: str = '2.4') -> ChannelHopper:
     return ChannelHopper(interface, band=band)
 
 
-def scan_networks(interface: str, duration: int = 30, band: str = '2.4') -> List[AccessPoint]:
+def scan_networks(interface: str, duration: int = 30, band: str = '2.4') -> list[AccessPoint]:
     """
     Scan for WiFi networks.
     

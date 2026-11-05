@@ -8,7 +8,7 @@ Tracks signal strength over time for targets and clients,
 providing trend analysis for attack optimization.
 """
 
-from typing import Dict, List, Optional, Tuple
+from typing import Optional
 from dataclasses import dataclass, field
 from collections import deque
 import time
@@ -119,7 +119,7 @@ class SignalHistory:
         var = self.variance
         return var is not None and var < threshold
 
-    def get_optimal_window(self, window_seconds: int = 10) -> Optional[Tuple[float, float]]:
+    def get_optimal_window(self, window_seconds: int = 10) -> Optional[tuple[float, float]]:
         """
         Find the time window with best average signal.
 
@@ -158,8 +158,8 @@ class SignalTracker:
     
     def __init__(self, max_samples: int = 60):
         self.max_samples = max_samples
-        self.aps: Dict[str, SignalHistory] = {}
-        self.clients: Dict[str, SignalHistory] = {}
+        self.aps: dict[str, SignalHistory] = {}
+        self.clients: dict[str, SignalHistory] = {}
     
     def update_ap(self, bssid: str, power: int) -> None:
         """Update signal strength for an AP."""
@@ -182,7 +182,7 @@ class SignalTracker:
         return self.clients.get(mac)
     
     def get_best_targets(self, min_power: int = -70, 
-                         require_stable: bool = False) -> List[str]:
+                         require_stable: bool = False) -> list[str]:
         """
         Get list of APs with good, stable signal.
         
@@ -207,7 +207,7 @@ class SignalTracker:
         candidates.sort(key=lambda x: x[1], reverse=True)
         return [bssid for bssid, _ in candidates]
     
-    def get_active_clients(self, max_age_seconds: int = 30) -> List[str]:
+    def get_active_clients(self, max_age_seconds: int = 30) -> list[str]:
         """
         Get list of clients that have been seen recently.
         
@@ -230,7 +230,7 @@ class SignalTracker:
     
     def should_attack_now(self, bssid: str, 
                           min_power: int = -75,
-                          prefer_stable: bool = True) -> Tuple[bool, str]:
+                          prefer_stable: bool = True) -> tuple[bool, str]:
         """
         Determine if now is a good time to attack a target.
         
@@ -303,7 +303,7 @@ class SignalTracker:
         
         return removed
     
-    def get_summary(self) -> Dict:
+    def get_summary(self) -> dict:
         """Get summary statistics for all tracked entities."""
         ap_summary = {}
         for bssid, history in self.aps.items():

@@ -8,7 +8,7 @@ Tests frame parsing, hashcat conversion, and validation.
 """
 
 import unittest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 import sys
 import os
 import tempfile
@@ -19,7 +19,6 @@ import pytest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from wifite.model.sae_handshake import SAEHandshake
-from wifite.util.process import Process
 
 pytestmark = pytest.mark.timeout(30)
 
