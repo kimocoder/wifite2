@@ -1365,8 +1365,7 @@ class EvilTwin(Attack):
                         'wpa_supplicant not found; capturing credential unverified')
             return None
 
-        from ..tools.iw import Iw
-        from ..tools.ip import Ip
+        from ..tools.airmon import Airmon
         from ..util.credential_validator import CredentialValidator
 
         # Pause deauth and borrow the secondary interface in managed mode so
@@ -1376,10 +1375,7 @@ class EvilTwin(Attack):
         switched = False
         try:
             with contextlib.suppress(Exception):
-                Ip.down(iface)
-                Iw.mode(iface, 'managed')
-                Ip.up(iface)
-                switched = True
+                switched = Airmon.set_interface_mode(iface, 'managed')
 
             if not switched:
                 log_warning('EvilTwin',
@@ -1412,9 +1408,7 @@ class EvilTwin(Attack):
             # Restore monitor mode so deauth can resume.
             with contextlib.suppress(Exception):
                 if switched:
-                    Ip.down(iface)
-                    Iw.mode(iface, 'monitor')
-                    Ip.up(iface)
+                    Airmon.set_interface_mode(iface, 'monitor')
             if not was_paused:
                 self.adaptive_deauth.resume()
     

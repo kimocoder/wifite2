@@ -8,10 +8,12 @@ Provides high-level interface management including AP mode detection,
 configuration, IP assignment, and cleanup.
 """
 
+import json
 import os
 import re
-from typing import Optional, List, Dict
-from dataclasses import dataclass
+import threading
+from typing import Optional, List, Dict, Set
+from dataclasses import dataclass, field
 
 from ..tools.iw import Iw
 from ..tools.ip import Ip
@@ -39,10 +41,20 @@ class InterfaceState:
     current_mode: str                   # Current mode
     current_up: bool                    # Current up/down state
     managed_by_wifite: bool = True      # Whether wifite is managing this interface
-    
+    original_ips: List[str] = field(default_factory=list)
+    original_ifindex: Optional[int] = None
+    changed_fields: Set[str] = field(default_factory=set)
+    added_ips: Set[str] = field(default_factory=set)
+
     def __str__(self):
         return (f'{self.name}: original={self.original_mode}({"up" if self.original_up else "down"}), '
                 f'current={self.current_mode}({"up" if self.current_up else "down"})')
+
+
+@dataclass
+class ForwardingState:
+    original: bool
+    written: bool
 
 
 class InterfaceCapabilities:
@@ -134,14 +146,108 @@ class InterfaceManager:
     """
     
     def __init__(self):
-        # Track interface states for cleanup (interface_name -> InterfaceState)
         self.interface_states: Dict[str, InterfaceState] = {}
-        
-        # Track assigned IP addresses (interface_name -> ip_address)
         self.assigned_ips: Dict[str, str] = {}
-        
-        # Legacy compatibility - maps to interface_states
-        self.managed_interfaces = {}  # Deprecated, kept for compatibility
+        self.managed_interfaces = {}
+        self._state_lock = threading.RLock()
+        self._forwarding_state: Optional[ForwardingState] = None
+
+    @staticmethod
+    def _canonical_mode(mode: Optional[str]) -> Optional[str]:
+        if mode is None:
+            return None
+        normalized = mode.strip().lower().replace('_', '-')
+        return {
+            'ap': 'AP',
+            'adhoc': 'ad-hoc',
+            'ad-hoc': 'ad-hoc',
+            'ibss': 'ad-hoc',
+            'mesh-point': 'mesh',
+            'mp': 'mesh',
+        }.get(normalized, normalized)
+
+    @classmethod
+    def _mode_command(cls, interface: str, mode: str) -> Optional[List[str]]:
+        canonical = cls._canonical_mode(mode)
+        target = {
+            'AP': '__ap',
+            'ad-hoc': 'ibss',
+            'mesh': 'mesh',
+        }.get(canonical, canonical)
+        if target not in ('managed', 'monitor', '__ap', 'ibss', 'mesh'):
+            return None
+        return ['iw', 'dev', interface, 'set', 'type', target]
+
+    @staticmethod
+    def _run_checked(command: List[str], description: str = None) -> bool:
+        try:
+            if description:
+                log_debug('InterfaceManager', description)
+            result = Process.run_simple(command)
+        except Exception as e:
+            log_error('InterfaceManager', f'Command failed: {command}: {e}', e)
+            return False
+        if result.returncode != 0:
+            detail = (result.stderr or result.stdout or '').strip()
+            log_error('InterfaceManager',
+                      f'Command exited {result.returncode}: {command}: {detail}')
+            return False
+        return True
+
+    @staticmethod
+    def _get_interface_ifindex(interface: str) -> Optional[int]:
+        try:
+            with open(f'/sys/class/net/{interface}/ifindex', 'r') as handle:
+                return int(handle.read().strip())
+        except (OSError, ValueError):
+            return None
+
+    @staticmethod
+    def _get_interface_addresses(interface: str) -> Optional[List[str]]:
+        try:
+            result = Process.run_simple(['ip', '-json', 'addr', 'show', 'dev', interface])
+            if result.returncode != 0:
+                return None
+            addresses = []
+            for link in json.loads(result.stdout or '[]'):
+                for address in link.get('addr_info', []):
+                    local = address.get('local')
+                    prefix = address.get('prefixlen')
+                    if local is not None and prefix is not None:
+                        addresses.append(f'{local}/{prefix}')
+            return addresses
+        except Exception:
+            return None
+
+    @staticmethod
+    def _read_ip_forwarding() -> Optional[bool]:
+        try:
+            with open('/proc/sys/net/ipv4/ip_forward', 'r') as handle:
+                value = handle.read().strip()
+            if value not in ('0', '1'):
+                return None
+            return value == '1'
+        except OSError:
+            return None
+
+    @staticmethod
+    def _write_ip_forwarding(enabled: bool) -> bool:
+        try:
+            with open('/proc/sys/net/ipv4/ip_forward', 'w') as handle:
+                handle.write('1\n' if enabled else '0\n')
+            return True
+        except OSError:
+            return False
+
+    def _claim_interface(self, interface: str) -> bool:
+        return self.is_managed(interface) or self._save_interface_state(interface)
+
+    @staticmethod
+    def _record_change(state: InterfaceState, field_name: str, original, current) -> None:
+        if current == original:
+            state.changed_fields.discard(field_name)
+        else:
+            state.changed_fields.add(field_name)
     
     @staticmethod
     def _execute_verbose(command: List[str], description: str = None) -> Optional[str]:
@@ -158,23 +264,19 @@ class InterfaceManager:
             Command output (stdout) or None on error
         """
         try:
-            # Task 11.5: Log all system commands executed in verbose mode
             if Configuration.verbose >= 2:
-                cmd_str = ' '.join(command)
                 if description:
                     log_debug('InterfaceManager', f'Executing command: {description}')
-                log_debug('InterfaceManager', f'Command: {cmd_str}')
-            
-            # Execute command
-            proc = Process(command)
-            output = proc.stdout()
-            
-            # Task 11.5: Log all system command outputs in verbose mode
+                log_debug('InterfaceManager', f'Command: {" ".join(command)}')
+            result = Process.run_simple(command)
+            if result.returncode != 0:
+                log_warning('InterfaceManager',
+                            f'Command exited {result.returncode}: {result.stderr.strip()}')
+                return None
+            output = result.stdout
             if Configuration.verbose >= 3 and output:
                 log_debug('InterfaceManager', f'Command output:\n{output}')
-            
             return output
-            
         except Exception as e:
             log_error('InterfaceManager', f'Command execution failed: {e}', e)
             return None
@@ -192,49 +294,51 @@ class InterfaceManager:
         Returns:
             True if state was saved successfully, False otherwise
         """
-        try:
-            # Don't save state twice for the same interface
+        with self._state_lock:
             if interface in self.interface_states:
-                log_debug('InterfaceManager', f'State already saved for {interface}')
                 return True
-            
-            log_debug('InterfaceManager', f'Saving state for {interface}')
-            
-            # Get current state
-            current_mode = self._get_interface_mode(interface)
-            current_up = self._is_interface_up(interface)
-            current_mac = self._get_interface_mac(interface)
-            current_channel = self._get_interface_channel(interface)
-            
-            # Create state object
-            state = InterfaceState(
-                name=interface,
-                original_mode=current_mode,
-                original_up=current_up,
-                original_mac=current_mac,
-                original_channel=current_channel,
-                current_mode=current_mode,
-                current_up=current_up,
-                managed_by_wifite=True
-            )
-            
-            # Store state
-            self.interface_states[interface] = state
-            
-            # Legacy compatibility
-            self.managed_interfaces[interface] = {
-                'interface': interface,
-                'mode': current_mode,
-                'up': current_up,
-                'mac': current_mac
-            }
-            
-            log_info('InterfaceManager', f'Saved state for {interface}: {state}')
-            return True
-            
-        except Exception as e:
-            log_error('InterfaceManager', f'Failed to save state for {interface}: {e}', e)
-            return False
+            try:
+                from ..config.validators import validate_interface_name
+                validate_interface_name(interface)
+                current_mode = self._get_interface_mode(interface)
+                current_up = self._is_interface_up(interface)
+                current_mac = self._get_interface_mac(interface)
+                current_channel = self._get_interface_channel(interface)
+                current_ips = self._get_interface_addresses(interface)
+                current_ifindex = self._get_interface_ifindex(interface)
+
+                if (current_mode in (None, '', 'unknown') or current_up is None or
+                        current_mac in (None, '', 'unknown') or current_ips is None or
+                        current_ifindex is None):
+                    log_error('InterfaceManager',
+                              f'Cannot snapshot {interface} completely; refusing to modify it')
+                    return False
+
+                state = InterfaceState(
+                    name=interface,
+                    original_mode=current_mode,
+                    original_up=current_up,
+                    original_mac=current_mac,
+                    original_channel=current_channel,
+                    current_mode=current_mode,
+                    current_up=current_up,
+                    original_ips=list(current_ips),
+                    original_ifindex=current_ifindex,
+                )
+                self.interface_states[interface] = state
+                self.managed_interfaces[interface] = {
+                    'interface': interface,
+                    'mode': current_mode,
+                    'up': current_up,
+                    'mac': current_mac,
+                    'ips': list(current_ips),
+                    'ifindex': current_ifindex,
+                }
+                log_info('InterfaceManager', f'Saved state for {interface}: {state}')
+                return True
+            except Exception as e:
+                log_error('InterfaceManager', f'Failed to save state for {interface}: {e}', e)
+                return False
     
     def _update_interface_state(self, interface: str, mode: Optional[str] = None, 
                                up: Optional[bool] = None) -> bool:
@@ -307,193 +411,233 @@ class InterfaceManager:
     # ========================================================================
     
     def bring_interface_up(self, interface: str) -> bool:
-        """
-        Bring an interface up.
-        
-        Tracks state changes for cleanup.
-        
-        Args:
-            interface: Interface name
-            
-        Returns:
-            True if successful, False otherwise
-        """
-        try:
-            # Task 11.3: Log each configuration step
-            log_info('InterfaceManager', f'Configuration step: Bringing {interface} up')
-            
-            # Save state if not already managed
-            if not self.is_managed(interface):
-                log_debug('InterfaceManager', f'Saving initial state for {interface}')
-                self._save_interface_state(interface)
-            
-            # Bring interface up
-            Ip.up(interface)
-            
-            # Update tracked state
-            self._update_interface_state(interface, up=True)
-            
-            # Task 11.3: Log configuration results (success/failure)
-            log_info('InterfaceManager', f'Configuration result: SUCCESS - {interface} is now up')
-            return True
-            
-        except Exception as e:
-            # Task 11.3: Log configuration results (success/failure)
-            log_error('InterfaceManager', f'Configuration result: FAILED - Could not bring {interface} up: {e}', e)
-            return False
+        return self.set_interface_up(interface, True)
+
+    def set_interface_up(self, interface: str, up: bool) -> bool:
+        with self._state_lock:
+            try:
+                from ..config.validators import validate_interface_name
+                validate_interface_name(interface)
+                current = self._is_interface_up(interface)
+                if current is None:
+                    return False
+                if current == up:
+                    return True
+                if not self._claim_interface(interface):
+                    return False
+                state = self.interface_states[interface]
+                command = ['ip', 'link', 'set', interface, 'up' if up else 'down']
+                if not self._run_checked(command):
+                    return False
+                observed = self._is_interface_up(interface)
+                if observed != up:
+                    log_error('InterfaceManager',
+                              f'{interface} up-state readback is {observed}, expected {up}')
+                    return False
+                state.current_up = observed
+                self._record_change(state, 'up', state.original_up, observed)
+                log_info('InterfaceManager',
+                         f'Configuration result: SUCCESS - {interface} up={observed}')
+                return True
+            except Exception as e:
+                log_error('InterfaceManager', f'Could not set {interface} up={up}: {e}', e)
+                return False
     
     def bring_interface_down(self, interface: str) -> bool:
-        """
-        Bring an interface down.
-        
-        Tracks state changes for cleanup.
-        
-        Args:
-            interface: Interface name
-            
-        Returns:
-            True if successful, False otherwise
-        """
-        try:
-            log_debug('InterfaceManager', f'Bringing {interface} down')
-            
-            # Save state if not already managed
-            if not self.is_managed(interface):
-                self._save_interface_state(interface)
-            
-            # Bring interface down
-            Ip.down(interface)
-            
-            # Update tracked state
-            self._update_interface_state(interface, up=False)
-            
-            log_info('InterfaceManager', f'Brought {interface} down')
-            return True
-            
-        except Exception as e:
-            log_error('InterfaceManager', f'Failed to bring {interface} down: {e}', e)
-            return False
+        return self.set_interface_up(interface, False)
     
     def set_interface_mode(self, interface: str, mode: str) -> bool:
-        """
-        Set interface to a specific mode.
+        with self._state_lock:
+            try:
+                from ..config.validators import validate_interface_name
+                validate_interface_name(interface)
+                desired = self._canonical_mode(mode)
+                command = self._mode_command(interface, desired)
+                if command is None:
+                    log_error('InterfaceManager', f'Unknown mode: {mode}')
+                    return False
+                current = self._canonical_mode(self._get_interface_mode(interface))
+                if current is None:
+                    return False
+                if current == desired:
+                    return True
+                if not self._claim_interface(interface):
+                    return False
 
-        Tracks state changes for cleanup.
+                state = self.interface_states[interface]
+                was_up = self._is_interface_up(interface)
+                if was_up is None:
+                    return False
+                if was_up:
+                    if not self._run_checked(['ip', 'link', 'set', interface, 'down']):
+                        return False
+                    state.current_up = False
+                    state.changed_fields.add('up')
 
-        Args:
-            interface: Interface name
-            mode: Mode to set ('managed', 'monitor', 'AP', 'ad-hoc', 'mesh')
+                state.changed_fields.add('mode')
+                if not self._run_checked(command, f'Set {interface} to {desired} mode'):
+                    if was_up:
+                        self._run_checked(['ip', 'link', 'set', interface, 'up'])
+                    return False
+                if was_up and not self._run_checked(['ip', 'link', 'set', interface, 'up']):
+                    return False
 
-        Returns:
-            True if successful, False otherwise
-        """
-        try:
-            from ..config.validators import validate_interface_name
-            validate_interface_name(interface)
+                observed = self._canonical_mode(self._get_interface_mode(interface))
+                observed_up = self._is_interface_up(interface)
+                if observed != desired:
+                    log_error('InterfaceManager',
+                              f'{interface} mode readback is {observed}, expected {desired}')
+                    return False
+                if observed_up is None or observed_up != was_up:
+                    log_error('InterfaceManager',
+                              f'{interface} did not return to up={was_up} after mode change')
+                    return False
 
-            # Task 11.3: Log each configuration step
-            log_info('InterfaceManager', f'Configuration step: Setting {interface} to {mode} mode')
-            
-            # Save state if not already managed
-            if not self.is_managed(interface):
-                log_debug('InterfaceManager', f'Saving initial state for {interface}')
-                self._save_interface_state(interface)
-            
-            # Bring interface down first (required for mode change)
-            was_up = self._is_interface_up(interface)
-            if was_up:
-                log_debug('InterfaceManager', f'Bringing {interface} down for mode change')
-                Ip.down(interface)
-            
-            # Set mode based on type
-            log_debug('InterfaceManager', f'Executing mode change command for {interface}')
-            
-            # Task 11.5: Use verbose execution for mode changes
-            if mode.lower() == 'monitor':
-                InterfaceManager._execute_verbose(
-                    ['iw', interface, 'set', 'monitor', 'control'],
-                    f'Set {interface} to monitor mode'
-                )
-                Process(['iw', interface, 'set', 'monitor', 'control']).wait()
-            elif mode.lower() == 'ap':
-                InterfaceManager._execute_verbose(
-                    ['iw', interface, 'set', 'type', '__ap'],
-                    f'Set {interface} to AP mode'
-                )
-                Process(['iw', interface, 'set', 'type', '__ap']).wait()
-            elif mode.lower() == 'managed':
-                InterfaceManager._execute_verbose(
-                    ['iw', interface, 'set', 'type', 'managed'],
-                    f'Set {interface} to managed mode'
-                )
-                Process(['iw', interface, 'set', 'type', 'managed']).wait()
-            elif mode.lower() == 'ad-hoc' or mode.lower() == 'adhoc':
-                InterfaceManager._execute_verbose(
-                    ['iw', interface, 'set', 'type', 'ibss'],
-                    f'Set {interface} to ad-hoc mode'
-                )
-                Process(['iw', interface, 'set', 'type', 'ibss']).wait()
-            elif mode.lower() == 'mesh':
-                InterfaceManager._execute_verbose(
-                    ['iw', interface, 'set', 'type', 'mp'],
-                    f'Set {interface} to mesh mode'
-                )
-                Process(['iw', interface, 'set', 'type', 'mp']).wait()
-            else:
-                log_error('InterfaceManager', f'Unknown mode: {mode}')
+                state.current_mode = observed
+                state.current_up = observed_up
+                self._record_change(state, 'mode', self._canonical_mode(state.original_mode), observed)
+                self._record_change(state, 'up', state.original_up, observed_up)
+                log_info('InterfaceManager',
+                         f'Configuration result: SUCCESS - {interface} is now in {observed} mode')
+                return True
+            except Exception as e:
+                log_error('InterfaceManager', f'Could not set {interface} to {mode} mode: {e}', e)
                 return False
-            
-            # Bring interface back up if it was up before
-            if was_up:
-                log_debug('InterfaceManager', f'Bringing {interface} back up after mode change')
-                Ip.up(interface)
-            
-            # Task 11.3: Log interface state changes
-            # Update tracked state
-            self._update_interface_state(interface, mode=mode, up=was_up)
-            
-            # Task 11.3: Log configuration results (success/failure)
-            log_info('InterfaceManager', f'Configuration result: SUCCESS - {interface} is now in {mode} mode')
-            return True
-            
-        except Exception as e:
-            # Task 11.3: Log configuration results (success/failure)
-            log_error('InterfaceManager', f'Configuration result: FAILED - Could not set {interface} to {mode} mode: {e}', e)
-            return False
     
     def set_interface_channel(self, interface: str, channel: int) -> bool:
-        """
-        Set interface to a specific channel.
-        
-        Tracks state changes for cleanup.
-        
-        Args:
-            interface: Interface name
-            channel: Channel number (1-14 for 2.4GHz, 36+ for 5GHz)
-            
-        Returns:
-            True if successful, False otherwise
-        """
-        try:
-            # Task 11.3: Log each configuration step
-            log_info('InterfaceManager', f'Configuration step: Setting {interface} to channel {channel}')
-            
-            # Save state if not already managed
-            if not self.is_managed(interface):
-                log_debug('InterfaceManager', f'Saving initial state for {interface}')
-                self._save_interface_state(interface)
-            
-            # Set channel using iw
-            Process(['iw', interface, 'set', 'channel', str(channel)]).wait()
-            
-            # Task 11.3: Log configuration results (success/failure)
-            log_info('InterfaceManager', f'Configuration result: SUCCESS - {interface} is now on channel {channel}')
+        with self._state_lock:
+            try:
+                from ..config.validators import validate_interface_name
+                validate_interface_name(interface)
+                channel = int(channel)
+                if not 1 <= channel <= 233:
+                    return False
+                current = self._get_interface_channel(interface)
+                if current == channel:
+                    return True
+                if not self._claim_interface(interface):
+                    return False
+                state = self.interface_states[interface]
+                state.changed_fields.add('channel')
+                command = ['iw', 'dev', interface, 'set', 'channel', str(channel)]
+                if not self._run_checked(command):
+                    return False
+                observed = self._get_interface_channel(interface)
+                if observed != channel:
+                    log_error('InterfaceManager',
+                              f'{interface} channel readback is {observed}, expected {channel}')
+                    return False
+                self._record_change(state, 'channel', state.original_channel, observed)
+                log_info('InterfaceManager',
+                         f'Configuration result: SUCCESS - {interface} is on channel {observed}')
+                return True
+            except Exception as e:
+                log_error('InterfaceManager', f'Could not set {interface} channel: {e}', e)
+                return False
+
+    def set_interface_mac(self, interface: str, mac: str) -> bool:
+        with self._state_lock:
+            try:
+                from ..config.validators import validate_interface_name
+                validate_interface_name(interface)
+                if not re.fullmatch(r'(?:[0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}', mac):
+                    return False
+                mac = mac.upper()
+                current = self._get_interface_mac(interface)
+                if current in (None, 'unknown'):
+                    return False
+                if current.upper() == mac:
+                    return True
+                if not self._claim_interface(interface):
+                    return False
+                state = self.interface_states[interface]
+                was_up = self._is_interface_up(interface)
+                if was_up is None:
+                    return False
+                if was_up and not self._run_checked(['ip', 'link', 'set', interface, 'down']):
+                    return False
+                if was_up:
+                    state.changed_fields.add('up')
+                state.changed_fields.add('mac')
+                command = ['ip', 'link', 'set', 'dev', interface, 'address', mac]
+                if not self._run_checked(command):
+                    if was_up:
+                        self._run_checked(['ip', 'link', 'set', interface, 'up'])
+                    return False
+                if was_up and not self._run_checked(['ip', 'link', 'set', interface, 'up']):
+                    return False
+                observed = self._get_interface_mac(interface)
+                observed_up = self._is_interface_up(interface)
+                if observed in (None, 'unknown') or observed.upper() != mac:
+                    return False
+                if observed_up != was_up:
+                    return False
+                self._record_change(state, 'mac', state.original_mac, observed)
+                self._record_change(state, 'up', state.original_up, observed_up)
+                return True
+            except Exception as e:
+                log_error('InterfaceManager', f'Could not set {interface} MAC: {e}', e)
+                return False
+
+    def claim_interface(self, interface: str) -> bool:
+        """Snapshot the interface before another component mutates it."""
+        with self._state_lock:
+            return self._claim_interface(interface)
+
+    def record_mac_change(self, interface: str) -> bool:
+        """Mark a MAC change performed by an external tool (e.g. macchanger)."""
+        with self._state_lock:
+            state = self.interface_states.get(interface)
+            if state is None:
+                return False
+            current = self._get_interface_mac(interface)
+            original = state.original_mac
+            if current in (None, 'unknown') or original in (None, 'unknown'):
+                return False
+            if current.upper() != original.upper():
+                state.changed_fields.add('mac')
+            else:
+                state.changed_fields.discard('mac')
             return True
-            
-        except Exception as e:
-            # Task 11.3: Log configuration results (success/failure)
-            log_error('InterfaceManager', f'Configuration result: FAILED - Could not set {interface} to channel {channel}: {e}', e)
-            return False
+
+    def set_interface_addresses(self, interface: str, addresses: List[str]) -> bool:
+        with self._state_lock:
+            try:
+                from ..config.validators import validate_interface_name
+                validate_interface_name(interface)
+                desired = list(dict.fromkeys(addresses))
+                current = self._get_interface_addresses(interface)
+                if current is None:
+                    return False
+                if current == desired:
+                    return True
+                if not self._claim_interface(interface):
+                    return False
+                state = self.interface_states[interface]
+                state.changed_fields.add('addresses')
+
+                for address in current:
+                    if address not in desired:
+                        if not self._run_checked(['ip', 'addr', 'del', address, 'dev', interface]):
+                            return False
+                for address in desired:
+                    if address not in current:
+                        if not self._run_checked(['ip', 'addr', 'add', address, 'dev', interface]):
+                            return False
+                        state.added_ips.add(address)
+
+                observed = self._get_interface_addresses(interface)
+                if observed is None or set(observed) != set(desired):
+                    log_error('InterfaceManager',
+                              f'{interface} address readback {observed}, expected {desired}')
+                    return False
+                self._record_change(state, 'addresses', state.original_ips, observed)
+                if len(desired) == 1:
+                    self.assigned_ips[interface] = desired[0]
+                return True
+            except Exception as e:
+                log_error('InterfaceManager', f'Could not set {interface} addresses: {e}', e)
+                return False
     
     def configure_interface(self, interface: str, mode: Optional[str] = None,
                           channel: Optional[int] = None, up: Optional[bool] = None) -> bool:
@@ -635,9 +779,8 @@ class InterfaceManager:
                 'mac': None
             }
             
-            # Check if interface is up
-            output = Process(['ip', 'link', 'show', interface]).stdout()
-            state['up'] = 'UP' in output and 'state UP' in output
+            # Check if interface is administratively up
+            state['up'] = InterfaceManager._is_interface_up(interface)
             
             # Get MAC address
             import contextlib
@@ -682,67 +825,29 @@ class InterfaceManager:
         Returns:
             True if successful, False otherwise
         """
-        try:
-            # Task 11.3: Log each configuration step
-            log_info('InterfaceManager', f'Configuration step: Configuring {interface} for AP mode')
-            
-            # Save original state before making changes
-            if not self.is_managed(interface):
-                log_debug('InterfaceManager', f'Saving initial state for {interface}')
-                if not self._save_interface_state(interface):
-                    log_warning('InterfaceManager', f'Failed to save state for {interface}, continuing anyway')
-            
-            # Bring interface down
-            log_info('InterfaceManager', f'Configuration step: Bringing {interface} down')
-            Ip.down(interface)
-            self._update_interface_state(interface, up=False)
-            log_debug('InterfaceManager', f'State change: {interface} is now down')
-            
-            # Set to AP mode
-            log_info('InterfaceManager', f'Configuration step: Setting {interface} to AP mode')
-            # Task 11.5: Use verbose execution
-            InterfaceManager._execute_verbose(
-                ['iw', interface, 'set', 'type', '__ap'],
-                f'Set {interface} to AP mode'
-            )
-            Process(['iw', interface, 'set', 'type', '__ap']).wait()
-            self._update_interface_state(interface, mode='AP')
-            log_debug('InterfaceManager', f'State change: {interface} is now in AP mode')
-            
-            # Bring interface up
-            log_info('InterfaceManager', f'Configuration step: Bringing {interface} up')
-            Ip.up(interface)
-            self._update_interface_state(interface, up=True)
-            log_debug('InterfaceManager', f'State change: {interface} is now up')
-            
-            # Flush existing IP addresses
-            log_info('InterfaceManager', f'Configuration step: Flushing IP addresses on {interface}')
-            # Task 11.5: Use verbose execution
-            InterfaceManager._execute_verbose(
-                ['ip', 'addr', 'flush', 'dev', interface],
-                f'Flush IP addresses on {interface}'
-            )
-            Process(['ip', 'addr', 'flush', 'dev', interface]).wait()
-            
-            # Assign IP address
-            log_info('InterfaceManager', f'Configuration step: Assigning {ip_address} to {interface}')
-            # Task 11.5: Use verbose execution
-            InterfaceManager._execute_verbose(
-                ['ip', 'addr', 'add', ip_address, 'dev', interface],
-                f'Assign IP {ip_address} to {interface}'
-            )
-            Process(['ip', 'addr', 'add', ip_address, 'dev', interface]).wait()
-            
-            self.assigned_ips[interface] = ip_address
-            
-            # Task 11.3: Log configuration results (success/failure)
-            log_info('InterfaceManager', f'Configuration result: SUCCESS - {interface} configured for AP mode with IP {ip_address}')
-            return True
-            
-        except Exception as e:
-            # Task 11.3: Log configuration results (success/failure)
-            log_error('InterfaceManager', f'Configuration result: FAILED - Could not configure {interface} for AP: {e}', e)
+        log_info('InterfaceManager', f'Configuration step: Configuring {interface} for AP mode')
+
+        if not self.set_interface_up(interface, False):
+            log_error('InterfaceManager',
+                      f'Configuration result: FAILED - Could not bring {interface} down')
             return False
+        if not self.set_interface_mode(interface, 'AP'):
+            log_error('InterfaceManager',
+                      f'Configuration result: FAILED - Could not set {interface} to AP mode')
+            return False
+        if not self.set_interface_addresses(interface, [ip_address]):
+            log_error('InterfaceManager',
+                      f'Configuration result: FAILED - Could not assign {ip_address} to {interface}')
+            return False
+        if not self.set_interface_up(interface, True):
+            log_error('InterfaceManager',
+                      f'Configuration result: FAILED - Could not bring {interface} up')
+            return False
+
+        self.assigned_ips[interface] = ip_address
+        log_info('InterfaceManager',
+                 f'Configuration result: SUCCESS - {interface} configured for AP mode with IP {ip_address}')
+        return True
     
     # ========================================================================
     # Interface Cleanup Methods (Task 10.3)
@@ -814,282 +919,308 @@ class InterfaceManager:
             log_error('InterfaceManager', f'Failed to restore state for {interface}: {e}', e)
             return False
     
+    def set_ip_forwarding(self, enabled: bool) -> bool:
+        """
+        Enable or disable IPv4 forwarding while tracking the original value.
+
+        The original value is only recorded the first time wifite changes the
+        setting, so nested callers cannot lose the pre-run value.
+        """
+        with self._state_lock:
+            current = self._read_ip_forwarding()
+            if current is None:
+                log_error('InterfaceManager',
+                          'Cannot read /proc/sys/net/ipv4/ip_forward')
+                return False
+            if current == enabled:
+                return True
+
+            if self._forwarding_state is not None:
+                original = self._forwarding_state.original
+            else:
+                original = current
+
+            if not self._write_ip_forwarding(enabled):
+                log_error('InterfaceManager', 'Failed to update IPv4 forwarding')
+                return False
+
+            observed = self._read_ip_forwarding()
+            if observed != enabled:
+                log_error('InterfaceManager',
+                          f'IPv4 forwarding readback is {observed}, expected {enabled}')
+                return False
+
+            self._forwarding_state = ForwardingState(original=original, written=enabled)
+            log_info('InterfaceManager', f'IPv4 forwarding set to {int(enabled)}')
+            return True
+
+    def _restore_ip_forwarding(self) -> bool:
+        with self._state_lock:
+            state = self._forwarding_state
+            if state is None:
+                return True
+
+            current = self._read_ip_forwarding()
+            if current is None:
+                log_error('InterfaceManager',
+                          'Cannot read IPv4 forwarding during cleanup')
+                return False
+
+            if current != state.written:
+                log_warning('InterfaceManager',
+                            'IPv4 forwarding was changed externally; leaving it untouched')
+                self._forwarding_state = None
+                return True
+
+            if state.written == state.original:
+                self._forwarding_state = None
+                return True
+
+            if not self._write_ip_forwarding(state.original):
+                log_error('InterfaceManager', 'Failed to restore IPv4 forwarding')
+                return False
+
+            observed = self._read_ip_forwarding()
+            if observed != state.original:
+                log_error('InterfaceManager',
+                          f'IPv4 forwarding restore readback is {observed}, '
+                          f'expected {state.original}')
+                return False
+
+            self._forwarding_state = None
+            log_info('InterfaceManager',
+                     f'IPv4 forwarding restored to {int(state.original)}')
+            return True
+
+    def restore_ip_forwarding(self) -> bool:
+        """Restore IPv4 forwarding to the value recorded before this run."""
+        with self._state_lock:
+            return self._restore_ip_forwarding()
+
     def restore_interface(self, interface: str) -> bool:
         """
-        Restore interface to its original state.
-        
-        This method restores:
-        - Interface mode
-        - Up/down state
-        - Removes assigned IP addresses
-        
+        Restore an interface to the snapshot taken before this run mutated it.
+
+        Only fields recorded as changed are written. The interface identity
+        (ifindex) is verified first so a removed/recreated interface is never
+        silently reconfigured. Failed restores keep their state record so a
+        later cleanup can retry.
+
         Args:
             interface: Interface to restore
-            
+
         Returns:
-            True if successful, False otherwise
+            True if every changed field was restored and verified, False otherwise
         """
-        try:
+        with self._state_lock:
             if interface not in self.interface_states:
                 log_warning('InterfaceManager', f'No saved state for {interface}')
-                # Try legacy compatibility
-                if interface in self.managed_interfaces:
-                    return self._restore_interface_legacy(interface)
                 return False
-            
+
             state = self.interface_states[interface]
-            
-            # Task 11.4: Log cleanup operations
             log_info('InterfaceManager', '=' * 60)
-            log_info('InterfaceManager', f'Cleanup operation: Restoring {interface} to original state')
-            log_info('InterfaceManager', f'Original state: mode={state.original_mode}, up={state.original_up}')
-            log_info('InterfaceManager', f'Current state: mode={state.current_mode}, up={state.current_up}')
+            log_info('InterfaceManager',
+                     f'Cleanup operation: Restoring {interface} to original state')
+            log_info('InterfaceManager',
+                     f'Original state: mode={state.original_mode}, up={state.original_up}, '
+                     f'mac={state.original_mac}, channel={state.original_channel}, '
+                     f'ips={state.original_ips}')
             log_info('InterfaceManager', '=' * 60)
-            
+
+            current_ifindex = self._get_interface_ifindex(interface)
+            if current_ifindex is None or current_ifindex != state.original_ifindex:
+                log_error('InterfaceManager',
+                          f'{interface} identity changed '
+                          f'(ifindex {state.original_ifindex} -> {current_ifindex}); '
+                          'refusing to restore another device')
+                return False
+
             success = True
-            recovery_attempts = []
-            
-            # Bring interface down first
-            try:
-                log_info('InterfaceManager', f'Cleanup step: Bringing {interface} down')
-                Ip.down(interface)
-                log_debug('InterfaceManager', f'Successfully brought {interface} down')
-            except Exception as e:
-                # Task 11.4: Log detailed error information and recovery attempts
-                log_error('InterfaceManager', f'Error during cleanup: Failed to bring {interface} down', e)
-                log_warning('InterfaceManager', f'System error: {str(e)}')
-                log_info('InterfaceManager', 'Recovery attempt: Continuing with restoration despite error')
-                recovery_attempts.append(f'bring_down: {str(e)}')
-                success = False
-            
-            # Flush IP addresses
-            try:
-                log_info('InterfaceManager', f'Cleanup step: Flushing IP addresses on {interface}')
-                Process(['ip', 'addr', 'flush', 'dev', interface]).wait()
-                log_debug('InterfaceManager', f'Successfully flushed IP addresses on {interface}')
-            except Exception as e:
-                # Task 11.4: Log detailed error information
-                log_warning('InterfaceManager', f'Error during cleanup: Failed to flush IP addresses on {interface}', e)
-                log_warning('InterfaceManager', f'System error: {str(e)}')
-                log_info('InterfaceManager', 'Recovery attempt: Continuing (non-critical error)')
-                recovery_attempts.append(f'flush_ip: {str(e)}')
-                # Not critical, continue
-            
-            # Restore mode
-            original_mode = state.original_mode
-            if original_mode == 'AP':
-                original_mode = 'managed'  # Don't restore to AP mode
-                log_info('InterfaceManager', 'Security measure: Changing AP mode to managed for safety')
-            
-            if original_mode == 'unknown':
-                original_mode = 'managed'  # Don't restore to unknown mode
-                log_info('InterfaceManager', 'Safety measure: Changing unknown mode to managed')
-            
-            try:
-                log_info('InterfaceManager', f'Cleanup step: Restoring {interface} to {original_mode} mode')
-                # Task 11.5: Use verbose execution
-                if original_mode == 'monitor':
-                    InterfaceManager._execute_verbose(
-                        ['iw', interface, 'set', 'monitor', 'control'],
-                        f'Restore {interface} to monitor mode'
-                    )
-                    Process(['iw', interface, 'set', 'monitor', 'control']).wait()
-                elif original_mode == 'managed':
-                    InterfaceManager._execute_verbose(
-                        ['iw', interface, 'set', 'type', 'managed'],
-                        f'Restore {interface} to managed mode'
-                    )
-                    Process(['iw', interface, 'set', 'type', 'managed']).wait()
-                elif original_mode == 'ad-hoc':
-                    InterfaceManager._execute_verbose(
-                        ['iw', interface, 'set', 'type', 'ibss'],
-                        f'Restore {interface} to ad-hoc mode'
-                    )
-                    Process(['iw', interface, 'set', 'type', 'ibss']).wait()
-                elif original_mode == 'mesh':
-                    InterfaceManager._execute_verbose(
-                        ['iw', interface, 'set', 'type', 'mp'],
-                        f'Restore {interface} to mesh mode'
-                    )
-                    Process(['iw', interface, 'set', 'type', 'mp']).wait()
-                else:
-                    # Default to managed
-                    InterfaceManager._execute_verbose(
-                        ['iw', interface, 'set', 'type', 'managed'],
-                        f'Restore {interface} to managed mode (default)'
-                    )
-                    Process(['iw', interface, 'set', 'type', 'managed']).wait()
-                log_debug('InterfaceManager', f'Successfully restored {interface} to {original_mode} mode')
-            except Exception as e:
-                # Task 11.4: Log detailed error information and recovery attempts
-                log_error('InterfaceManager', f'Error during cleanup: Failed to restore mode for {interface}', e)
-                log_warning('InterfaceManager', f'System error: {str(e)}')
-                log_info('InterfaceManager', 'Recovery attempt: Trying to set to managed mode as fallback')
-                recovery_attempts.append(f'restore_mode: {str(e)}')
-                
-                # Try fallback to managed mode
-                try:
-                    InterfaceManager._execute_verbose(
-                        ['iw', interface, 'set', 'type', 'managed'],
-                        f'Fallback: Set {interface} to managed mode'
-                    )
-                    Process(['iw', interface, 'set', 'type', 'managed']).wait()
-                    log_info('InterfaceManager', f'Recovery successful: Set {interface} to managed mode')
-                except Exception as e2:
-                    log_error('InterfaceManager', f'Recovery failed: Could not set {interface} to managed mode', e2)
+            changed = state.changed_fields
+            brought_down = False
+
+            needs_down = bool(changed & {'mode', 'mac'})
+            if needs_down and self._is_interface_up(interface):
+                log_info('InterfaceManager',
+                         f'Cleanup step: Bringing {interface} down')
+                if not self._run_checked(['ip', 'link', 'set', interface, 'down']):
+                    log_error('InterfaceManager',
+                              f'Cleanup failed: could not bring {interface} down')
+                    return False
+                brought_down = True
+
+            if 'mac' in changed and state.original_mac:
+                log_info('InterfaceManager',
+                         f'Cleanup step: Restoring MAC {state.original_mac} on {interface}')
+                if not self._run_checked(['ip', 'link', 'set', 'dev', interface,
+                                          'address', state.original_mac]):
+                    log_error('InterfaceManager', f'Failed to restore MAC on {interface}')
                     success = False
-            
-            # Restore up/down state
-            try:
-                if state.original_up:
-                    log_info('InterfaceManager', f'Cleanup step: Bringing {interface} up (original state)')
-                    Ip.up(interface)
-                    log_debug('InterfaceManager', f'Successfully brought {interface} up')
                 else:
-                    log_info('InterfaceManager', f'Cleanup step: Leaving {interface} down (original state)')
-            except Exception as e:
-                # Task 11.4: Log detailed error information
-                log_error('InterfaceManager', f'Error during cleanup: Failed to restore up/down state for {interface}', e)
-                log_warning('InterfaceManager', f'System error: {str(e)}')
-                recovery_attempts.append(f'restore_up_state: {str(e)}')
-                success = False
-            
-            # Clean up tracking
-            del self.interface_states[interface]
-            if interface in self.assigned_ips:
-                del self.assigned_ips[interface]
-            if interface in self.managed_interfaces:
-                del self.managed_interfaces[interface]
-            
-            # Task 11.4: Log cleanup operations summary
-            log_info('InterfaceManager', '-' * 60)
+                    observed = self._get_interface_mac(interface)
+                    if observed in (None, 'unknown') or \
+                            observed.upper() != state.original_mac.upper():
+                        log_error('InterfaceManager',
+                                  f'MAC readback mismatch on {interface}: {observed}')
+                        success = False
+
+            if 'mode' in changed:
+                log_info('InterfaceManager',
+                         f'Cleanup step: Restoring {state.original_mode} mode on {interface}')
+                command = self._mode_command(interface, state.original_mode)
+                if command is None or not self._run_checked(
+                        command, f'Restore {interface} to {state.original_mode} mode'):
+                    log_error('InterfaceManager',
+                              f'Failed to restore mode on {interface}')
+                    success = False
+                else:
+                    observed = self._canonical_mode(self._get_interface_mode(interface))
+                    if observed != self._canonical_mode(state.original_mode):
+                        log_error('InterfaceManager',
+                                  f'Mode readback mismatch on {interface}: {observed}')
+                        success = False
+
+            if 'channel' in changed and state.original_channel is not None:
+                log_info('InterfaceManager',
+                         f'Cleanup step: Restoring channel {state.original_channel} on {interface}')
+                if not self._run_checked(['iw', 'dev', interface, 'set', 'channel',
+                                          str(state.original_channel)]):
+                    log_error('InterfaceManager',
+                              f'Failed to restore channel on {interface}')
+                    success = False
+                else:
+                    observed = self._get_interface_channel(interface)
+                    if observed != state.original_channel:
+                        log_error('InterfaceManager',
+                                  f'Channel readback mismatch on {interface}: {observed}')
+                        success = False
+
+            if 'addresses' in changed:
+                log_info('InterfaceManager',
+                         f'Cleanup step: Restoring addresses {state.original_ips} on {interface}')
+                original_ips = set(state.original_ips)
+                run_added = {address for address in state.added_ips
+                             if address not in original_ips}
+                current_ips = self._get_interface_addresses(interface)
+                if current_ips is None:
+                    log_error('InterfaceManager',
+                              f'Failed to read addresses on {interface}')
+                    success = False
+                else:
+                    current = set(current_ips)
+                    for address in sorted(run_added & current):
+                        if not self._run_checked(['ip', 'addr', 'del', address, 'dev', interface]):
+                            log_error('InterfaceManager',
+                                      f'Failed to remove {address} from {interface}')
+                            success = False
+                    for address in sorted(original_ips - current):
+                        if not self._run_checked(['ip', 'addr', 'add', address, 'dev', interface]):
+                            log_error('InterfaceManager',
+                                      f'Failed to re-add {address} to {interface}')
+                            success = False
+
+                    observed = self._get_interface_addresses(interface)
+                    if observed is None:
+                        success = False
+                    elif not original_ips.issubset(set(observed)) or \
+                            run_added & set(observed):
+                        log_error('InterfaceManager',
+                                  f'Address readback mismatch on {interface}: {observed}')
+                        success = False
+
+            if 'up' in changed or brought_down:
+                if state.original_up:
+                    if not self.set_interface_up(interface, True):
+                        log_error('InterfaceManager',
+                                  f'Cleanup failed: could not bring {interface} up')
+                        success = False
+                elif self._is_interface_up(interface):
+                    if not self.set_interface_up(interface, False):
+                        log_error('InterfaceManager',
+                                  f'Cleanup failed: could not leave {interface} down')
+                        success = False
+
             if success:
-                log_info('InterfaceManager', f'Cleanup result: SUCCESS - {interface} fully restored to original state')
+                del self.interface_states[interface]
+                self.assigned_ips.pop(interface, None)
+                self.managed_interfaces.pop(interface, None)
+                log_info('InterfaceManager',
+                         f'Cleanup result: SUCCESS - {interface} fully restored')
             else:
-                log_warning('InterfaceManager', f'Cleanup result: PARTIAL - {interface} restored with {len(recovery_attempts)} error(s)')
-                for attempt in recovery_attempts:
-                    log_warning('InterfaceManager', f'  Error: {attempt}')
+                log_warning('InterfaceManager',
+                            f'Cleanup result: PARTIAL - retaining {interface} state for retry')
             log_info('InterfaceManager', '=' * 60)
-            
             return success
-            
-        except Exception as e:
-            # Task 11.4: Log detailed error information
-            log_error('InterfaceManager', f'Cleanup failed: Unexpected error restoring {interface}', e)
-            log_error('InterfaceManager', f'System error: {str(e)}')
-            return False
-    
+
     def _restore_interface_legacy(self, interface: str) -> bool:
         """
-        Legacy restore method for backward compatibility.
-        
-        Args:
-            interface: Interface to restore
-            
-        Returns:
-            True if successful, False otherwise
+        Legacy restore path retained for compatibility.
+
+        It has no complete snapshot, so it must never issue blind iw/ip writes.
         """
-        try:
-            if interface not in self.managed_interfaces:
-                return False
-            
-            original_state = self.managed_interfaces[interface]
-            
-            log_debug('InterfaceManager', f'Restoring {interface} using legacy method')
-            
-            # Bring interface down
-            Ip.down(interface)
-            
-            # Flush IP addresses
-            Process(['ip', 'addr', 'flush', 'dev', interface]).wait()
-            
-            # Restore mode (default to managed)
-            mode = original_state.get('mode', 'managed')
-            if mode == 'AP':
-                mode = 'managed'
-            
-            log_debug('InterfaceManager', f'Setting {interface} to {mode} mode')
-            if mode == 'monitor':
-                Process(['iw', interface, 'set', 'monitor', 'control']).wait()
-            else:
-                Process(['iw', interface, 'set', 'type', mode]).wait()
-            
-            # Bring interface up if it was originally up
-            if original_state.get('up', False):
-                Ip.up(interface)
-            
-            # Clean up tracking
-            del self.managed_interfaces[interface]
-            if interface in self.assigned_ips:
-                del self.assigned_ips[interface]
-            
-            log_info('InterfaceManager', f'Restored {interface} (legacy)')
-            return True
-            
-        except Exception as e:
-            log_error('InterfaceManager', f'Failed to restore {interface} (legacy): {e}', e)
-            return False
-    
+        log_error('InterfaceManager',
+                  f'Refusing legacy restore for {interface}: no verified snapshot')
+        return False
+
     def cleanup_all(self) -> int:
         """
-        Restore all managed interfaces to their original states.
-        
-        This method attempts to restore all interfaces that wifite has
-        modified, handling errors gracefully to ensure all interfaces
-        are processed even if some fail.
-        
+        Restore all managed interfaces and IPv4 forwarding.
+
+        Failed restores keep their state records so a later call can retry.
+
         Returns:
             Number of interfaces successfully restored
         """
-        # Task 11.4: Log cleanup operations
-        log_info('InterfaceManager', '=' * 60)
-        log_info('InterfaceManager', 'Starting cleanup of all managed interfaces')
-        log_info('InterfaceManager', '=' * 60)
-        
-        # Get list of all managed interfaces
-        interfaces = self.get_managed_interfaces()
-        
-        if not interfaces:
-            log_info('InterfaceManager', 'No managed interfaces to clean up')
-            return 0
-        
-        log_info('InterfaceManager', f'Found {len(interfaces)} managed interface(s) to clean up: {", ".join(interfaces)}')
-        
-        success_count = 0
-        failed_interfaces = []
-        
-        for interface in interfaces:
-            try:
-                log_info('InterfaceManager', f'Cleaning up interface {success_count + len(failed_interfaces) + 1}/{len(interfaces)}: {interface}')
-                
-                if self.restore_interface(interface):
-                    success_count += 1
-                    log_info('InterfaceManager', f'Successfully cleaned up {interface}')
-                else:
+        with self._state_lock:
+            log_info('InterfaceManager', '=' * 60)
+            log_info('InterfaceManager', 'Starting cleanup of all managed interfaces')
+            log_info('InterfaceManager', '=' * 60)
+
+            interfaces = self.get_managed_interfaces()
+
+            if not interfaces:
+                log_info('InterfaceManager', 'No managed interfaces to clean up')
+                self._restore_ip_forwarding()
+                return 0
+
+            log_info('InterfaceManager',
+                     f'Found {len(interfaces)} managed interface(s) to clean up: '
+                     f'{", ".join(interfaces)}')
+
+            success_count = 0
+            failed_interfaces = []
+
+            for interface in interfaces:
+                log_info('InterfaceManager',
+                         f'Cleaning up interface {success_count + len(failed_interfaces) + 1}'
+                         f'/{len(interfaces)}: {interface}')
+                try:
+                    if self.restore_interface(interface):
+                        success_count += 1
+                        log_info('InterfaceManager', f'Successfully cleaned up {interface}')
+                    else:
+                        failed_interfaces.append(interface)
+                        log_warning('InterfaceManager', f'Failed to clean up {interface}')
+                except Exception as e:
                     failed_interfaces.append(interface)
-                    # Task 11.4: Log detailed error information
-                    log_warning('InterfaceManager', f'Failed to clean up {interface}')
-                    
-            except Exception as e:
-                failed_interfaces.append(interface)
-                # Task 11.4: Log detailed error information and system error messages
-                log_error('InterfaceManager', f'Error cleaning up {interface}: {e}', e)
-                log_error('InterfaceManager', f'System error: {str(e)}')
-        
-        # Task 11.4: Log cleanup operations summary
-        log_info('InterfaceManager', '=' * 60)
-        if failed_interfaces:
-            log_warning('InterfaceManager', 
-                       f'Cleanup complete: {success_count} succeeded, {len(failed_interfaces)} failed')
-            log_warning('InterfaceManager', f'Failed interfaces: {", ".join(failed_interfaces)}')
-            for iface in failed_interfaces:
-                log_debug('InterfaceManager', f'  {iface}: Check logs above for detailed error information')
-        else:
-            log_info('InterfaceManager', f'Cleanup complete: All {success_count} interface(s) successfully restored')
-        log_info('InterfaceManager', '=' * 60)
-        
-        return success_count
-    
+                    log_error('InterfaceManager', f'Error cleaning up {interface}: {e}', e)
+
+            self._restore_ip_forwarding()
+
+            log_info('InterfaceManager', '=' * 60)
+            if failed_interfaces:
+                log_warning('InterfaceManager',
+                            f'Cleanup complete: {success_count} succeeded, '
+                            f'{len(failed_interfaces)} failed')
+                log_warning('InterfaceManager',
+                            f'Failed interfaces: {", ".join(failed_interfaces)}')
+            else:
+                log_info('InterfaceManager',
+                         f'Cleanup complete: All {success_count} interface(s) successfully restored')
+            log_info('InterfaceManager', '=' * 60)
+
+            return success_count
+
     @staticmethod
     def select_ap_interface(preferred=None) -> Optional[str]:
         """
@@ -1333,18 +1464,29 @@ class InterfaceManager:
     @staticmethod
     def _is_interface_up(interface: str) -> bool:
         """
-        Check if interface is up.
-        
+        Check whether an interface is administratively up.
+
+        Operstate ("state UP") reports link/carrier state, which is DOWN for
+        monitor-mode and no-carrier interfaces even though the netdev is
+        administratively up. Use the IFF_UP flag instead.
+
         Args:
             interface: Interface name
-            
+
         Returns:
-            True if interface is up, False otherwise
+            True if administratively up, False otherwise
         """
         try:
+            with open(f'/sys/class/net/{interface}/flags', 'r') as handle:
+                return bool(int(handle.read().strip(), 16) & 0x1)
+        except (OSError, ValueError):
+            pass
+
+        try:
             output = Process(['ip', 'link', 'show', interface]).stdout()
-            # Check for both "UP" flag and "state UP"
-            return 'UP' in output and 'state UP' in output
+            if match := re.search(r'<([^>]*)>', output):
+                return 'UP' in match.group(1).split(',')
+            return False
         except Exception as e:
             log_debug('InterfaceManager', f'Failed to check if {interface} is up: {e}')
             return False
@@ -1557,9 +1699,6 @@ class InterfaceManager:
         Returns:
             True if monitor mode can be enabled, False otherwise
         """
-        from ..tools.ip import Ip
-        import time
-        
         try:
             # Save original mode
             original_mode = InterfaceManager._get_interface_mode(interface)
@@ -1585,57 +1724,26 @@ class InterfaceManager:
                           f'{interface} Nexmon monitor self-test: {success}')
                 return success
 
-            # If mode detection failed, log it and default to managed
-            if original_mode == 'unknown':
-                log_warning('InterfaceManager', f'Could not detect mode for {interface}, defaulting to managed')
-                from ..util.color import Color
-                if Configuration.verbose > 0:
-                    Color.pl('{!} {O}Could not detect current mode for %s, defaulting to managed{W}' % interface)
-                original_mode = 'managed'  # Default to managed mode for safety
-            
-            # Try to set monitor mode
-            try:
-                Ip.down(interface)
-                (out, err) = Process.call(f'iw dev {interface} set type monitor')
-                
-                if err and 'command failed' in err.lower():
-                    log_debug('InterfaceManager', f'{interface} failed to set monitor mode: {err}')
-                    # Try to restore original mode
-                    import contextlib
-                    with contextlib.suppress(Exception):
-                        Process.call(f'iw dev {interface} set type {original_mode}')
-                        Ip.up(interface)
-                    return False
-                
-                Ip.up(interface)
-                time.sleep(0.3)  # Give interface time to come up
-                
-                # Verify it's actually in monitor mode
-                new_mode = InterfaceManager._get_interface_mode(interface)
-                success = (new_mode == 'monitor')
-                
-                # Restore original mode
-                Ip.down(interface)
-                Process.call(f'iw dev {interface} set type {original_mode}')
-                Ip.up(interface)
-                
-                if success:
-                    log_debug('InterfaceManager', f'{interface} successfully tested monitor mode')
-                else:
-                    log_debug('InterfaceManager', f'{interface} failed monitor mode test (mode: {new_mode})')
-                
-                return success
-                
-            except Exception as e:
-                log_error('InterfaceManager', f'Error testing monitor mode on {interface}: {e}', e)
-                # Try to restore original state
-                import contextlib
-                with contextlib.suppress(Exception):
-                    Ip.down(interface)
-                    Process.call(f'iw dev {interface} set type {original_mode}')
-                    Ip.up(interface)
+            manager = Configuration.get_interface_manager()
+            if not manager.set_interface_mode(interface, 'monitor'):
+                log_debug('InterfaceManager',
+                          f'{interface} failed to enter monitor mode')
                 return False
-                
+
+            success = InterfaceManager._get_interface_mode(interface) == 'monitor'
+            if not manager.restore_interface(interface):
+                log_warning('InterfaceManager',
+                            f'Failed to restore {interface} after monitor test; '
+                            'cleanup will retry')
+
+            if success:
+                log_debug('InterfaceManager',
+                          f'{interface} successfully tested monitor mode')
+            else:
+                log_debug('InterfaceManager',
+                          f'{interface} failed monitor mode test')
+            return success
+
         except Exception as e:
             log_error('InterfaceManager', f'Failed to test monitor mode for {interface}: {e}', e)
             return False

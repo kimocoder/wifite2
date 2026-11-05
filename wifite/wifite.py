@@ -74,10 +74,7 @@ class Wifite:
         self.available_interfaces = []
 
         # Initialize interface manager for state tracking and cleanup (Task 10.4)
-        from .util.interface_manager import InterfaceManager
-        self.interface_manager = InterfaceManager()
-        # Store in Configuration for cleanup access
-        Configuration.interface_manager = self.interface_manager
+        self.interface_manager = Configuration.get_interface_manager()
 
     def start(self):
         """
@@ -1386,27 +1383,9 @@ def main():
             from .util.logger import log_debug
             log_debug('Wifite', f'Cleanup thread error: {e}')
         
-        # Clean up managed interfaces (Task 10.4)
-        try:
-            from .util.logger import log_debug
-            
-            if hasattr(Configuration, 'interface_manager') and Configuration.interface_manager is not None:
-                log_debug('Wifite', 'Cleaning up managed interfaces')
-                
-                def interface_cleanup():
-                    try:
-                        Configuration.interface_manager.cleanup_all()
-                    except Exception as e:
-                        log_debug('Wifite', f'Interface cleanup error: {e}')
-                
-                import threading
-                cleanup_thread = threading.Thread(target=interface_cleanup)
-                cleanup_thread.daemon = True
-                cleanup_thread.start()
-                cleanup_thread.join(timeout=2)  # 2 second timeout
-        except Exception as e:
-            from .util.logger import log_debug
-            log_debug('Wifite', f'Interface cleanup thread error: {e}')
+        # Managed-interface and IP-forwarding restoration happens once,
+        # serially, inside Configuration.exit_gracefully() below. Do not start
+        # a second concurrent cleanup path here.
 
         # Delete Reaver .pcap quickly
         try:

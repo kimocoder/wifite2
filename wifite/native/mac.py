@@ -2,11 +2,11 @@
 # -*- coding: utf-8 -*-
 
 """
-Native MAC address manipulation without external tools.
+Native MAC address inspection and random generation.
 
-Replaces 'macchanger' with pure Python implementation using:
-- sysfs interface (/sys/class/net/<iface>/address)
-- ioctl system calls (SIOCSIFHWADDR)
+Reads use sysfs (/sys/class/net/<iface>/address) and ioctl. Writes are
+delegated to the process-wide InterfaceManager owner so the link is brought
+down/up safely and the original MAC can be restored by cleanup.
 
 Usage:
     from wifite.native.mac import NativeMac
@@ -14,7 +14,7 @@ Usage:
     # Get current MAC
     mac = NativeMac.get_mac('wlan0')
     
-    # Set specific MAC (interface must be down)
+    # Set specific MAC (owner handles link state)
     NativeMac.set_mac('wlan0', '00:11:22:33:44:55')
     
     # Generate and set random MAC
@@ -41,11 +41,9 @@ class NativeMac:
     Requires root/CAP_NET_ADMIN for MAC changes.
     """
     
-    # ioctl constants for network interface manipulation
+    # ioctl constants for network interface inspection
     SIOCGIFHWADDR = 0x8927  # Get hardware address
-    SIOCSIFHWADDR = 0x8924  # Set hardware address
     SIOCGIFFLAGS = 0x8913   # Get interface flags
-    SIOCSIFFLAGS = 0x8914   # Set interface flags
     IFF_UP = 0x1            # Interface is up
     
     # Cache for original MACs (to support reset)
@@ -149,9 +147,10 @@ class NativeMac:
     @classmethod
     def set_mac(cls, interface: str, mac: str) -> Tuple[bool, str]:
         """
-        Set the MAC address of an interface.
+        Set the MAC address of an interface through the single state owner.
         
-        The interface must be in DOWN state before changing MAC.
+        The owner snapshots state, brings the link down when required, verifies
+        the new address by readback, and restores link state afterwards.
         
         Args:
             interface: Network interface name
@@ -172,62 +171,11 @@ class NativeMac:
             current = cls.get_mac(interface)
             if current:
                 cls._original_macs[interface] = current
-        
-        # Check if interface is up
-        if cls._is_interface_up(interface):
-            return False, f'Interface {interface} must be down before changing MAC'
-        
-        # Method 1: Try sysfs (requires root)
-        sysfs_path = f'/sys/class/net/{interface}/address'
-        try:
-            with open(sysfs_path, 'w') as f:
-                f.write(mac.lower())
-            
-            # Verify the change
-            new_mac = cls.get_mac(interface)
-            if new_mac and new_mac.upper() == mac.upper():
-                return True, f'MAC address changed to {mac}'
-        except (IOError, OSError, PermissionError):
-            pass
-        
-        # Method 2: Try ioctl
-        try:
-            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            try:
-                # Convert MAC to bytes
-                mac_bytes = bytes.fromhex(mac.replace(':', ''))
-                
-                # Build ifreq struct: interface name + sa_family (1 = AF_LOCAL) + MAC bytes
-                ifreq = struct.pack('16sH6s', 
-                                   interface.encode('utf-8')[:15] + b'\x00',
-                                   1,  # sa_family = AF_LOCAL
-                                   mac_bytes)
-                # Pad to 40 bytes
-                ifreq = ifreq + b'\x00' * (40 - len(ifreq))
-                
-                fcntl.ioctl(sock.fileno(), cls.SIOCSIFHWADDR, ifreq)
-                
-                # Verify the change
-                new_mac = cls.get_mac(interface)
-                if new_mac and new_mac.upper() == mac.upper():
-                    return True, f'MAC address changed to {mac}'
-                    
-            finally:
-                sock.close()
-        except (IOError, OSError, PermissionError) as e:
-            pass
-        
-        # Method 3: Fall back to ip command
-        try:
-            from ..util.process import Process
-            Process.call(f'ip link set {interface} address {mac}')
-            
-            new_mac = cls.get_mac(interface)
-            if new_mac and new_mac.upper() == mac.upper():
-                return True, f'MAC address changed to {mac} (via ip command)'
-        except Exception as e:
-            log_debug('NativeMac', f'MAC change via ip link failed on {interface}: {e}')
-        
+
+        from ..config import Configuration
+        if Configuration.get_interface_manager().set_interface_mac(interface, mac):
+            return True, f'MAC address changed to {mac}'
+
         return False, f'Failed to change MAC address on {interface}'
     
     @classmethod

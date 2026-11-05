@@ -632,10 +632,14 @@ def _restore_session(session: NexmonSession) -> List[str]:
 
     if session.station_was_up:
         if _is_up(session.station) is False:
-            if not _run_ok(['ip', 'link', 'set', session.station, 'up']):
+            from ..config import Configuration
+            if not Configuration.get_interface_manager().set_interface_up(
+                    session.station, True):
                 errors.append(f'failed to bring {session.station} back up')
     elif _is_up(session.station) is True:
-        if not _run_ok(['ip', 'link', 'set', session.station, 'down']):
+        from ..config import Configuration
+        if not Configuration.get_interface_manager().set_interface_up(
+                session.station, False):
             errors.append(f'failed to bring {session.station} back down')
 
     if session.power_save_was_enabled is not None:
@@ -717,7 +721,16 @@ def start_monitor(interface: str) -> str:
     if not phy:
         raise NexmonRefused(f'could not determine the PHY of {interface}')
 
+    # Enter the owner lifecycle so the station's pre-run state is snapshotted
+    # before Nexmon creates the monitor vif or toggles link state.
+    from ..config import Configuration
+    manager = Configuration.get_interface_manager()
+
     _assert_safe_to_take_over(interface, phy)
+
+    if not manager.claim_interface(interface):
+        raise NexmonRefused(
+            f'could not snapshot {interface} before taking it over')
 
     leaked = _sweep_leaked_monitor(interface, phy)
     if leaked is not None:
@@ -734,10 +747,8 @@ def start_monitor(interface: str) -> str:
     session: Optional[NexmonSession] = None
     try:
         if not station_was_up:
-            _require_ok(
-                ['ip', 'link', 'set', interface, 'up'],
-                f'failed to bring {interface} up',
-            )
+            if not manager.set_interface_up(interface, True):
+                raise NexmonError(f'failed to bring {interface} up')
 
         if _is_associated(interface) is not False:
             raise NexmonRefused(f'{interface} became associated during setup')
@@ -768,8 +779,8 @@ def start_monitor(interface: str) -> str:
                 )
 
         # cfg80211 can only hop channels while the station netdev is down.
-        _require_ok(['ip', 'link', 'set', interface, 'down'],
-                    f'failed to bring {interface} down')
+        if not manager.set_interface_up(interface, False):
+            raise NexmonError(f'failed to bring {interface} down')
         if _is_up(interface) is not False:
             raise NexmonError(f'{interface} is still up; cannot guarantee channel hopping')
 

@@ -24,23 +24,21 @@ class Ip(Dependency):
 
     @classmethod
     def up(cls, interface):
-        """Put interface up"""
-        from ..util.process import Process
+        """Put interface up through the single state owner."""
+        from ..config import Configuration
 
         _check_iface(interface)
-        (out, err) = Process.call(f'ip link set {interface} up')
-        if len(err) > 0:
-            raise Exception('Error putting interface %s up:\n%s\n%s' % (interface, out, err))
+        if not Configuration.get_interface_manager().set_interface_up(interface, True):
+            raise Exception('Error putting interface %s up' % interface)
 
     @classmethod
     def down(cls, interface):
-        """Put interface down"""
-        from ..util.process import Process
+        """Put interface down through the single state owner."""
+        from ..config import Configuration
 
         _check_iface(interface)
-        (out, err) = Process.call(f'ip link set {interface} down')
-        if len(err) > 0:
-            raise Exception('Error putting interface %s down:\n%s\n%s' % (interface, out, err))
+        if not Configuration.get_interface_manager().set_interface_up(interface, False):
+            raise Exception('Error putting interface %s down' % interface)
 
     @classmethod
     def get_mac(cls, interface):

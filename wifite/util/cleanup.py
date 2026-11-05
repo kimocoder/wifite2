@@ -98,8 +98,11 @@ class CleanupManager:
             
             log_debug('Cleanup', f'Stopping {name}')
             
-            # Check if process has a stop method
-            if hasattr(process, 'stop'):
+            # Prefer full service cleanup (stops the process *and* releases
+            # interface/forwarding state) when the object provides one.
+            if callable(getattr(type(process), 'cleanup', None)):
+                process.cleanup()
+            elif hasattr(process, 'stop'):
                 process.stop()
             elif hasattr(process, 'cleanup'):
                 process.cleanup()
@@ -180,31 +183,23 @@ class CleanupManager:
         try:
             from ..config.validators import validate_interface_name
             validate_interface_name(interface)
-            log_debug('Cleanup', f'Restoring interface {interface}')
-            
-            # Bring interface down
-            Process(['ip', 'link', 'set', interface, 'down']).wait()
-            
-            # Flush IP addresses
-            Process(['ip', 'addr', 'flush', 'dev', interface]).wait()
-            
-            # Restore mode (default to managed)
-            mode = original_state.get('mode', 'managed')
-            if mode == 'AP':
-                mode = 'managed'  # Don't restore to AP mode
-            
-            if mode == 'monitor':
-                Process(['iw', interface, 'set', 'monitor', 'control']).wait()
+            from ..config import Configuration
+
+            manager = Configuration.get_interface_manager()
+            log_debug('Cleanup', f'Restoring interface {interface} through state owner')
+
+            if manager.restore_interface(interface):
+                log_info('Cleanup', f'Restored interface {interface}')
+                return True
+
+            if manager.is_managed(interface):
+                error_msg = f'interface {interface}: restore incomplete, state retained for retry'
             else:
-                Process(['iw', interface, 'set', 'type', mode]).wait()
-            
-            # Bring interface up if it was originally up
-            if original_state.get('up', False):
-                Process(['ip', 'link', 'set', interface, 'up']).wait()
-            
-            log_info('Cleanup', f'Restored interface {interface}')
-            return True
-            
+                error_msg = f'interface {interface}: no owned state, refusing blind restore'
+            self.cleanup_errors.append(error_msg)
+            log_warning('Cleanup', error_msg)
+            return False
+
         except Exception as e:
             error_msg = f'interface {interface}: {e}'
             self.cleanup_errors.append(error_msg)
@@ -271,16 +266,21 @@ class CleanupManager:
             True if successful, False otherwise
         """
         try:
-            with open('/proc/sys/net/ipv4/ip_forward', 'w') as f:
-                f.write('0\n')
-            
-            log_info('Cleanup', 'Disabled IP forwarding')
-            return True
-            
+            from ..config import Configuration
+
+            if Configuration.get_interface_manager().restore_ip_forwarding():
+                log_info('Cleanup', 'Restored IP forwarding state')
+                return True
+
+            error_msg = 'ip_forward: restore failed, state retained for retry'
+            self.cleanup_errors.append(error_msg)
+            log_warning('Cleanup', f'Failed to restore IP forwarding: {error_msg}')
+            return False
+
         except Exception as e:
             error_msg = f'ip_forward: {e}'
             self.cleanup_errors.append(error_msg)
-            log_warning('Cleanup', f'Failed to disable IP forwarding: {e}')
+            log_warning('Cleanup', f'Failed to restore IP forwarding: {e}')
             return False
     
     def cleanup_all(self, display_status: bool = True) -> bool:

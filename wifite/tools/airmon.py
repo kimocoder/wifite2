@@ -126,20 +126,11 @@ class Airmon(Dependency):
 
     @staticmethod
     def start_monitor(interface):
-        """Put interface into monitor mode using ip/iw."""
-        from ..util.process import Process
-
-        Ip.down(interface)
-
-        (out, err) = Process.call(f'iw dev {interface} set type monitor')
-        if Configuration.verbose > 0:
-            Color.pl('{D}iw set type monitor output: %s{W}' % out)
-            if err:
-                Color.pl('{D}iw set type monitor error: %s{W}' % err)
-        if err and 'command failed' in err.lower():
-            Color.pl('{!} {O}Warning: iw command may have failed: %s{W}' % err)
-
-        Ip.up(interface)
+        """Put interface into monitor mode through the state owner."""
+        manager = Configuration.get_interface_manager()
+        if not manager.set_interface_mode(interface, 'monitor'):
+            Color.pl('{!} {O}Failed to put %s into monitor mode{W}' % interface)
+            return None
 
         # Give the interface a moment to come up
         time.sleep(0.5)
@@ -156,7 +147,7 @@ class Airmon(Dependency):
 
     @staticmethod
     def stop_monitor(interface):
-        """Put interface into managed mode using ip/iw."""
+        """Put interface back into managed mode through the state owner."""
         # Get driver info for ICNSS2 check
         iface_info = Airmon.get_iface_info(interface)
         if iface_info and iface_info.driver == 'icnss2':
@@ -170,9 +161,9 @@ class Airmon(Dependency):
                 if stdout: Color.pl('{O}STDOUT: %s{W}' % stdout.strip())
                 if stderr: Color.pl('{R}STDERR: %s{W}' % stderr.strip())
 
-        Ip.down(interface)
-        Iw.mode(interface, 'managed')
-        Ip.up(interface)
+        manager = Configuration.get_interface_manager()
+        if not manager.set_interface_mode(interface, 'managed'):
+            Color.pl('{!} {O}Failed to return %s to managed mode{W}' % interface)
 
         return interface
 
@@ -506,15 +497,9 @@ class Airmon(Dependency):
 
     @staticmethod
     def set_interface_mode(interface, mode_name):
-        """Set an interface's 802.11 mode (e.g. 'managed', 'monitor').
-
-        The interface must be down to change type, so we toggle it down→set→up.
-        """
+        """Set an interface's 802.11 mode through the state owner."""
         log_debug('Airmon', f'Setting {interface} to {mode_name} mode')
-        Ip.down(interface)
-        Iw.mode(interface, mode_name)
-        Ip.up(interface)
-        return True
+        return Configuration.get_interface_manager().set_interface_mode(interface, mode_name)
 
     @staticmethod
     def get_interface_mode(interface):
@@ -529,10 +514,9 @@ class Airmon(Dependency):
 
     @staticmethod
     def set_interface_channel(interface, channel):
-        """Tune an interface to a channel via `iw dev <iface> set channel`."""
+        """Tune an interface to a channel through the state owner."""
         log_debug('Airmon', f'Setting {interface} to channel {channel}')
-        Process.call(f'iw dev {interface} set channel {int(channel)}')
-        return True
+        return Configuration.get_interface_manager().set_interface_channel(interface, channel)
 
     @staticmethod
     def get_interface_channel(interface):

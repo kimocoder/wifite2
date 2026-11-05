@@ -810,30 +810,36 @@ class AttackWPA(Attack):
 
     def _set_interface_channels(self):
         """
-        Set both interfaces to the target channel with error handling.
-        
-        Attempts to set both capture and deauth interfaces to the target channel.
-        If one interface fails, logs an error but continues with the working interface.
+        Set both interfaces to the target channel through the state owner.
+
+        The owner executes each channel write once and verifies the readback.
+        FullMAC drivers may apply the change asynchronously, so a failed
+        immediate readback gets a short settle window before it is treated as
+        a persistent mismatch (which is a failure, not a success).
         """
-        from ..util.process import Process
         from ..util.logger import log_info
-        
+        from ..config import Configuration
+
         target_channel = self.target.channel
+        manager = Configuration.get_interface_manager()
         capture_success = False
         deauth_success = False
-        
+
+        def apply_channel(interface):
+            if manager.set_interface_channel(interface, target_channel):
+                return True
+            for _ in range(4):
+                time.sleep(0.5)
+                if manager._get_interface_channel(interface) == target_channel:
+                    return True
+            return False
+
         # Set capture interface channel
         try:
             log_debug('AttackWPA', f'Setting {self.capture_interface} to channel {target_channel}')
-            Process(['iw', self.capture_interface, 'set', 'channel', str(target_channel)]).wait()
-            # FullMAC drivers (brcmfmac/Nexmon) can apply channel changes
-            # asynchronously; confirm the readback before starting capture,
-            # otherwise the whole attack can run on the wrong channel.
-            for _ in range(4):
-                info = Process(['iw', 'dev', self.capture_interface, 'info']).stdout()
-                if f'channel {target_channel}' in (info or ''):
-                    break
-                time.sleep(0.5)
+            if not apply_channel(self.capture_interface):
+                raise RuntimeError(
+                    f'channel {target_channel} not confirmed on {self.capture_interface}')
             capture_success = True
             log_info('AttackWPA', f'Successfully set {self.capture_interface} to channel {target_channel}')
         except Exception as e:
@@ -842,16 +848,13 @@ class AttackWPA(Attack):
             Color.pl('{!} {R}Error: %s{W}' % error_msg)
             if self.view:
                 self.view.add_log(f'Error: {error_msg}')
-        
+
         # Set deauth interface channel
         try:
             log_debug('AttackWPA', f'Setting {self.deauth_interface} to channel {target_channel}')
-            Process(['iw', self.deauth_interface, 'set', 'channel', str(target_channel)]).wait()
-            for _ in range(4):
-                info = Process(['iw', 'dev', self.deauth_interface, 'info']).stdout()
-                if f'channel {target_channel}' in (info or ''):
-                    break
-                time.sleep(0.5)
+            if not apply_channel(self.deauth_interface):
+                raise RuntimeError(
+                    f'channel {target_channel} not confirmed on {self.deauth_interface}')
             deauth_success = True
             log_info('AttackWPA', f'Successfully set {self.deauth_interface} to channel {target_channel}')
         except Exception as e:
@@ -860,7 +863,7 @@ class AttackWPA(Attack):
             Color.pl('{!} {R}Error: %s{W}' % error_msg)
             if self.view:
                 self.view.add_log(f'Error: {error_msg}')
-        
+
         # Report overall status
         if capture_success and deauth_success:
             Color.pl('{+} {G}Both interfaces set to channel %d [DUAL]{W}' % target_channel)

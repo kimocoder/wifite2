@@ -277,26 +277,11 @@ class Hostapd(Dependency):
             return False
 
     def _prepare_interface(self):
-        """Prepare wireless interface for AP mode."""
-        try:
-            # Bring interface down
-            Process(['ip', 'link', 'set', self.interface, 'down']).wait()
-
-            # Set to AP mode (master mode)
-            Process(['iw', self.interface, 'set', 'type', '__ap']).wait()
-
-            # Bring interface up
-            Process(['ip', 'link', 'set', self.interface, 'up']).wait()
-
-            # Assign IP address
-            Process(['ip', 'addr', 'flush', 'dev', self.interface]).wait()
-            Process(['ip', 'addr', 'add', '192.168.100.1/24', 'dev', self.interface]).wait()
-
-            log_debug('Hostapd', f'Prepared interface {self.interface}')
-
-        except Exception as e:
-            log_error('Hostapd', f'Failed to prepare interface: {e}', e)
-            raise
+        """Prepare wireless interface for AP mode through the state owner."""
+        manager = Configuration.get_interface_manager()
+        if not manager.configure_for_ap(self.interface, '192.168.100.1/24'):
+            raise RuntimeError(f'Failed to prepare {self.interface} for AP mode')
+        log_debug('Hostapd', f'Prepared interface {self.interface}')
 
     def stop(self):
         """Stop hostapd process."""
@@ -350,24 +335,14 @@ class Hostapd(Dependency):
             log_error('Hostapd', f'Cleanup error: {e}', e)
 
     def _restore_interface(self):
-        """Restore interface to managed mode."""
-        try:
-            # Bring interface down
-            Process(['ip', 'link', 'set', self.interface, 'down']).wait()
-
-            # Flush IP addresses
-            Process(['ip', 'addr', 'flush', 'dev', self.interface]).wait()
-
-            # Set back to managed mode
-            Process(['iw', self.interface, 'set', 'type', 'managed']).wait()
-
-            # Bring interface up
-            Process(['ip', 'link', 'set', self.interface, 'up']).wait()
-
+        """Restore the interface snapshot through the state owner."""
+        manager = Configuration.get_interface_manager()
+        if manager.restore_interface(self.interface):
             log_debug('Hostapd', f'Restored interface {self.interface}')
-
-        except Exception as e:
-            log_warning('Hostapd', f'Failed to restore interface: {e}')
+        else:
+            log_warning('Hostapd',
+                        f'Failed to fully restore {self.interface}; '
+                        'state retained for retry')
 
     def is_running(self) -> bool:
         """

@@ -16,7 +16,7 @@ from ..tools.airodump import Airodump
 from ..tools.aireplay import Aireplay
 from ..config import Configuration
 from ..util.color import Color
-from ..util.logger import log_info, log_debug
+from ..util.logger import log_info, log_debug, log_warning
 from ..util.timer import Timer
 from ..util.output import OutputManager
 from ..util.wpa3 import WPA3Detector
@@ -479,40 +479,38 @@ class AttackWPA3SAE(Attack):
     @contextmanager
     def _managed_mode_for_probe(interface):
         """
-        Context manager: put `interface` in managed mode, restore monitor.
+        Context manager: put `interface` in managed mode, restore it after.
 
-        wpa_supplicant requires a managed-mode interface; our scanning
-        interface is normally in monitor mode. We use iw to toggle and
-        ensure we restore even on error.
+        The state owner snapshots the interface before changing mode and
+        restores only the fields this probe changed, even on error.
         """
         from ..tools.iw import Iw
-        from ..tools.ip import Ip
+        from ..config import Configuration
+
         was_monitor = False
         try:
             was_monitor = Iw.is_monitor(interface)
         except Exception:
             was_monitor = True  # assume monitor; restore conservatively
 
+        manager = Configuration.get_interface_manager()
         try:
             if was_monitor:
-                Ip.down(interface)
-                Iw.mode(interface, 'managed')
-                Ip.up(interface)
+                if not manager.set_interface_mode(interface, 'managed'):
+                    raise RuntimeError(
+                        '%s could not be switched to managed mode' % interface)
                 log_debug('AttackWPA3',
                           '%s → managed mode for SAE probing' % interface)
             yield
         finally:
             if was_monitor:
-                try:
-                    Ip.down(interface)
-                    Iw.mode(interface, 'monitor')
-                    Ip.up(interface)
+                if manager.restore_interface(interface):
                     log_debug('AttackWPA3',
                               '%s → monitor mode restored' % interface)
-                except Exception as e:
-                    log_debug('AttackWPA3',
-                              'monitor restore failed for %s: %s'
-                              % (interface, e))
+                else:
+                    log_warning('AttackWPA3',
+                                'monitor restore incomplete for %s; '
+                                'state retained for cleanup' % interface)
 
     def _check_wpa3_tools(self):
         """

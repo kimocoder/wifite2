@@ -42,6 +42,7 @@ class Configuration:
     infinite_mode = None
     inf_wait_time = None
     interface = None
+    interface_manager = None  # Per-process InterfaceManager state owner
     kill_conflicting_processes = None
     manufacturers = None
     min_power = None
@@ -178,6 +179,14 @@ class Configuration:
 
         if load_interface:
             cls.get_monitor_mode_interface()
+
+    @classmethod
+    def get_interface_manager(cls):
+        """Return the single per-process interface state owner."""
+        if cls.interface_manager is None:
+            from ..util.interface_manager import InterfaceManager
+            cls.interface_manager = InterfaceManager()
+        return cls.interface_manager
 
     @classmethod
     def get_monitor_mode_interface(cls):
@@ -398,21 +407,8 @@ class Configuration:
         cls.delete_temp()
         Macchanger.reset_if_changed()
 
-        # Clean up managed interfaces
-        try:
-            from ..util.interface_manager import InterfaceManager
-            from ..util.logger import log_info, log_debug
-
-            # Check if we have an interface manager instance to clean up
-            if hasattr(cls, 'interface_manager') and cls.interface_manager is not None:
-                log_info('Config', 'Cleaning up managed interfaces')
-                restored = cls.interface_manager.cleanup_all()
-                log_debug('Config', f'Restored {restored} interface(s)')
-        except Exception as e:
-            from ..util.logger import log_error
-            log_error('Config', f'Error during interface cleanup: {e}', e)
-
-        # Tear down Nexmon monitor sessions before reporting interface state.
+        # Tear down Nexmon monitor sessions first: their VIF lifecycle is
+        # specialized, but station link changes go through the owner below.
         nexmon_restored = []
         try:
             from ..tools.nexmon import Nexmon
@@ -425,6 +421,18 @@ class Configuration:
         except Exception as e:
             from ..util.logger import log_error
             log_error('Config', f'Error during Nexmon cleanup: {e}', e)
+
+        # Single serialized owner cleanup (interfaces + IP forwarding).
+        try:
+            from ..util.logger import log_info, log_debug
+
+            if cls.interface_manager is not None:
+                log_info('Config', 'Cleaning up managed interfaces')
+                restored = cls.interface_manager.cleanup_all()
+                log_debug('Config', f'Restored {restored} interface(s)')
+        except Exception as e:
+            from ..util.logger import log_error
+            log_error('Config', f'Error during interface cleanup: {e}', e)
 
         from ..tools.airmon import Airmon
         if cls.interface is not None and Airmon.base_interface is not None:

@@ -61,13 +61,10 @@ class NativeInterface:
     
     # ioctl constants
     SIOCGIFFLAGS = 0x8913
-    SIOCSIFFLAGS = 0x8914
     SIOCGIFHWADDR = 0x8927
     SIOCGIWNAME = 0x8B01    # Check if wireless
     SIOCGIWMODE = 0x8B07    # Get wireless mode
-    SIOCSIWMODE = 0x8B08    # Set wireless mode
     SIOCGIWFREQ = 0x8B05    # Get frequency/channel
-    SIOCSIWFREQ = 0x8B04    # Set frequency/channel
     
     IFF_UP = 0x1
     IFF_BROADCAST = 0x2
@@ -214,29 +211,19 @@ class NativeInterface:
     
     @classmethod
     def up(cls, interface: str) -> Tuple[bool, str]:
-        """
-        Bring interface up.
-        
-        Args:
-            interface: Interface name
-            
-        Returns:
-            Tuple of (success, message)
-        """
-        return cls._set_flags(interface, add_flags=cls.IFF_UP)
-    
+        """Bring interface up through the single state owner."""
+        from ..config import Configuration
+        if Configuration.get_interface_manager().set_interface_up(interface, True):
+            return True, 'Interface up'
+        return False, f'Failed to bring {interface} up'
+
     @classmethod
     def down(cls, interface: str) -> Tuple[bool, str]:
-        """
-        Bring interface down.
-        
-        Args:
-            interface: Interface name
-            
-        Returns:
-            Tuple of (success, message)
-        """
-        return cls._set_flags(interface, remove_flags=cls.IFF_UP)
+        """Bring interface down through the single state owner."""
+        from ..config import Configuration
+        if Configuration.get_interface_manager().set_interface_up(interface, False):
+            return True, 'Interface down'
+        return False, f'Failed to bring {interface} down'
     
     @classmethod
     def get_mac(cls, interface: str) -> Optional[str]:
@@ -282,7 +269,7 @@ class NativeInterface:
     @classmethod
     def set_channel(cls, interface: str, channel: int) -> Tuple[bool, str]:
         """
-        Set channel on wireless interface.
+        Set channel on wireless interface through the single state owner.
         
         Args:
             interface: Wireless interface name
@@ -294,26 +281,16 @@ class NativeInterface:
         freq = cls._channel_to_freq(channel)
         if not freq:
             return False, f'Invalid channel: {channel}'
-        
-        # Try ioctl first
-        success = cls._set_frequency_ioctl(interface, freq)
-        if success:
+
+        from ..config import Configuration
+        if Configuration.get_interface_manager().set_interface_channel(interface, channel):
             return True, f'Channel set to {channel}'
-        
-        # Fallback to iw command
-        try:
-            from ..util.process import Process
-            out, err = Process.call(f'iw dev {interface} set channel {channel}')
-            if err and 'error' in err.lower():
-                return False, err.strip()
-            return True, f'Channel set to {channel}'
-        except Exception as e:
-            return False, str(e)
+        return False, f'Failed to set channel {channel} on {interface}'
     
     @classmethod
     def set_mode(cls, interface: str, mode: str) -> Tuple[bool, str]:
         """
-        Set wireless interface mode.
+        Set wireless interface mode through the single state owner.
         
         Args:
             interface: Wireless interface name
@@ -322,38 +299,16 @@ class NativeInterface:
         Returns:
             Tuple of (success, message)
         """
-        # Map mode name to ioctl value
         mode_map = {v: k for k, v in cls.MODE_NAMES.items()}
         mode_lower = mode.lower()
-        
+
         if mode_lower not in mode_map:
             return False, f'Unknown mode: {mode}'
-        
-        mode_value = mode_map[mode_lower]
-        
-        # Try ioctl first
-        try:
-            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            try:
-                # iwreq structure for SIOCSIWMODE
-                iwreq = struct.pack('16sI', interface.encode('utf-8')[:15] + b'\x00', mode_value)
-                iwreq = iwreq + b'\x00' * (32 - len(iwreq))  # Pad to 32 bytes
-                fcntl.ioctl(sock.fileno(), cls.SIOCSIWMODE, iwreq)
-                return True, f'Mode set to {mode}'
-            finally:
-                sock.close()
-        except (IOError, OSError):
-            pass
-        
-        # Fallback to iw command
-        try:
-            from ..util.process import Process
-            out, err = Process.call(f'iw dev {interface} set type {mode}')
-            if err and 'error' in err.lower():
-                return False, err.strip()
+
+        from ..config import Configuration
+        if Configuration.get_interface_manager().set_interface_mode(interface, mode_lower):
             return True, f'Mode set to {mode}'
-        except Exception as e:
-            return False, str(e)
+        return False, f'Failed to set {interface} to {mode} mode'
     
     @classmethod
     def get_mode(cls, interface: str) -> Optional[str]:
@@ -374,42 +329,6 @@ class NativeInterface:
                 sock.close()
         except (IOError, OSError):
             return False
-    
-    @classmethod
-    def _set_flags(cls, interface: str, add_flags: int = 0, remove_flags: int = 0) -> Tuple[bool, str]:
-        """Set interface flags using ioctl."""
-        try:
-            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            try:
-                # Get current flags
-                ifreq = struct.pack('256s', interface.encode('utf-8')[:15])
-                result = fcntl.ioctl(sock.fileno(), cls.SIOCGIFFLAGS, ifreq)
-                flags = struct.unpack('16sH', result[:18])[1]
-                
-                # Modify flags
-                flags = (flags | add_flags) & ~remove_flags
-                
-                # Set new flags
-                ifreq = struct.pack('16sH', interface.encode('utf-8')[:15] + b'\x00', flags)
-                ifreq = ifreq + b'\x00' * (256 - len(ifreq))
-                fcntl.ioctl(sock.fileno(), cls.SIOCSIFFLAGS, ifreq)
-                
-                return True, 'Flags updated'
-            finally:
-                sock.close()
-        except (IOError, OSError) as e:
-            pass
-        
-        # Fallback to ip command
-        try:
-            from ..util.process import Process
-            action = 'up' if add_flags & cls.IFF_UP else 'down'
-            out, err = Process.call(f'ip link set {interface} {action}')
-            if err and 'error' in err.lower():
-                return False, err.strip()
-            return True, f'Interface {action}'
-        except Exception as e:
-            return False, str(e)
     
     @classmethod
     def _get_mode_ioctl(cls, interface: str) -> Optional[str]:
@@ -470,28 +389,6 @@ class NativeInterface:
             pass
         
         return None
-    
-    @classmethod
-    def _set_frequency_ioctl(cls, interface: str, freq_mhz: int) -> bool:
-        """Set wireless frequency using ioctl."""
-        try:
-            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            try:
-                # iw_freq struct: mantissa (uint32) + exponent (uint16) + flags (uint8) + pad (uint8)
-                freq_hz = freq_mhz * 1000000
-                iwreq = struct.pack('16sIHBB', 
-                                   interface.encode('utf-8')[:15] + b'\x00',
-                                   freq_hz,  # mantissa
-                                   0,        # exponent (0 = value is in Hz)
-                                   0,        # flags
-                                   0)        # padding
-                iwreq = iwreq + b'\x00' * (32 - (len(iwreq) - 16))
-                fcntl.ioctl(sock.fileno(), cls.SIOCSIWFREQ, iwreq)
-                return True
-            finally:
-                sock.close()
-        except (IOError, OSError):
-            return False
     
     @classmethod
     def _channel_to_freq(cls, channel: int) -> Optional[int]:

@@ -38,7 +38,22 @@ class NexmonTestBase(unittest.TestCase):
         with nexmon._sessions_lock:
             nexmon._sessions.clear()
 
+        # Nexmon delegates station link changes to the interface owner. Use a
+        # stub so unit tests never touch the host's real radios.
+        class _OwnerStub:
+            def claim_interface(self, interface):
+                return True
+
+            def set_interface_up(self, interface, up):
+                return True
+
+        self._owner_patcher = patch(
+            'wifite.config.Configuration.get_interface_manager',
+            return_value=_OwnerStub())
+        self._owner_patcher.start()
+
     def tearDown(self):
+        self._owner_patcher.stop()
         nexmon.reset_cache()
         with nexmon._sessions_lock:
             nexmon._sessions.clear()

@@ -44,9 +44,15 @@ class Macchanger(Dependency):
     def down_macch_up(cls, iface, options):
         """Put interface down, run macchanger with options, put interface up."""
         from ..util.process import Process
+        from ..config import Configuration
 
         Color.clear_entire_line()
         Color.p('\r{+} {C}macchanger{W}: taking interface {C}%s{W} down...' % iface)
+
+        manager = Configuration.get_interface_manager()
+        if not manager.claim_interface(iface):
+            Color.pl('\n{!} {R}macchanger{O}: could not snapshot {R}%s{O} before changing MAC' % iface)
+            return False
 
         Ip.down(iface)
 
@@ -58,6 +64,7 @@ class Macchanger(Dependency):
         command.append(iface)
         macch = Process(command)
         macch.wait()
+        manager.record_mac_change(iface)
         if macch.poll() != 0:
             Color.pl('\n{!} {R}macchanger{O}: error running {R}%s{O}' % ' '.join(command))
             Color.pl('{!} {R}output: {O}%s, %s{W}' % (macch.stdout(), macch.stderr()))

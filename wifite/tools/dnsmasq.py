@@ -229,11 +229,11 @@ class Dnsmasq(Dependency):
     def _setup_routing(self):
         """Setup IP forwarding and routing rules."""
         try:
-            # Enable IP forwarding
-            with open('/proc/sys/net/ipv4/ip_forward', 'w') as f:
-                f.write('1\n')
-            
-            log_debug('Dnsmasq', 'Enabled IP forwarding')
+            # Enable IP forwarding through the single state owner.
+            if Configuration.get_interface_manager().set_ip_forwarding(True):
+                log_debug('Dnsmasq', 'Enabled IP forwarding')
+            else:
+                log_warning('Dnsmasq', 'Failed to enable IP forwarding')
             
             # Add iptables rules for NAT (optional, for internet access)
             # This is commented out by default as we typically want to
@@ -338,11 +338,11 @@ class Dnsmasq(Dependency):
     def _cleanup_routing(self):
         """Cleanup routing rules."""
         try:
-            # Disable IP forwarding
-            with open('/proc/sys/net/ipv4/ip_forward', 'w') as f:
-                f.write('0\n')
-            
-            log_debug('Dnsmasq', 'Disabled IP forwarding')
+            # Restore forwarding to the value recorded before this run.
+            if Configuration.get_interface_manager().restore_ip_forwarding():
+                log_debug('Dnsmasq', 'Restored IP forwarding state')
+            else:
+                log_warning('Dnsmasq', 'Failed to restore IP forwarding state')
             
             # Remove iptables rules if they were added
             # This is commented out as we didn't add them in _setup_routing

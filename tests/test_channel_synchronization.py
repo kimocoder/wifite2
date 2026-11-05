@@ -141,153 +141,112 @@ class TestChannelSynchronization(unittest.TestCase):
                         if 'Warning' in str(c)]
         self.assertGreaterEqual(len(warning_calls), 2)
     
-    @patch('wifite.util.process.Process')
     @patch('wifite.attack.wpa.Color')
-    def test_set_interface_channels_both_success(self, mock_color, mock_process):
-        """Test setting channels when both interfaces succeed."""
-        # Setup
+    def test_set_interface_channels_both_success(self, mock_color):
+        """Both channel writes go through the state owner and succeed."""
         attack = AttackWPA(self.mock_target)
         attack.capture_interface = 'wlan0mon'
         attack.deauth_interface = 'wlan1mon'
         attack.view = None
-        
-        # Mock successful process execution; readback reports the target
-        # channel immediately (FullMAC readback verification).
-        mock_proc = MagicMock()
-        mock_proc.stdout.return_value = 'channel 6 (2437 MHz), width: 20 MHz'
-        mock_process.return_value = mock_proc
-        
-        # Execute
-        attack._set_interface_channels()
-        
-        # Verify both interfaces were set (set + readback per interface)
-        self.assertEqual(mock_process.call_count, 4)
-        mock_process.assert_any_call(['iw', 'wlan0mon', 'set', 'channel', '6'])
-        mock_process.assert_any_call(['iw', 'wlan1mon', 'set', 'channel', '6'])
-        mock_process.assert_any_call(['iw', 'dev', 'wlan0mon', 'info'])
-        mock_process.assert_any_call(['iw', 'dev', 'wlan1mon', 'info'])
-        
-        # Should show success message
-        success_calls = [c for c in mock_color.pl.call_args_list 
-                        if 'Both interfaces set' in str(c)]
-        self.assertGreater(len(success_calls), 0)
-    
-    @patch('wifite.util.process.Process')
-    @patch('wifite.attack.wpa.Color')
-    def test_set_interface_channels_capture_fails(self, mock_color, mock_process):
-        """Test setting channels when capture interface fails."""
-        # Setup
-        attack = AttackWPA(self.mock_target)
-        attack.capture_interface = 'wlan0mon'
-        attack.deauth_interface = 'wlan1mon'
-        attack.view = None
-        
-        # Mock first call (capture) fails, second (deauth) succeeds
-        def process_side_effect(cmd):
-            mock_proc = MagicMock()
-            if 'wlan0mon' in cmd:
-                mock_proc.wait.side_effect = Exception('Channel set failed')
-            return mock_proc
-        
-        mock_process.side_effect = process_side_effect
-        
-        # Execute
-        attack._set_interface_channels()
-        
-        # Verify error was logged
-        error_calls = [c for c in mock_color.pl.call_args_list 
-                      if 'Error' in str(c) and 'wlan0mon' in str(c)]
-        self.assertGreater(len(error_calls), 0)
-        
-        # Should show warning about only one interface working
-        warning_calls = [c for c in mock_color.pl.call_args_list 
-                        if 'Only' in str(c) and 'wlan1mon' in str(c)]
-        self.assertGreater(len(warning_calls), 0)
-    
-    @patch('wifite.util.process.Process')
-    @patch('wifite.attack.wpa.Color')
-    def test_set_interface_channels_deauth_fails(self, mock_color, mock_process):
-        """Test setting channels when deauth interface fails."""
-        # Setup
-        attack = AttackWPA(self.mock_target)
-        attack.capture_interface = 'wlan0mon'
-        attack.deauth_interface = 'wlan1mon'
-        attack.view = None
-        
-        # Mock first call (capture) succeeds, second (deauth) fails
-        def process_side_effect(cmd):
-            mock_proc = MagicMock()
-            if 'wlan1mon' in cmd:
-                mock_proc.wait.side_effect = Exception('Channel set failed')
-            return mock_proc
-        
-        mock_process.side_effect = process_side_effect
-        
-        # Execute
-        attack._set_interface_channels()
-        
-        # Verify error was logged
-        error_calls = [c for c in mock_color.pl.call_args_list 
-                      if 'Error' in str(c) and 'wlan1mon' in str(c)]
-        self.assertGreater(len(error_calls), 0)
-        
-        # Should show warning about only one interface working
-        warning_calls = [c for c in mock_color.pl.call_args_list 
-                        if 'Only' in str(c) and 'wlan0mon' in str(c)]
-        self.assertGreater(len(warning_calls), 0)
-    
-    @patch('wifite.util.process.Process')
-    @patch('wifite.attack.wpa.Color')
-    def test_set_interface_channels_both_fail(self, mock_color, mock_process):
-        """Test setting channels when both interfaces fail."""
-        # Setup
-        attack = AttackWPA(self.mock_target)
-        attack.capture_interface = 'wlan0mon'
-        attack.deauth_interface = 'wlan1mon'
-        attack.view = None
-        
-        # Mock both calls fail
-        mock_proc = MagicMock()
-        mock_proc.wait.side_effect = Exception('Channel set failed')
-        mock_process.return_value = mock_proc
-        
-        # Execute
-        attack._set_interface_channels()
-        
-        # Verify error messages for both interfaces
-        error_calls = [c for c in mock_color.pl.call_args_list 
-                      if 'Error' in str(c)]
-        self.assertGreaterEqual(len(error_calls), 2)
-        
-        # Should show error about both interfaces failing
-        both_fail_calls = [c for c in mock_color.pl.call_args_list 
-                          if 'Failed to set channel on both' in str(c)]
-        self.assertGreater(len(both_fail_calls), 0)
 
+        owner = MagicMock()
+        owner.set_interface_channel.return_value = True
+
+        with patch.object(Configuration, 'get_interface_manager', return_value=owner):
+            attack._set_interface_channels()
+
+        self.assertEqual(owner.set_interface_channel.call_count, 2)
+        owner.set_interface_channel.assert_any_call('wlan0mon', 6)
+        owner.set_interface_channel.assert_any_call('wlan1mon', 6)
+        success_calls = [c for c in mock_color.pl.call_args_list
+                         if 'Both interfaces set' in str(c)]
+        self.assertGreater(len(success_calls), 0)
 
     @patch('wifite.attack.wpa.time.sleep')
-    @patch('wifite.util.process.Process')
     @patch('wifite.attack.wpa.Color')
-    def test_set_interface_channels_retries_deferred_readback(self, mock_color,
-                                                               mock_process, _sleep):
-        """FullMAC readback can lag the set; the helper retries until it settles."""
+    def test_set_interface_channels_capture_fails(self, mock_color, _sleep):
+        """A rejected capture-interface write is reported as a failure."""
         attack = AttackWPA(self.mock_target)
         attack.capture_interface = 'wlan0mon'
         attack.deauth_interface = 'wlan1mon'
         attack.view = None
 
-        readbacks = ['channel 4 (2427 MHz)'] * 2 + ['channel 6 (2437 MHz)'] * 10
+        owner = MagicMock()
+        owner.set_interface_channel.side_effect = lambda iface, ch: iface != 'wlan0mon'
+        owner._get_interface_channel.return_value = 1
 
-        def fake_process(cmd):
-            proc = MagicMock()
-            if cmd[:3] == ['iw', 'dev', 'wlan0mon']:
-                proc.stdout.return_value = readbacks.pop(0)
-            else:
-                proc.stdout.return_value = 'channel 6 (2437 MHz)'
-            return proc
+        with patch.object(Configuration, 'get_interface_manager', return_value=owner):
+            attack._set_interface_channels()
 
-        mock_process.side_effect = fake_process
-        attack._set_interface_channels()
+        error_calls = [c for c in mock_color.pl.call_args_list
+                       if 'Error' in str(c) and 'wlan0mon' in str(c)]
+        self.assertGreater(len(error_calls), 0)
+        warning_calls = [c for c in mock_color.pl.call_args_list
+                         if 'Only' in str(c) and 'wlan1mon' in str(c)]
+        self.assertGreater(len(warning_calls), 0)
+
+    @patch('wifite.attack.wpa.time.sleep')
+    @patch('wifite.attack.wpa.Color')
+    def test_set_interface_channels_deauth_fails(self, mock_color, _sleep):
+        """A rejected deauth-interface write is reported as a failure."""
+        attack = AttackWPA(self.mock_target)
+        attack.capture_interface = 'wlan0mon'
+        attack.deauth_interface = 'wlan1mon'
+        attack.view = None
+
+        owner = MagicMock()
+        owner.set_interface_channel.side_effect = lambda iface, ch: iface != 'wlan1mon'
+        owner._get_interface_channel.return_value = 1
+
+        with patch.object(Configuration, 'get_interface_manager', return_value=owner):
+            attack._set_interface_channels()
+
+        error_calls = [c for c in mock_color.pl.call_args_list
+                       if 'Error' in str(c) and 'wlan1mon' in str(c)]
+        self.assertGreater(len(error_calls), 0)
+        warning_calls = [c for c in mock_color.pl.call_args_list
+                         if 'Only' in str(c) and 'wlan0mon' in str(c)]
+        self.assertGreater(len(warning_calls), 0)
+
+    @patch('wifite.attack.wpa.time.sleep')
+    @patch('wifite.attack.wpa.Color')
+    def test_set_interface_channels_both_fail(self, mock_color, _sleep):
+        """Persistent channel mismatches on both interfaces is a failure."""
+        attack = AttackWPA(self.mock_target)
+        attack.capture_interface = 'wlan0mon'
+        attack.deauth_interface = 'wlan1mon'
+        attack.view = None
+
+        owner = MagicMock()
+        owner.set_interface_channel.return_value = False
+        owner._get_interface_channel.return_value = 1
+
+        with patch.object(Configuration, 'get_interface_manager', return_value=owner):
+            attack._set_interface_channels()
+
+        error_calls = [c for c in mock_color.pl.call_args_list
+                       if 'Error' in str(c)]
+        self.assertGreaterEqual(len(error_calls), 2)
+        both_fail_calls = [c for c in mock_color.pl.call_args_list
+                           if 'Failed to set channel on both' in str(c)]
+        self.assertGreater(len(both_fail_calls), 0)
+
+    @patch('wifite.attack.wpa.time.sleep')
+    @patch('wifite.attack.wpa.Color')
+    def test_set_interface_channels_retries_deferred_readback(self, mock_color,
+                                                               _sleep):
+        """FullMAC readback can lag the write; retry until it settles."""
+        attack = AttackWPA(self.mock_target)
+        attack.capture_interface = 'wlan0mon'
+        attack.deauth_interface = 'wlan1mon'
+        attack.view = None
+
+        owner = MagicMock()
+        owner.set_interface_channel.side_effect = lambda iface, ch: iface == 'wlan1mon'
+        owner._get_interface_channel.side_effect = [4, 4, 6]
+
+        with patch.object(Configuration, 'get_interface_manager', return_value=owner):
+            attack._set_interface_channels()
 
         success_calls = [c for c in mock_color.pl.call_args_list
                          if 'Both interfaces set' in str(c)]

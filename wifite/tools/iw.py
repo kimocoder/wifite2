@@ -22,11 +22,11 @@ class Iw(Dependency):
 
     @classmethod
     def mode(cls, iface, mode_name):
-        from ..util.process import Process
+        """Set the interface mode through the single state owner."""
+        from ..config import Configuration
 
         _check_iface(iface)
-        # Use correct iw syntax: iw dev <interface> set type <mode>
-        return Process.call(f'iw dev {iface} set type {mode_name}')
+        return Configuration.get_interface_manager().set_interface_mode(iface, mode_name)
 
     @classmethod
     def get_interfaces(cls, mode=None):
