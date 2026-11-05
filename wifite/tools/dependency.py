@@ -429,7 +429,8 @@ class Dependency:
         from .reaver import Reaver
         from .tshark import Tshark
         from .macchanger import Macchanger
-        from .hashcat import Hashcat, HcxDumpTool, HcxPcapngTool
+        from .hashcat import Hashcat, HcxPcapngTool
+        from .hcxdumptool import HcxDumpTool
         from .nexmon import Nexmon
 
         apps = [
