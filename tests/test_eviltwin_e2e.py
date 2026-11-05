@@ -11,6 +11,7 @@ Tests realistic scenarios including:
 - Attack lifecycle with simulated network conditions
 """
 
+import hashlib
 import unittest
 import tempfile
 import shutil
@@ -39,6 +40,13 @@ from wifite.util.credential_validator import CredentialValidator
 
 # Restore original argv
 sys.argv = original_argv
+
+
+def wpa_psk(ssid, password):
+    """Standard WPA-PBKDF2-SHA1 256-bit PSK derivation."""
+    return hashlib.pbkdf2_hmac(
+        'sha1', password.encode('utf-8'), ssid.encode('utf-8'), 4096,
+        dklen=32).hex()
 
 
 class TestRealRouterScenarios(unittest.TestCase):
@@ -268,7 +276,8 @@ class TestPasswordFormatValidation(unittest.TestCase):
             with open(config_file, 'r') as f:
                 content = f.read()
             
-            self.assertIn('psk="Password123"', content)
+            self.assertIn('ssid=' + 'TestNet'.encode().hex(), content)
+            self.assertIn('psk=' + wpa_psk('TestNet', 'Password123'), content)
         finally:
             if os.path.exists(config_file):
                 os.remove(config_file)
@@ -292,7 +301,7 @@ class TestPasswordFormatValidation(unittest.TestCase):
                     with open(config_file, 'r') as f:
                         content = f.read()
                     
-                    self.assertIn(f'psk="{password}"', content)
+                    self.assertIn(f'psk={wpa_psk("TestNet", password)}', content)
                 finally:
                     if os.path.exists(config_file):
                         os.remove(config_file)
@@ -315,8 +324,12 @@ class TestPasswordFormatValidation(unittest.TestCase):
                     with open(config_file, 'r') as f:
                         content = f.read()
                     
-                    # Password should be in config
-                    self.assertIn('psk=', content)
+                    # Only the derived hex PSK appears, never the raw password.
+                    self.assertNotIn(password, content)
+                    psk_lines = [line for line in content.splitlines()
+                                 if line.strip().startswith('psk=')]
+                    self.assertEqual(len(psk_lines), 1)
+                    self.assertRegex(psk_lines[0], r'psk=[0-9a-f]{64}$')
                 finally:
                     if os.path.exists(config_file):
                         os.remove(config_file)
@@ -332,7 +345,7 @@ class TestPasswordFormatValidation(unittest.TestCase):
             with open(config_file, 'r') as f:
                 content = f.read()
             
-            self.assertIn('psk="12345678"', content)
+            self.assertIn('psk=' + wpa_psk('TestNet', '12345678'), content)
         finally:
             if os.path.exists(config_file):
                 os.remove(config_file)
@@ -348,7 +361,7 @@ class TestPasswordFormatValidation(unittest.TestCase):
             with open(config_file, 'r') as f:
                 content = f.read()
             
-            self.assertIn(f'psk="{password}"', content)
+            self.assertIn(f'psk={wpa_psk("TestNet", password)}', content)
         finally:
             if os.path.exists(config_file):
                 os.remove(config_file)
@@ -364,7 +377,7 @@ class TestPasswordFormatValidation(unittest.TestCase):
             with open(config_file, 'r') as f:
                 content = f.read()
             
-            self.assertIn('psk="My Password 123"', content)
+            self.assertIn('psk=' + wpa_psk('TestNet', 'My Password 123'), content)
         finally:
             if os.path.exists(config_file):
                 os.remove(config_file)
@@ -380,12 +393,39 @@ class TestPasswordFormatValidation(unittest.TestCase):
             with open(config_file, 'r') as f:
                 content = f.read()
             
-            # Password should be in config (may be escaped)
-            self.assertIn('psk=', content)
+            self.assertNotIn(password, content)
+            self.assertNotIn('psk="', content)
+            self.assertEqual(content.count('network={'), 1)
+            self.assertEqual(
+                sum(1 for line in content.splitlines()
+                    if line.strip().startswith('psk=')), 1)
         finally:
             if os.path.exists(config_file):
                 os.remove(config_file)
     
+    def test_config_injection_payloads_are_neutralized(self):
+        """SSID/password newlines and quotes must not add config directives."""
+        ssid = 'Evil"\nnetwork={\n}'
+        password = 'Pass"\nnetwork={\npsk=1\n}'
+
+        config_file = self.validator._create_wpa_config(ssid, password)
+
+        try:
+            with open(config_file, 'r') as f:
+                content = f.read()
+
+            self.assertNotIn(ssid, content)
+            self.assertNotIn(password, content)
+            self.assertNotIn('psk="', content)
+            self.assertEqual(content.count('network={'), 1)
+            self.assertEqual(
+                sum(1 for line in content.splitlines()
+                    if line.strip().startswith('psk=')), 1)
+            self.assertIn('ssid=' + ssid.encode('utf-8').hex(), content)
+        finally:
+            if os.path.exists(config_file):
+                os.remove(config_file)
+
     def test_cache_different_passwords(self):
         """Test caching works with different password formats."""
         # Cache various password formats

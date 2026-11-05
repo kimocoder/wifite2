@@ -5,8 +5,9 @@
 Passive PMKID Attack Module
 
 Implements passive PMKID capture mode that monitors all nearby wireless
-networks simultaneously without transmitting deauthentication frames.
-Uses hcxdumptool with --rds=3 flag for passive capture.
+networks simultaneously without transmitting. hcxdumptool is launched with
+explicit no-association, no-probe-response, no-disassociation, and no-rogue
+flags; channel hopping is receive-only.
 """
 
 from ..config import Configuration

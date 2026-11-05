@@ -9,6 +9,7 @@ Tests captured credentials against the legitimate AP using wpa_supplicant.
 
 import os
 import time
+import hashlib
 import tempfile
 import threading
 from typing import Optional, Tuple, Dict
@@ -325,6 +326,27 @@ class CredentialValidator:
                 dir=Configuration.temp()
             )
             
+            # Encode the SSID as hex and derive the raw 256-bit PSK. This keeps
+            # quotes, backslashes, and newlines out of the config grammar
+            # entirely (configuration injection) while remaining valid for
+            # wpa_supplicant's ssid=<hex> and psk=<64 hex> forms.
+            if isinstance(ssid, bytes):
+                ssid_bytes = ssid
+            else:
+                ssid_bytes = ssid.encode('utf-8', errors='surrogateescape')
+            if not ssid_bytes or len(ssid_bytes) > 32:
+                raise ValueError('SSID must be 1-32 bytes')
+
+            if isinstance(password, bytes):
+                password_bytes = password
+            else:
+                password_bytes = password.encode('utf-8', errors='surrogateescape')
+            if not password_bytes:
+                raise ValueError('Password cannot be empty')
+
+            psk = hashlib.pbkdf2_hmac(
+                'sha1', password_bytes, ssid_bytes, 4096, dklen=32).hex()
+
             # Generate config
             config = []
             config.append('ctrl_interface=/var/run/wpa_supplicant')
@@ -332,9 +354,9 @@ class CredentialValidator:
             config.append('fast_reauth=1')
             config.append('')
             config.append('network={')
-            config.append(f'    ssid="{ssid}"')
+            config.append('    ssid=%s' % ssid_bytes.hex())
             config.append(f'    bssid={self.target_bssid}')
-            config.append(f'    psk="{password}"')
+            config.append(f'    psk={psk}')
             config.append('    key_mgmt=WPA-PSK')
             config.append('    proto=RSN WPA')
             config.append('    pairwise=CCMP TKIP')

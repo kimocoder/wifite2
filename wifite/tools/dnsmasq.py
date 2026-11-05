@@ -209,7 +209,7 @@ class Dnsmasq(Dependency):
                 log_error('Dnsmasq', f'Failed to start: {detail}')
                 Color.pl('{!} {R}Dnsmasq failed to start{W}')
                 Color.pl('{!} {O}%s{W}' % detail)
-                self._remove_temp_files()
+                self._cleanup_failed_start()
                 return False
 
             self.running = True
@@ -223,8 +223,13 @@ class Dnsmasq(Dependency):
         except Exception as e:
             log_error('Dnsmasq', f'Failed to start: {e}', e)
             Color.pl('{!} {R}Failed to start dnsmasq:{W} %s' % str(e))
-            self._remove_temp_files()
+            self._cleanup_failed_start()
             return False
+
+    def _cleanup_failed_start(self):
+        """Restore forwarding and remove temp files after a failed startup."""
+        self._cleanup_routing()
+        self._remove_temp_files()
     
     def _setup_routing(self):
         """Setup IP forwarding and routing rules."""

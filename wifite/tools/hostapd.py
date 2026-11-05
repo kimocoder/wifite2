@@ -253,13 +253,13 @@ class Hostapd(Dependency):
 
             # Check if process is running
             if self.process.poll() is not None:
-                # Process died — clean up config file
+                # Process died — remove config and undo interface changes
                 output = self.process.stdout()
                 log_error('Hostapd', f'Failed to start: {output}')
                 Color.pl('{!} {R}Hostapd failed to start{W}')
                 if Configuration.verbose > 0:
                     Color.pl('{!} {O}Output:{W}\n%s' % output)
-                self._remove_config_file()
+                self._cleanup_failed_start()
                 return False
 
             self.running = True
@@ -273,8 +273,14 @@ class Hostapd(Dependency):
         except Exception as e:
             log_error('Hostapd', f'Failed to start: {e}', e)
             Color.pl('{!} {R}Failed to start hostapd:{W} %s' % str(e))
-            self._remove_config_file()
+            self._cleanup_failed_start()
             return False
+
+    def _cleanup_failed_start(self):
+        """Undo interface/config changes after a failed startup."""
+        self._remove_config_file()
+        if Configuration.get_interface_manager().is_managed(self.interface):
+            self._restore_interface()
 
     def _prepare_interface(self):
         """Prepare wireless interface for AP mode through the state owner."""

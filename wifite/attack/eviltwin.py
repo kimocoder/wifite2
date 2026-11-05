@@ -491,6 +491,7 @@ class EvilTwin(Attack):
             # Verify hostapd is running
             if not self.hostapd.is_running():
                 log_error('EvilTwin', f'Hostapd started but is not running on {interface}')
+                self.hostapd.cleanup()
                 return False
             
             log_info('EvilTwin', f'Rogue AP started successfully on {interface}')
@@ -504,6 +505,8 @@ class EvilTwin(Attack):
         except Exception as e:
             log_error('EvilTwin', f'Failed to start rogue AP on {interface}: {e}', e)
             Color.pl('{!} {R}Failed to start rogue AP:{W} %s' % str(e))
+            if self.hostapd is not None:
+                self.hostapd.cleanup()
             return False
     
     def _start_network_services_dual(self) -> bool:

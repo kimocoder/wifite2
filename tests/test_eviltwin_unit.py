@@ -343,9 +343,11 @@ class TestCredentialValidator(unittest.TestCase):
             with open(config_file, 'r') as f:
                 content = f.read()
             
-            self.assertIn('ssid="TestNetwork"', content)
+            self.assertIn('ssid=546573744e6574776f726b', content)
             self.assertIn('bssid=11:22:33:44:55:66', content)
-            self.assertIn('psk="password123"', content)
+            self.assertIn(
+                'psk=4ae025a64d92258c4e27fbc35daf343c61f4ba6f6f4a6a36b992a03db5f77c3b',
+                content)
             self.assertIn('key_mgmt=WPA-PSK', content)
             self.assertIn('scan_freq=2437', content)  # Channel 6 = 2437 MHz
             
@@ -354,7 +356,26 @@ class TestCredentialValidator(unittest.TestCase):
                 os.remove(config_file)
         finally:
             validator.temp_files = []
-    
+
+    def test_wpa_config_uses_standard_psk_vector(self):
+        """PIN the WPA-PBKDF2 derivation to a known 256-bit test vector."""
+        validator = CredentialValidator('wlan0mon', '11:22:33:44:55:66', 6)
+
+        try:
+            config_file = validator._create_wpa_config('IEEE', 'password')
+            with open(config_file, 'r') as f:
+                content = f.read()
+
+            self.assertIn('ssid=49454545', content)
+            self.assertIn(
+                'psk=f42c6fc52df0ebef9ebb4b90b38a5f902e83fe1b135a70e23aed762e9710a12e',
+                content)
+        finally:
+            for path in validator.temp_files:
+                if os.path.exists(path):
+                    os.remove(path)
+            validator.temp_files = []
+
     def test_validation_cache(self):
         """Test credential validation caching."""
         validator = CredentialValidator('wlan0mon', 'AA:BB:CC:DD:EE:FF', 6)

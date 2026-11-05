@@ -362,12 +362,25 @@ class Process:
     def poll(self):
         return self.pid.poll()
 
-    def wait(self):
+    def wait(self, check=False):
+        """Wait for the process to exit and return its exit code.
+
+        Args:
+            check: When True, raise subprocess.CalledProcessError if the
+                   process exits nonzero. Defaults to False for backward
+                   compatibility with callers that inspect output instead.
+
+        Returns:
+            int: The process exit code.
+        """
         self.pid.wait()
         rc = self.pid.returncode
         if rc != 0:
             log_debug('Process', 'Process exited with code %d (ran %ds)' % (
                 rc, self.running_time()))
+            if check:
+                raise subprocess.CalledProcessError(rc, self.command)
+        return rc
 
     def running_time(self):
         return int(time.time() - self.start_time)

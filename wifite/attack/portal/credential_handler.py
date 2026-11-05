@@ -218,13 +218,24 @@ class CredentialHandler:
         # Check SSID
         if not ssid or not ssid.strip():
             return 'SSID cannot be empty'
-        
-        if len(ssid) > 32:
-            return 'SSID is too long (max 32 characters)'
+
+        if any(ord(ch) < 0x20 or ord(ch) == 0x7f for ch in ssid):
+            return 'SSID contains control characters'
+
+        try:
+            ssid_bytes = ssid.encode('utf-8')
+        except UnicodeEncodeError:
+            return 'SSID contains invalid characters'
+
+        if len(ssid_bytes) > 32:
+            return 'SSID is too long (max 32 bytes)'
         
         # Check password
         if not password:
             return 'Password cannot be empty'
+
+        if any(ord(ch) < 0x20 or ord(ch) == 0x7f for ch in password):
+            return 'Password contains control characters'
         
         if len(password) < 8:
             return 'Password is too short (min 8 characters)'

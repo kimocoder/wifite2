@@ -241,6 +241,11 @@ class TestHcxDumpToolPassive(unittest.TestCase):
             self.assertIn('-w', call_args)
             self.assertIn('/tmp/passive.pcapng', call_args)
 
+            # Passive mode must explicitly disable all active defaults.
+            for flag in HcxDumpToolPassive.PASSIVE_OPTIONS:
+                self.assertIn(flag, call_args)
+            self.assertNotIn('--rds=3', call_args)
+
             # Verify PID was set
             self.assertEqual(tool.pid, 12345)
             self.assertIsNotNone(tool.proc)
