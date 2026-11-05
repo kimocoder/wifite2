@@ -327,5 +327,54 @@ class TestHcxDumpToolPassive(unittest.TestCase):
         mock_proc_instance.interrupt.assert_called_once()
 
 
+class TestActiveMonitorGating(unittest.TestCase):
+    """-A is opt-in: active monitor is broken on many mt76 drivers."""
+
+    OUTPUT = '/tmp/wifite_test_active_monitor.pcapng'
+
+    def _command(self, driver='ath9k_htc', **kwargs):
+        Configuration.interface = 'wlan0'
+        with patch('wifite.tools.hcxdumptool.Configuration.initialize'), \
+             patch('wifite.tools.hcxdumptool.HcxDumpTool.check_tool_pairing',
+                   return_value=(True, None)), \
+             patch('wifite.tools.hcxdumptool.HcxDumpTool._driver_name',
+                   return_value=driver), \
+             patch('wifite.tools.hcxdumptool.Process') as mock_process, \
+             patch('wifite.tools.hcxdumptool.time.sleep'):
+            instance = mock_process.return_value
+            instance.pid.pid = 12345
+            instance.poll.return_value = 0  # already exited
+
+            with HcxDumpTool(interface='wlan0', channel=1,
+                             output_file=self.OUTPUT, **kwargs):
+                return mock_process.call_args[0][0]
+
+    def test_active_monitor_is_opt_in(self):
+        command = self._command()
+
+        self.assertNotIn('-A', command)
+        for flag in HcxDumpToolPassive.PASSIVE_OPTIONS:
+            self.assertNotIn(flag, command)
+
+    def test_active_monitor_flag_adds_ack(self):
+        command = self._command(active_monitor=True)
+
+        self.assertIn('-A', command)
+
+    def test_active_monitor_warns_on_mt76(self):
+        with patch('wifite.tools.hcxdumptool.log_warning') as warning:
+            command = self._command(driver='mt76x0u', active_monitor=True)
+
+        self.assertIn('-A', command)
+        warning.assert_called()
+
+    def test_no_deauth_uses_passive_options_without_ack(self):
+        command = self._command(enable_deauth=False)
+
+        self.assertNotIn('-A', command)
+        for flag in HcxDumpToolPassive.PASSIVE_OPTIONS:
+            self.assertIn(flag, command)
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -20,6 +20,8 @@ class FakeSystem:
         self.ips = ['10.0.0.2/24']
         self.up = True
         self.ifindex = 10
+        self.promisc = False
+        self.allmulti = False
         self.forwarding = 0
         self.commands = []
         self.forwarding_writes = []
@@ -50,6 +52,10 @@ class FakeSystem:
             self.up = command[4] == 'up'
         elif command[:4] == ['ip', 'link', 'set', 'dev'] and command[4:6] == [IFACE, 'address']:
             self.mac = command[6].upper()
+        elif command[:4] == ['ip', 'link', 'set', 'dev'] and command[4:6] == [IFACE, 'promisc']:
+            self.promisc = command[6] == 'on'
+        elif command[:4] == ['ip', 'link', 'set', 'dev'] and command[4:6] == [IFACE, 'allmulticast']:
+            self.allmulti = command[6] == 'on'
         elif command[:3] == ['ip', 'addr', 'add']:
             address = command[3]
             if address not in self.ips:
@@ -85,6 +91,10 @@ def manager(system):
         patch.object(InterfaceManager, '_is_interface_up', side_effect=lambda _iface: system.up),
         patch.object(InterfaceManager, '_get_interface_addresses', side_effect=lambda _iface: list(system.ips), create=True),
         patch.object(InterfaceManager, '_get_interface_ifindex', side_effect=lambda _iface: system.ifindex, create=True),
+        patch.object(InterfaceManager, '_get_interface_flags',
+                     side_effect=lambda _iface: ((0x100 if system.promisc else 0) |
+                                                 (0x200 if system.allmulti else 0)),
+                     create=True),
         patch.object(InterfaceManager, '_read_ip_forwarding', side_effect=system.read_forwarding, create=True),
         patch.object(InterfaceManager, '_write_ip_forwarding', side_effect=system.write_forwarding, create=True),
         patch('wifite.util.interface_manager.Process.run_simple', side_effect=system.run),
@@ -116,6 +126,8 @@ def test_snapshot_records_complete_original_state_before_writes(manager, system)
     assert state.original_ips == ['10.0.0.2/24']
     assert state.original_up is True
     assert state.original_ifindex == 10
+    assert state.original_promisc is False
+    assert state.original_allmulti is False
     assert system.commands == []
 
 
@@ -298,6 +310,59 @@ def test_concurrent_cleanup_restores_once(manager, system):
     assert sorted(results) == [0, 1]
     assert len(mode_commands(system, 'managed')) == 1
     assert system.mode == 'managed'
+
+
+def test_restore_repairs_out_of_band_monitor_mac_and_flags(manager, system):
+    """hcxdumptool changes mode/MAC/flags behind the ledger's back."""
+    assert manager.set_interface_mode(IFACE, 'monitor')
+
+    # Simulate hcxdumptool: no owner calls, just a mutated radio.
+    system.mode = 'monitor'
+    system.mac = NEW_MAC
+    system.promisc = True
+    system.allmulti = True
+
+    assert manager.restore_interface(IFACE)
+    assert system.mode == 'managed'
+    assert system.mac == ORIGINAL_MAC
+    assert system.promisc is False
+    assert system.allmulti is False
+    assert IFACE not in manager.interface_states
+
+
+def test_restore_reports_partial_when_flag_readback_disagrees(manager, system):
+    assert manager._save_interface_state(IFACE)
+    system.promisc = True
+    # The command reports success but the flag never clears.
+    system.ignore_next = lambda command: 'promisc' in command
+
+    with patch('wifite.util.interface_manager.log_info') as log_info:
+        assert not manager.restore_interface(IFACE)
+
+    assert IFACE in manager.interface_states
+    assert not any('SUCCESS' in str(call) for call in log_info.call_args_list)
+
+
+def test_handover_uses_live_state_without_snapshot(manager, system):
+    system.mode = 'monitor'
+
+    assert manager.hand_over_monitor(IFACE)
+    assert system.mode == 'managed'
+    assert IFACE not in manager.interface_states
+
+    assert manager.rearm_monitor(IFACE)
+    assert system.mode == 'monitor'
+
+
+def test_handover_tracks_state_when_managed(manager, system):
+    assert manager.set_interface_mode(IFACE, 'monitor')
+
+    assert manager.hand_over_monitor(IFACE)
+    assert system.mode == 'managed'
+    assert manager.interface_states[IFACE].current_mode == 'managed'
+
+    assert manager.rearm_monitor(IFACE)
+    assert system.mode == 'monitor'
 
 
 class TestInterfaceAdminState:

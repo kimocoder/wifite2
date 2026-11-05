@@ -87,6 +87,7 @@ class Configuration:
     auto_assign_interfaces = None
     prefer_dual_interface = None
     use_hcxdump = None
+    hcxdump_active_monitor = False
     # Session resume flags
     resume = None
     resume_latest = None

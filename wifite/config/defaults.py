@@ -64,6 +64,7 @@ def initialize_defaults(cls):
     cls.auto_assign_interfaces = True  # Auto-assign interfaces (default True)
     cls.prefer_dual_interface = True  # Prefer dual over single when available (default True)
     cls.use_hcxdump = False  # Use hcxdumptool for dual interface WPA capture (default False)
+    cls.hcxdump_active_monitor = False  # -A is opt-in; broken on many mt76 drivers
 
     # WEP variables
     cls.wep_filter = False  # Only attack WEP networks

@@ -510,6 +510,13 @@ against the real AP and captures valid passwords.
                                       'Falls back to airodump-ng if hcxdumptool is unavailable. '
                                       'Requires hcxdumptool v7.0.0+ (default: {G}off{W})'))
 
+        glob.add_argument('--hcxdump-active',
+                          action='store_true',
+                          dest='hcxdump_active_monitor',
+                          help=Color.s('Enable hcxdumptool active-monitor ACK ({C}-A{W}). '
+                                      'Off by default: active monitor is broken on many '
+                                      '{O}mt76{W} drivers and can reduce capture to zero'))
+
     def _add_eviltwin_args(self, group):
         group.add_argument('--eviltwin',
                           action='store_true',

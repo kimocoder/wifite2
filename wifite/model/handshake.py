@@ -11,6 +11,9 @@ import os
 
 
 class Handshake:
+    # cowpatty capability probing spawns processes; do it once per run.
+    _cowpatty_available = None
+    _cowpatty_supports_dash_2 = None
 
     def __init__(self, capfile, bssid=None, essid=None):
         self.capfile = capfile
@@ -92,17 +95,10 @@ class Handshake:
 
     def cowpatty_handshakes(self):
         """Returns list[tuple] of BSSID & ESSID pairs (BSSIDs are always `None`)."""
-        if not Process.exists('cowpatty'):
+        if not self._cowpatty_is_available():
             return []
 
-        # Check if cowpatty supports the -2 parameter (frames 1&2 or 2&3)
-        # Run cowpatty with -h to get help output instead of running without args
-        try:
-            cowpattycheck = Process(['cowpatty', '-h'], devnull=False)
-            supports_dash_2 = 'frames 1 and 2 or 2 and 3 for key attack' in cowpattycheck.stdout()
-        except Exception:
-            # If help check fails, assume -2 is not supported
-            supports_dash_2 = False
+        supports_dash_2 = self._cowpatty_dash_2_support()
 
         # Build command - only include -2 if supported
         command = ['cowpatty']
@@ -128,6 +124,28 @@ class Handshake:
             ),
             [],
         )
+
+    @classmethod
+    def _cowpatty_is_available(cls) -> bool:
+        """Cache cowpatty availability for the life of the process."""
+        if cls._cowpatty_available is None:
+            cls._cowpatty_available = Process.exists('cowpatty')
+        return cls._cowpatty_available
+
+    @classmethod
+    def _cowpatty_dash_2_support(cls) -> bool:
+        """Cache whether this cowpatty build supports -2 (frames 1&2 / 2&3)."""
+        if cls._cowpatty_supports_dash_2 is None:
+            cls._cowpatty_supports_dash_2 = False
+            if cls._cowpatty_is_available():
+                try:
+                    cowpattycheck = Process(['cowpatty', '-h'], devnull=False)
+                    cls._cowpatty_supports_dash_2 = (
+                        'frames 1 and 2 or 2 and 3 for key attack'
+                        in cowpattycheck.stdout())
+                except Exception:
+                    cls._cowpatty_supports_dash_2 = False
+        return cls._cowpatty_supports_dash_2
 
     def aircrack_handshakes(self):
         """Returns tuple (BSSID,None) if aircrack thinks self.capfile contains a handshake / can be cracked"""

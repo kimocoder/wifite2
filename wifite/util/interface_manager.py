@@ -43,6 +43,8 @@ class InterfaceState:
     managed_by_wifite: bool = True      # Whether wifite is managing this interface
     original_ips: List[str] = field(default_factory=list)
     original_ifindex: Optional[int] = None
+    original_promisc: Optional[bool] = None
+    original_allmulti: Optional[bool] = None
     changed_fields: Set[str] = field(default_factory=set)
     added_ips: Set[str] = field(default_factory=set)
 
@@ -306,6 +308,7 @@ class InterfaceManager:
                 current_channel = self._get_interface_channel(interface)
                 current_ips = self._get_interface_addresses(interface)
                 current_ifindex = self._get_interface_ifindex(interface)
+                current_flags = self._get_interface_flags(interface)
 
                 if (current_mode in (None, '', 'unknown') or current_up is None or
                         current_mac in (None, '', 'unknown') or current_ips is None or
@@ -324,6 +327,10 @@ class InterfaceManager:
                     current_up=current_up,
                     original_ips=list(current_ips),
                     original_ifindex=current_ifindex,
+                    original_promisc=(bool(current_flags & self.IFF_PROMISC)
+                                      if current_flags is not None else None),
+                    original_allmulti=(bool(current_flags & self.IFF_ALLMULTI)
+                                       if current_flags is not None else None),
                 )
                 self.interface_states[interface] = state
                 self.managed_interfaces[interface] = {
@@ -503,7 +510,93 @@ class InterfaceManager:
             except Exception as e:
                 log_error('InterfaceManager', f'Could not set {interface} to {mode} mode: {e}', e)
                 return False
-    
+
+    def hand_over_monitor(self, interface: str) -> bool:
+        """
+        Return a monitor-mode interface to managed mode for hcxdumptool.
+
+        hcxdumptool 7+ owns the monitor lifecycle and refuses to arm an
+        interface that a third party left in monitor mode. The decision is
+        made from live ``iw`` output, never from the ownership ledger:
+        external tools change the mode out-of-band, so a stale ledger would
+        skip the handover and make the capture silently fail.
+
+        Untracked interfaces are handed over without creating a snapshot;
+        ``rearm_monitor`` puts them back when hcxdumptool exits.
+        """
+        with self._state_lock:
+            try:
+                from ..config.validators import validate_interface_name
+                validate_interface_name(interface)
+
+                if self._canonical_mode(self._get_interface_mode(interface)) != 'monitor':
+                    return False
+
+                if self.is_managed(interface):
+                    return self.set_interface_mode(interface, 'managed')
+
+                was_up = self._is_interface_up(interface)
+                if was_up is None:
+                    return False
+                if was_up and not self._run_checked(['ip', 'link', 'set', interface, 'down']):
+                    return False
+                if not self._run_checked(
+                        ['iw', 'dev', interface, 'set', 'type', 'managed'],
+                        f'Hand {interface} to hcxdumptool in managed mode'):
+                    if was_up:
+                        self._run_checked(['ip', 'link', 'set', interface, 'up'])
+                    return False
+                if was_up and not self._run_checked(['ip', 'link', 'set', interface, 'up']):
+                    return False
+
+                observed = self._canonical_mode(self._get_interface_mode(interface))
+                if observed != 'managed':
+                    log_error('InterfaceManager',
+                              f'{interface} did not reach managed mode for handover '
+                              f'(still {observed})')
+                    return False
+
+                log_info('InterfaceManager',
+                         f'Handed {interface} to hcxdumptool in managed mode')
+                return True
+            except Exception as e:
+                log_error('InterfaceManager',
+                          f'Could not hand {interface} to hcxdumptool: {e}', e)
+                return False
+
+    def rearm_monitor(self, interface: str) -> bool:
+        """Return an interface handed to hcxdumptool to monitor mode."""
+        with self._state_lock:
+            try:
+                from ..config.validators import validate_interface_name
+                validate_interface_name(interface)
+
+                if self.is_managed(interface):
+                    return self.set_interface_mode(interface, 'monitor')
+
+                if self._canonical_mode(self._get_interface_mode(interface)) == 'monitor':
+                    return True
+
+                was_up = self._is_interface_up(interface)
+                if was_up is None:
+                    return False
+                if was_up and not self._run_checked(['ip', 'link', 'set', interface, 'down']):
+                    return False
+                if not self._run_checked(
+                        ['iw', 'dev', interface, 'set', 'type', 'monitor'],
+                        f'Re-arm {interface} in monitor mode'):
+                    if was_up:
+                        self._run_checked(['ip', 'link', 'set', interface, 'up'])
+                    return False
+                if was_up and not self._run_checked(['ip', 'link', 'set', interface, 'up']):
+                    return False
+
+                return self._canonical_mode(self._get_interface_mode(interface)) == 'monitor'
+            except Exception as e:
+                log_error('InterfaceManager',
+                          f'Could not re-arm {interface} in monitor mode: {e}', e)
+                return False
+
     def set_interface_channel(self, interface: str, channel: int) -> bool:
         with self._state_lock:
             try:
@@ -1036,11 +1129,50 @@ class InterfaceManager:
                 return False
 
             success = True
-            changed = state.changed_fields
             brought_down = False
 
+            # Diff the live device against the snapshot. External tools
+            # (hcxdumptool, airmon-ng, airodump-ng) change mode/MAC/flags
+            # out-of-band without touching changed_fields; trusting the
+            # ledger alone leaves the radio in monitor mode with a spoofed
+            # MAC while reporting success.
+            live_mode = self._canonical_mode(self._get_interface_mode(interface))
+            live_up = self._is_interface_up(interface)
+            live_mac = self._get_interface_mac(interface)
+            live_channel = self._get_interface_channel(interface)
+            live_ips = self._get_interface_addresses(interface)
+            live_flags = self._get_interface_flags(interface)
+            if live_mode is None or live_up is None or live_ips is None:
+                log_error('InterfaceManager',
+                          f'Cannot read live state for {interface}; refusing to guess')
+                return False
+
+            original_mode = self._canonical_mode(state.original_mode)
+            changed = set(state.changed_fields)
+            if live_mode != original_mode:
+                changed.add('mode')
+            if live_up != state.original_up:
+                changed.add('up')
+            if (live_mac not in (None, 'unknown') and state.original_mac and
+                    live_mac.upper() != state.original_mac.upper()):
+                changed.add('mac')
+            if (state.original_channel is not None and
+                    live_channel is not None and
+                    live_channel != state.original_channel and
+                    original_mode != 'managed'):
+                changed.add('channel')
+            if set(live_ips) != set(state.original_ips):
+                changed.add('addresses')
+            if live_flags is not None:
+                if (state.original_promisc is not None and
+                        bool(live_flags & self.IFF_PROMISC) != state.original_promisc):
+                    changed.add('promisc')
+                if (state.original_allmulti is not None and
+                        bool(live_flags & self.IFF_ALLMULTI) != state.original_allmulti):
+                    changed.add('allmulti')
+
             needs_down = bool(changed & {'mode', 'mac'})
-            if needs_down and self._is_interface_up(interface):
+            if needs_down and live_up:
                 log_info('InterfaceManager',
                          f'Cleanup step: Bringing {interface} down')
                 if not self._run_checked(['ip', 'link', 'set', interface, 'down']):
@@ -1140,6 +1272,26 @@ class InterfaceManager:
                                   f'Cleanup failed: could not leave {interface} down')
                         success = False
 
+            # Monitor mode leaves IFF_PROMISC/IFF_ALLMULTI set; switching back
+            # to managed does not clear them, so restore them explicitly.
+            for field, flag in (('promisc', self.IFF_PROMISC),
+                                ('allmulti', self.IFF_ALLMULTI)):
+                if field not in changed:
+                    continue
+                desired = (state.original_promisc if field == 'promisc'
+                           else state.original_allmulti)
+                if desired is None:
+                    continue
+                log_info('InterfaceManager',
+                         f'Cleanup step: Setting {field}={desired} on {interface}')
+                if not self._set_interface_flag(interface, flag, desired):
+                    log_error('InterfaceManager',
+                              f'{field} readback mismatch on {interface}')
+                    success = False
+
+            if success:
+                success = self._verify_restored_state(interface, state, changed)
+
             if success:
                 del self.interface_states[interface]
                 self.assigned_ips.pop(interface, None)
@@ -1151,6 +1303,80 @@ class InterfaceManager:
                             f'Cleanup result: PARTIAL - retaining {interface} state for retry')
             log_info('InterfaceManager', '=' * 60)
             return success
+
+    def _verify_restored_state(self, interface: str, state: InterfaceState,
+                               changed: Set[str]) -> bool:
+        """Re-read the device and confirm every restored field matches.
+
+        A restore is only successful when the kernel agrees with the
+        snapshot; otherwise the state record is retained for a retry.
+        """
+        if 'mode' in changed:
+            observed = self._canonical_mode(self._get_interface_mode(interface))
+            if observed != self._canonical_mode(state.original_mode):
+                log_error('InterfaceManager',
+                          f'{interface} mode is still {observed}, expected '
+                          f'{state.original_mode}')
+                return False
+
+        if 'up' in changed:
+            observed = self._is_interface_up(interface)
+            if observed != state.original_up:
+                log_error('InterfaceManager',
+                          f'{interface} up-state is still {observed}, expected '
+                          f'{state.original_up}')
+                return False
+
+        if 'mac' in changed:
+            observed = self._get_interface_mac(interface)
+            if observed in (None, 'unknown') or state.original_mac is None or \
+                    observed.upper() != state.original_mac.upper():
+                log_error('InterfaceManager',
+                          f'{interface} MAC is still {observed}, expected '
+                          f'{state.original_mac}')
+                return False
+
+        if 'channel' in changed:
+            observed = self._get_interface_channel(interface)
+            if observed != state.original_channel:
+                log_error('InterfaceManager',
+                          f'{interface} channel is still {observed}, expected '
+                          f'{state.original_channel}')
+                return False
+
+        if 'addresses' in changed:
+            observed = self._get_interface_addresses(interface)
+            original_ips = set(state.original_ips)
+            run_added = set(state.added_ips) - original_ips
+            if observed is None or not original_ips.issubset(set(observed)) or \
+                    run_added & set(observed):
+                log_error('InterfaceManager',
+                          f'{interface} addresses are still {observed}, expected '
+                          f'{sorted(original_ips)}')
+                return False
+
+        if changed & {'promisc', 'allmulti'}:
+            flags = self._get_interface_flags(interface)
+            if flags is None:
+                log_error('InterfaceManager',
+                          f'Cannot read flags for {interface} during verification')
+                return False
+            if 'promisc' in changed and state.original_promisc is not None and \
+                    bool(flags & self.IFF_PROMISC) != state.original_promisc:
+                log_error('InterfaceManager',
+                          f'{interface} promisc is still '
+                          f'{bool(flags & self.IFF_PROMISC)}, expected '
+                          f'{state.original_promisc}')
+                return False
+            if 'allmulti' in changed and state.original_allmulti is not None and \
+                    bool(flags & self.IFF_ALLMULTI) != state.original_allmulti:
+                log_error('InterfaceManager',
+                          f'{interface} allmulti is still '
+                          f'{bool(flags & self.IFF_ALLMULTI)}, expected '
+                          f'{state.original_allmulti}')
+                return False
+
+        return True
 
     def _restore_interface_legacy(self, interface: str) -> bool:
         """
@@ -1491,6 +1717,55 @@ class InterfaceManager:
             log_debug('InterfaceManager', f'Failed to check if {interface} is up: {e}')
             return False
     
+    # netdev IFF_* bits exposed through /sys/class/net/<if>/flags.
+    IFF_PROMISC = 0x100
+    IFF_ALLMULTI = 0x200
+
+    @staticmethod
+    def _get_interface_flags(interface: str) -> Optional[int]:
+        """
+        Read the netdev flag word for an interface.
+
+        Promiscuous/all-multicast are set implicitly when an interface enters
+        monitor mode and are not cleared by switching back to managed, so they
+        must be snapshotted and restored explicitly.
+
+        Returns:
+            Raw IFF_* flag word, or None when it cannot be read.
+        """
+        try:
+            with open(f'/sys/class/net/{interface}/flags', 'r') as handle:
+                return int(handle.read().strip(), 16)
+        except (OSError, ValueError):
+            pass
+
+        try:
+            output = Process(['ip', '-d', 'link', 'show', interface]).stdout()
+            match = re.search(r'promiscuity\s+(\d+).*?allmulti\s+(\d+)', output, re.S)
+            if match:
+                flags = 0
+                if int(match.group(1)):
+                    flags |= InterfaceManager.IFF_PROMISC
+                if int(match.group(2)):
+                    flags |= InterfaceManager.IFF_ALLMULTI
+                return flags
+        except Exception as e:
+            log_debug('InterfaceManager',
+                      f'Failed to read flags for {interface}: {e}')
+        return None
+
+    def _set_interface_flag(self, interface: str, flag: int,
+                            enabled: bool) -> bool:
+        """Set an IFF_* flag and verify it through sysfs."""
+        keyword = 'promisc' if flag == self.IFF_PROMISC else 'allmulticast'
+        if not self._run_checked(['ip', 'link', 'set', 'dev', interface,
+                                  keyword, 'on' if enabled else 'off']):
+            return False
+        observed = self._get_interface_flags(interface)
+        if observed is None:
+            return False
+        return bool(observed & flag) == enabled
+
     @staticmethod
     def _is_interface_connected(interface: str) -> bool:
         """

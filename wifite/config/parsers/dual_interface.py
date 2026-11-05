@@ -51,3 +51,7 @@ def parse_dual_interface_args(cls, args):
     if hasattr(args, 'use_hcxdump') and args.use_hcxdump:
         cls.use_hcxdump = True
         Color.pl('{+} {C}option:{W} using {G}hcxdumptool{W} for WPA handshake capture')
+
+    if getattr(args, 'hcxdump_active_monitor', False):
+        cls.hcxdump_active_monitor = True
+        Color.pl('{+} {C}option:{W} hcxdumptool active-monitor ACK {O}enabled{W} (-A)')

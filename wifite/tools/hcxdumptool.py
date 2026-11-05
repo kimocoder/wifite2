@@ -21,12 +21,17 @@ import signal
 
 
 def _hand_over_monitor_mode(interfaces):
-    """Return wifite-owned monitor interfaces to managed mode.
+    """Return monitor-mode interfaces to managed mode for hcxdumptool.
 
     hcxdumptool 7+ sets (and restores) monitor mode itself. An interface
     wifite already armed makes hcxdumptool fight over mode and channel,
-    which is what upstream warns against. Returns the interfaces that were
-    handed over so they can be re-armed when hcxdumptool exits.
+    which is what upstream warns against. The decision is made from live
+    ``iw`` output inside the owner, not from wifite's ledger: external
+    tools change the mode out-of-band, so a stale ledger would skip the
+    handover and leave hcxdumptool unable to arm the radio.
+
+    Returns the interfaces that were handed over so they can be re-armed
+    when hcxdumptool exits.
     """
     handed_over = []
     try:
@@ -39,12 +44,7 @@ def _hand_over_monitor_mode(interfaces):
 
     for iface in interfaces:
         try:
-            state = manager.get_interface_state(iface)
-            if state.get('mode') != 'monitor':
-                continue
-            if not manager.is_managed(iface):
-                continue
-            if manager.set_interface_mode(iface, 'managed'):
+            if manager.hand_over_monitor(iface):
                 handed_over.append(iface)
         except Exception:
             continue
@@ -61,7 +61,7 @@ def _return_monitor_mode(interfaces):
         return
     for iface in interfaces:
         try:
-            manager.set_interface_mode(iface, 'monitor')
+            manager.rearm_monitor(iface)
         except Exception:
             pass
 
@@ -75,7 +75,7 @@ class HcxDumpTool(Dependency):
 
     def __init__(self, interface=None, channel=None, target_bssid=None,
                  output_file=None, enable_deauth=True, pmf_required=False,
-                 manage_interface=False, band=None):
+                 manage_interface=False, band=None, active_monitor=None):
         """
         Initialize hcxdumptool wrapper.
 
@@ -91,6 +91,10 @@ class HcxDumpTool(Dependency):
                 Only use when no other tool shares the interface.
             band: '2.4', '5' or '6' to disambiguate the channel number
                 (6 GHz reuses 1-233); None keeps the historical heuristic.
+            active_monitor: Enable hcxdumptool's active-monitor ACK (-A).
+                None uses Configuration.hcxdump_active_monitor (default off).
+                Active monitor is broken on many mt76 drivers and can reduce
+                capture to zero, so it must never be enabled implicitly.
         """
         Configuration.initialize()
 
@@ -120,6 +124,10 @@ class HcxDumpTool(Dependency):
         self.pmf_required = pmf_required
         self.manage_interface = manage_interface
         self.band = band
+        if active_monitor is None:
+            active_monitor = bool(getattr(Configuration,
+                                          'hcxdump_active_monitor', False))
+        self.active_monitor = bool(active_monitor)
         # Interfaces handed back to managed mode for hcxdumptool; re-armed
         # on __exit__ so the rest of wifite keeps its monitor interface.
         self._monitor_restore = []
@@ -140,6 +148,20 @@ class HcxDumpTool(Dependency):
         self._baseline_size = None
         # High-water mark of file size seen by has_new_data().
         self._last_data_size = 0
+
+    @staticmethod
+    def _driver_name(interface: str):
+        """Return the kernel driver name for an interface, if available."""
+        try:
+            link = os.readlink(f'/sys/class/net/{interface}/device/driver')
+            return os.path.basename(link)
+        except OSError:
+            return None
+
+    def _mt76_interfaces(self):
+        """Interfaces backed by mt76, where active monitor is unreliable."""
+        return [iface for iface in self.interfaces
+                if (self._driver_name(iface) or '').startswith('mt76')]
 
     def __enter__(self):
         """
@@ -192,13 +214,22 @@ class HcxDumpTool(Dependency):
         # or using BPF filters (complex, skipping for now)
         # The tool will capture all traffic on the channel
 
-        # Active capture ACKs incoming frames. hcxdumptool transmits
-        # association/disassociation/rogue M1M2 by default, so "no deauth"
-        # has to disable those explicitly instead of merely dropping -A.
-        if self.enable_deauth and not self.pmf_required:
-            command.append('-A')  # ACK incoming frames (requires active monitor mode support)
-        else:
+        # hcxdumptool transmits association/deauth/rogue M1M2 by default, so
+        # "no deauth" has to disable those explicitly instead of merely
+        # dropping -A. -A itself only ACKs incoming frames and requires
+        # active monitor support; active monitor is broken on many mt76
+        # drivers and can reduce capture to zero, so it is opt-in only.
+        if not self.enable_deauth or self.pmf_required:
             command.extend(HcxDumpToolPassive.PASSIVE_OPTIONS)
+        elif self.active_monitor:
+            broken = self._mt76_interfaces()
+            if broken:
+                log_warning('HcxDumpTool',
+                            f'Active monitor (-A) is unreliable on {broken[0]}; '
+                            'capture may be empty')
+                Color.pl('{!} {O}hcxdumptool: {C}-A{W} requested on {R}%s{O}; '
+                         'active monitor is broken on this driver{W}' % broken[0])
+            command.append('-A')
 
         # Start the process
         self.proc = Process(command, devnull=False)

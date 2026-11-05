@@ -6,7 +6,7 @@
 import sys
 import unittest
 from types import SimpleNamespace
-from unittest.mock import patch, MagicMock, call
+from unittest.mock import patch, MagicMock
 
 import pytest
 
@@ -74,9 +74,8 @@ class TestMonitorHandover(unittest.TestCase):
     def setUp(self):
         Configuration.interface = None
         self.manager = MagicMock()
-        self.manager.get_interface_state.return_value = {'mode': 'monitor'}
-        self.manager.is_managed.return_value = True
-        self.manager.set_interface_mode.return_value = True
+        self.manager.hand_over_monitor.return_value = True
+        self.manager.rearm_monitor.return_value = True
 
     def _enter(self, cls=HcxDumpTool, **kwargs):
         with patch('wifite.tools.hcxdumptool.Configuration.initialize'), \
@@ -98,15 +97,14 @@ class TestMonitorHandover(unittest.TestCase):
     def test_handover_restores_monitor_after_exit(self):
         tool, command = self._enter(manage_interface=True)
 
-        self.assertEqual(
-            self.manager.set_interface_mode.call_args_list,
-            [call('wlan0', 'managed'), call('wlan0', 'monitor')],
-        )
+        self.manager.hand_over_monitor.assert_called_once_with('wlan0')
+        self.manager.rearm_monitor.assert_called_once_with('wlan0')
         self.assertEqual(command[0], 'hcxdumptool')
 
     def test_no_handover_by_default(self):
         self._enter()
-        self.manager.set_interface_mode.assert_not_called()
+        self.manager.hand_over_monitor.assert_not_called()
+        self.manager.rearm_monitor.assert_not_called()
 
     @patch('wifite.tools.hcxdumptool.HcxDumpTool.check_version',
            return_value='6.9.0')
@@ -121,12 +119,14 @@ class TestMonitorHandover(unittest.TestCase):
             HcxDumpTool(interface='wlan0', output_file='/tmp/x.pcapng',
                         manage_interface=True).__enter__()
 
-        self.manager.set_interface_mode.assert_not_called()
+        self.manager.hand_over_monitor.assert_not_called()
 
-    def test_foreign_monitor_interface_is_left_alone(self):
-        self.manager.is_managed.return_value = False
+    def test_unmanaged_monitor_interface_is_handed_over(self):
+        # Handover is decided from live iw state in the owner, not from the
+        # ledger, so an interface wifite never claimed is still handed over.
+        self.manager.hand_over_monitor.return_value = True
         self._enter(manage_interface=True)
-        self.manager.set_interface_mode.assert_not_called()
+        self.manager.hand_over_monitor.assert_called_once_with('wlan0')
 
     def test_passive_wrapper_hands_over_the_radio(self):
         with patch('wifite.tools.hcxdumptool.Configuration.initialize'), \
@@ -143,10 +143,8 @@ class TestMonitorHandover(unittest.TestCase):
                                     output_file='/tmp/p.pcapng'):
                 pass
 
-        self.assertEqual(
-            self.manager.set_interface_mode.call_args_list,
-            [call('wlan0', 'managed'), call('wlan0', 'monitor')],
-        )
+        self.manager.hand_over_monitor.assert_called_once_with('wlan0')
+        self.manager.rearm_monitor.assert_called_once_with('wlan0')
 
 
 class TestReadinessVersionGates(unittest.TestCase):
@@ -212,9 +210,8 @@ class TestPmkidWrapperHandover(unittest.TestCase):
         from wifite.tools.hashcat import HcxDumpTool as PmkidHcxDumpTool
 
         manager = MagicMock()
-        manager.get_interface_state.return_value = {'mode': 'monitor'}
-        manager.is_managed.return_value = True
-        manager.set_interface_mode.return_value = True
+        manager.hand_over_monitor.return_value = True
+        manager.rearm_monitor.return_value = True
 
         target = SimpleNamespace(channel=6, band=None)
 
@@ -230,10 +227,8 @@ class TestPmkidWrapperHandover(unittest.TestCase):
             with tool:
                 pass
 
-        self.assertEqual(
-            manager.set_interface_mode.call_args_list,
-            [call('wlan0', 'managed'), call('wlan0', 'monitor')],
-        )
+        manager.hand_over_monitor.assert_called_once_with('wlan0')
+        manager.rearm_monitor.assert_called_once_with('wlan0')
 
 
 if __name__ == '__main__':

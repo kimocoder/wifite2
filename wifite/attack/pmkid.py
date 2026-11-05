@@ -413,6 +413,7 @@ class AttackPMKID(Attack):
         invalid_hash_count = 0
         max_invalid_retries = 5  # Max consecutive invalid hashes before giving up
         log_debug('AttackPMKID', f'Starting PMKID capture loop (timeout: {Configuration.pmkid_timeout}s)')
+        last_capture_size = -1
         while self.timer.remaining() > 0:
             # hcxdumptool exits immediately on drivers it cannot arm (e.g.
             # brcmfmac/Nexmon).  Never spin for the full timeout without a
@@ -431,7 +432,18 @@ class AttackPMKID(Attack):
                 break
             attempts += 1
             log_debug('AttackPMKID', f'PMKID capture attempt {attempts}')
-            pmkid_hash = pcaptool.get_pmkid_hash(self.pcapng_file)
+
+            # hcxpcapngtool is only useful when the capture has grown;
+            # running it every second spawns hundreds of processes.
+            try:
+                capture_size = os.path.getsize(self.pcapng_file)
+            except OSError:
+                capture_size = 0
+            if capture_size > last_capture_size:
+                last_capture_size = capture_size
+                pmkid_hash = pcaptool.get_pmkid_hash(self.pcapng_file)
+            else:
+                pmkid_hash = None
             if pmkid_hash is not None:
                 # Validate hash format: WPA*type*hash*bssid*station*essid
                 pmkid_hash = pmkid_hash.strip()
@@ -467,7 +479,7 @@ class AttackPMKID(Attack):
                 self.view.add_log(f"Waiting for PMKID... ({int(elapsed)}s / {Configuration.pmkid_timeout}s)")
 
             Color.pattack('PMKID', self.target, 'CAPTURE', 'Waiting for PMKID ({C}%s{W})' % str(self.timer))
-            time.sleep(1)
+            time.sleep(2)
 
         self.keep_capturing = False
         # Wait for dump tool thread to finish cleanup

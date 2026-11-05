@@ -1086,7 +1086,7 @@ class AttackWPA(Attack):
             self.clients = []
             
             while handshake is None and not timeout_timer.ended():
-                step_timer = Timer(1)
+                step_timer = Timer(3)
                 
                 # Update TUI view if available
                 if self.view:
@@ -1143,9 +1143,9 @@ class AttackWPA(Attack):
                     # Fall back to airodump-ng capture
                     return self._capture_handshake_dual_airodump()
                 
-                # Check if capture file has data
-                if not hcxdump.has_captured_data():
-                    # No data yet — still send deauths to provoke handshake
+                # Validate only when new frames were written; still send
+                # deauths on the deauth interface while waiting.
+                if not hcxdump.has_new_data():
                     if deauth_timer.ended():
                         self._deauth_parallel(self.target)
                         deauth_timer = Timer(Configuration.wpa_deauth_timeout)
@@ -1303,7 +1303,7 @@ class AttackWPA(Attack):
             timeout_timer = Timer(Configuration.wpa_attack_timeout)
             
             while handshake is None and not timeout_timer.ended():
-                step_timer = Timer(1)
+                step_timer = Timer(3)
                 
                 # Update TUI view if available
                 if self.view:
@@ -1358,9 +1358,9 @@ class AttackWPA(Attack):
                             self.view.add_log(f'Error: {error_output[:100]}')
                     return None
                 
-                # Check if capture file has data
-                if not hcxdump.has_captured_data():
-                    # No data yet, wait
+                # Validate only when new frames were written; has_handshake()
+                # spawns tshark/cowpatty and must not run every loop tick.
+                if not hcxdump.has_new_data():
                     time.sleep(step_timer.remaining())
                     continue
                 

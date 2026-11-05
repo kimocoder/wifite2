@@ -195,8 +195,13 @@ class TestHcxDumpToolPassiveFlags(unittest.TestCase):
         for flag in HcxDumpToolPassive.PASSIVE_OPTIONS:
             self.assertIn(flag, command)
 
-    def test_active_capture_keeps_ack_only(self):
+    def test_active_capture_does_not_add_ack_by_default(self):
         command = self._command(enable_deauth=True)
+        self.assertNotIn('-A', command)
+        self.assertNotIn('--associationmax=0', command)
+
+    def test_active_capture_keeps_ack_when_requested(self):
+        command = self._command(enable_deauth=True, active_monitor=True)
         self.assertIn('-A', command)
         self.assertNotIn('--associationmax=0', command)
 
