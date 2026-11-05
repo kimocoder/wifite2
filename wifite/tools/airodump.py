@@ -22,6 +22,10 @@ class Airodump(Dependency):
     dependency_name = 'airodump-ng'
     dependency_url = 'https://www.aircrack-ng.org/install.html'
 
+    # Below this size a .cap holds only the pcapng header, so an empty WPS
+    # result is "no data yet", not "no WPS APs".
+    MIN_CAPTURE_BYTES = 1024
+
     def __init__(self, interface=None, channel=None, encryption=None,
                  wps=WPSState.UNKNOWN, target_bssid=None,
                  output_file_prefix='airodump',
@@ -308,6 +312,14 @@ class Airodump(Dependency):
 
         return targets2
 
+    @classmethod
+    def _capture_has_frames(cls, capfile):
+        """True when the capture file has grown beyond a bare pcapng header."""
+        try:
+            return os.path.getsize(capfile) > cls.MIN_CAPTURE_BYTES
+        except OSError:
+            return False
+
     @staticmethod
     def _capture_signature(capfile):
         try:
@@ -317,12 +329,17 @@ class Airodump(Dependency):
             return None
 
     def _analyze_capture(self, capfile, targets):
+        # Nothing to update yet; avoids a bogus "0 of 0 targets" scan.
+        if not targets:
+            return
+
         signature = self._capture_signature(capfile)
         if signature is None:
             Airodump.detect_wpa3_capabilities(targets)
             return
 
         refreshed = signature != self._capture_analysis_signature
+        wps_known = True
         if refreshed:
             wps_results = {}
             wpa3_results = {}
@@ -331,6 +348,11 @@ class Airodump(Dependency):
             if not self.skip_wps:
                 try:
                     wps_results = Tshark.get_wps_status_map(capfile)
+                    if not wps_results and not self._capture_has_frames(capfile):
+                        # Header-only capture: keep previous WPS states.
+                        cacheable = False
+                        wps_known = False
+                        wps_results = None
                 except ValueError:
                     cacheable = False
                     if Tshark.exists():
@@ -348,10 +370,11 @@ class Airodump(Dependency):
                 cacheable = False
 
             self._capture_analysis_signature = signature if cacheable else None
-            self._wps_capture_cache = wps_results
+            if wps_results is not None:
+                self._wps_capture_cache = wps_results
             self._wpa3_capture_cache = wpa3_results
 
-        if not self.skip_wps:
+        if not self.skip_wps and wps_known:
             for target in targets:
                 target.wps = self._wps_capture_cache.get(target.bssid.upper(), WPSState.NONE)
 

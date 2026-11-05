@@ -75,7 +75,8 @@ class HcxDumpTool(Dependency):
 
     def __init__(self, interface=None, channel=None, target_bssid=None,
                  output_file=None, enable_deauth=True, pmf_required=False,
-                 manage_interface=False, band=None, active_monitor=None):
+                 manage_interface=False, band=None, active_monitor=None,
+                 exitoneapol=None):
         """
         Initialize hcxdumptool wrapper.
 
@@ -95,6 +96,9 @@ class HcxDumpTool(Dependency):
                 None uses Configuration.hcxdump_active_monitor (default off).
                 Active monitor is broken on many mt76 drivers and can reduce
                 capture to zero, so it must never be enabled implicitly.
+            exitoneapol: hcxdumptool exit bitmask (2=M1M2M3, 4=M1M2).
+                Only used when a target BPF filter can be installed, so
+                another AP's pair cannot end the session early.
         """
         Configuration.initialize()
 
@@ -128,6 +132,8 @@ class HcxDumpTool(Dependency):
             active_monitor = bool(getattr(Configuration,
                                           'hcxdump_active_monitor', False))
         self.active_monitor = bool(active_monitor)
+        self.exitoneapol = exitoneapol
+        self._bpf_file = None
         # Interfaces handed back to managed mode for hcxdumptool; re-armed
         # on __exit__ so the rest of wifite keeps its monitor interface.
         self._monitor_restore = []
@@ -162,6 +168,45 @@ class HcxDumpTool(Dependency):
         """Interfaces backed by mt76, where active monitor is unreliable."""
         return [iface for iface in self.interfaces
                 if (self._driver_name(iface) or '').startswith('mt76')]
+
+    _bpf_cache = {}
+
+    def _install_target_bpf(self, bssid):
+        """Compile and cache a BPF filter for the target BSSID.
+
+        Returns the filter file path, or None when compilation is unsupported.
+        """
+        if not bssid:
+            return None
+
+        mac = bssid.replace(':', '').lower()
+        cached = HcxDumpTool._bpf_cache.get(mac)
+        if cached and os.path.exists(cached):
+            return cached
+
+        path = Configuration.temp('hcx_target_%s.bpf' % mac)
+        try:
+            code = Process(
+                ['hcxdumptool', '--bpfc=wlan addr3 %s' % mac],
+                devnull=False).stdout()
+        except (OSError, RuntimeError) as error:
+            log_warning('HcxDumpTool',
+                        'BPF filter compilation failed: %s' % error)
+            return None
+
+        if not code or not code.strip():
+            log_warning('HcxDumpTool', 'BPF filter compilation returned no code')
+            return None
+
+        try:
+            with open(path, 'w') as handle:
+                handle.write(code if code.endswith('\n') else code + '\n')
+        except OSError as error:
+            log_warning('HcxDumpTool', 'Could not write BPF filter: %s' % error)
+            return None
+
+        HcxDumpTool._bpf_cache[mac] = path
+        return path
 
     def __enter__(self):
         """
@@ -209,10 +254,17 @@ class HcxDumpTool(Dependency):
         if self.channel:
             command.extend(['-c', channel_spec(self.channel, band=self.band)])
 
-        # Note: hcxdumptool 7.x removed --filterlist_ap option
-        # BSSID filtering must be done post-capture with hcxpcapngtool
-        # or using BPF filters (complex, skipping for now)
-        # The tool will capture all traffic on the channel
+        # Restrict capture to the target BSSID so --exitoneapol cannot fire
+        # on another network's pair. hcxdumptool recommends a target BPF
+        # filter for --exitoneapol; without one we keep polling instead.
+        if self.exitoneapol:
+            bpf_file = self._install_target_bpf(self.target_bssid)
+            if bpf_file:
+                command.append('--bpf=%s' % bpf_file)
+                command.append('--exitoneapol=%d' % int(self.exitoneapol))
+            else:
+                log_warning('HcxDumpTool',
+                            '--exitoneapol skipped: no target BPF filter')
 
         # hcxdumptool transmits association/deauth/rogue M1M2 by default, so
         # "no deauth" has to disable those explicitly instead of merely

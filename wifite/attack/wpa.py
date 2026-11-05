@@ -13,6 +13,7 @@ from ..util.logger import log_debug, log_info, log_warning, log_error
 from ..model.handshake import Handshake
 from ..model.wpa_result import CrackResultWPA
 from ..util.wpasec_uploader import WpaSecUploader
+from ..util import crack_cache
 import time
 import os
 import re
@@ -34,6 +35,7 @@ class AttackWPA(Attack):
         self.success = False
         self.capture_success = False
         self.crack_error = False
+        self.crack_error_reason = ''
 
         # Interface assignment for dual interface support
         self.interface_assignment = None
@@ -402,6 +404,13 @@ class AttackWPA(Attack):
         key = None
         for idx, wordlist in enumerate(wordlists_to_try):
             wordlist_name = os.path.split(wordlist)[-1]
+            if crack_cache.is_exhausted(self.target.bssid, wordlist):
+                log_info('AttackWPA',
+                         f'Skipping {wordlist_name}: already exhausted for '
+                         f'{self.target.bssid} in this run')
+                Color.pl('{!} {O}Skipping {C}%s{W}: already exhausted for this '
+                         'target{W}' % wordlist_name)
+                continue
             crack_msg = f'Cracking {"WPA3-SAE" if target_is_wpa3_sae else "WPA/WPA2"} Handshake: Running {cracker} with {wordlist_name} wordlist ({idx + 1}/{len(wordlists_to_try)})'
 
             Color.pl(f'\n{{+}} {{C}}{crack_msg}{{W}}')
@@ -421,17 +430,23 @@ class AttackWPA(Attack):
             try:
                 # Use the new HashcatCracker for non-blocking execution and progress polling
                 # First, generate the hash file (we use the existing HcxPcapngTool logic via a helper)
+                crack_ran = False
                 hash_file = HcxPcapngTool.generate_hash_file(handshake, target_is_wpa3_sae, show_command=Configuration.verbose > 1)
 
                 device_error = False
+                run_error = False
                 if hash_file is None:
                     # Fallback to aircrack-ng if hash file generation failed
                     key = Hashcat.crack_handshake(handshake, target_is_wpa3_sae, show_command=Configuration.verbose > 1, wordlist=wordlist)
-                    device_error = bool(key is None and Hashcat.last_error)
+                    kind = Hashcat.last_error_kind
+                    device_error = bool(key is None and kind == 'device')
+                    run_error = bool(key is None and kind == 'run')
+                    crack_ran = True
                 else:
                     try:
                         with HashcatCracker(hash_file, wordlist, target_is_wpa3_sae=target_is_wpa3_sae) as cracker:
                             cracker.start(show_command=Configuration.verbose > 1)
+                            crack_ran = True
 
                             while not cracker.is_finished():
                                 status = cracker.poll_status()
@@ -447,6 +462,7 @@ class AttackWPA(Attack):
 
                             key = cracker.get_result()
                             device_error = cracker.device_error
+                            run_error = cracker.run_error
                     finally:
                         if hash_file and os.path.exists(hash_file):
                             try:
@@ -464,6 +480,8 @@ class AttackWPA(Attack):
                 break
             if device_error:
                 self.crack_error = True
+                self.crack_error_reason = ('hashcat has no usable OpenCL '
+                                           'device (capture kept)')
                 log_error('AttackWPA',
                           'hashcat has no usable OpenCL device; '
                           'handshake was captured but not tested')
@@ -472,13 +490,28 @@ class AttackWPA(Attack):
                 Color.pl('{!} {O}The handshake was saved; retry on a machine '
                          'with a working hashcat backend{W}')
                 break
+            if run_error:
+                self.crack_error = True
+                self.crack_error_reason = ('hashcat exited with an error '
+                                           '(capture kept)')
+                log_error('AttackWPA',
+                          'hashcat exited with an error; handshake was '
+                          'captured but not tested')
+                Color.pl('{!} {R}Cracking did not complete: '
+                         'hashcat exited with an error{W}')
+                Color.pl('{!} {O}The handshake was saved; check the hash file '
+                         'and retry{W}')
+                break
 
+            if crack_ran:
+                crack_cache.mark_exhausted(self.target.bssid, wordlist)
             Color.pl(f'{{!}} {{O}}{wordlist_name} did not contain password{{W}}')
 
         if key is None:
             if self.crack_error:
-                fail_msg = ('Cracking unavailable: hashcat has no usable '
-                            'OpenCL device (capture kept)')
+                fail_msg = ('Cracking unavailable: %s'
+                            % (self.crack_error_reason or
+                               'hashcat did not complete the run'))
                 Color.pl(f"{{!}} {{R}}{fail_msg}{{W}}")
                 if self.view:
                     self.view.add_log(fail_msg)
@@ -1352,7 +1385,8 @@ class AttackWPA(Attack):
                         enable_deauth=True,  # Use hcxdumptool's built-in deauth
                         pmf_required=pmf_required,
                         manage_interface=True,
-                        band=getattr(self.target, 'band', None)) as hcxdump:
+                        band=getattr(self.target, 'band', None),
+                        exitoneapol=6) as hcxdump:
             
             Color.clear_entire_line()
             Color.pattack('WPA', self.target, 'Handshake capture', 
@@ -1390,6 +1424,25 @@ class AttackWPA(Attack):
                 
                 # Check if hcxdumptool is still running
                 if not hcxdump.is_running():
+                    # A clean exit may be intentional: --exitoneapol stops the
+                    # session as soon as the target pair has been written.
+                    bssid = self.target.bssid
+                    essid = (self.target.essid
+                             if self.target.essid_known else None)
+                    try:
+                        exited = Handshake(output_file, bssid=bssid, essid=essid)
+                    except (ValueError, OSError):
+                        exited = None
+                    if exited and exited.has_handshake():
+                        log_info('AttackWPA',
+                                 'hcxdumptool exited after capturing the handshake')
+                        Color.clear_entire_line()
+                        Color.pattack('WPA', self.target, 'Handshake capture',
+                                      '{G}Captured handshake{W} [HCX]')
+                        Color.pl('')
+                        if self.save_handshake(exited):
+                            return exited
+
                     # Capture error output to help diagnose the issue
                     error_output = ''
                     try:

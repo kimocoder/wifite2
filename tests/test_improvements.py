@@ -115,7 +115,7 @@ class TestDependencyVersionChecking(unittest.TestCase):
     
     def test_get_minimum_version(self):
         """Test getting minimum version for a dependency."""
-        from wifite.tools.hashcat import HcxDumpTool
+        from wifite.tools.hcxdumptool import HcxDumpTool
         
         min_version = HcxDumpTool.get_minimum_version()
         self.assertIsNotNone(min_version)

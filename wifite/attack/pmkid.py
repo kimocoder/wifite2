@@ -3,7 +3,9 @@
 
 from ..model.attack import Attack
 from ..config import Configuration
-from ..tools.hashcat import HcxDumpTool, HcxPcapngTool, Hashcat, HashcatCracker
+from ..tools.hashcat import HcxPcapngTool, Hashcat, HashcatCracker
+from ..tools.hcxdumptool import HcxDumpTool
+from ..util import crack_cache
 from ..util.color import Color
 from ..util.timer import Timer
 from ..util.output import OutputManager
@@ -27,6 +29,10 @@ except BaseException:
 
 
 class AttackPMKID(Attack):
+    # Keep the PMKID hcxdumptool session alive this long after the PMKID
+    # lands so the same capture can also yield an EAPOL handshake.
+    HANDSHAKE_GRACE_SECONDS = 10
+
     def __init__(self, target):
         super(AttackPMKID, self).__init__(target)
         self.crack_result = None
@@ -36,6 +42,7 @@ class AttackPMKID(Attack):
         self.success = False
         self.capture_success = False
         self.crack_error = False
+        self.crack_error_reason = ''
         self.timer = None
 
         # Initialize TUI view if in TUI mode
@@ -413,6 +420,8 @@ class AttackPMKID(Attack):
 
         # Repeatedly run pcaptool & check output for hash for self.target.essid
         pmkid_hash = None
+        captured_pmkid = None
+        handshake_grace = None
         pcaptool = HcxPcapngTool(self.target)
         attempts = 0
         invalid_hash_count = 0
@@ -424,6 +433,11 @@ class AttackPMKID(Attack):
             # brcmfmac/Nexmon).  Never spin for the full timeout without a
             # capturer: fall back to the native Scapy capture when possible.
             if self._dumptool_died:
+                if captured_pmkid is not None:
+                    log_warning('AttackPMKID',
+                                'hcxdumptool exited during the handshake grace '
+                                'window; keeping the captured PMKID')
+                    break
                 log_warning('AttackPMKID', 'hcxdumptool exited during PMKID capture')
                 Color.pl('\n{!} {O}hcxdumptool stopped unexpectedly (incompatible driver?){W}')
                 self.keep_capturing = False
@@ -437,6 +451,34 @@ class AttackPMKID(Attack):
                 break
             attempts += 1
             log_debug('AttackPMKID', f'PMKID capture attempt {attempts}')
+
+            # PMKID already in hand: keep this same hcxdumptool session alive
+            # for a short grace window so the capture can also yield a
+            # handshake, which the WPA attack then reuses.
+            if captured_pmkid is not None:
+                if handshake_grace is None or handshake_grace.ended():
+                    break
+                try:
+                    capture_size = os.path.getsize(self.pcapng_file)
+                except OSError:
+                    capture_size = 0
+                if capture_size > last_capture_size:
+                    last_capture_size = capture_size
+                    if self._shared_handshake_ready():
+                        log_info('AttackPMKID',
+                                 'Handshake also captured in the shared session')
+                        Color.pattack('PMKID', self.target, 'CAPTURE',
+                                      '{G}Handshake captured in the same session{W}')
+                        break
+                if self.view:
+                    self.view.update_pmkid_status(True, attempts)
+                    self.view.add_log('PMKID captured; waiting for a handshake '
+                                      'in the same session...')
+                Color.pattack('PMKID', self.target, 'CAPTURE',
+                              'PMKID captured; waiting for handshake '
+                              '({C}%s{W})' % str(handshake_grace))
+                time.sleep(2)
+                continue
 
             # hcxpcapngtool is only useful when the capture has grown;
             # running it every second spawns hundreds of processes.
@@ -472,10 +514,30 @@ class AttackPMKID(Attack):
                     time.sleep(min(2 * invalid_hash_count, 5))
                     continue
 
-                # Valid hash - reset invalid counter and break
+                # Valid hash - reset invalid counter. Keep capturing briefly so a
+                # handshake can land in the same session, then stop.
                 invalid_hash_count = 0
-                log_info('AttackPMKID', f'PMKID captured successfully after {attempts} attempt(s)')
-                break  # Got PMKID
+                captured_pmkid = pmkid_hash
+                log_info('AttackPMKID',
+                         f'PMKID captured successfully after {attempts} attempt(s)')
+
+                if self._shared_handshake_ready():
+                    log_info('AttackPMKID',
+                             'Handshake also captured in the shared session')
+                    break
+
+                grace_seconds = min(self.HANDSHAKE_GRACE_SECONDS,
+                                    max(0, int(self.timer.remaining())))
+                if grace_seconds <= 0:
+                    break
+                handshake_grace = Timer(grace_seconds)
+                log_debug('AttackPMKID',
+                          f'PMKID in hand; waiting up to {grace_seconds}s '
+                          f'for a handshake in the same session')
+                Color.pattack('PMKID', self.target, 'CAPTURE',
+                              'PMKID captured; waiting up to {C}%ds{W} for a '
+                              'handshake in the same session' % grace_seconds)
+                continue
 
             # Update TUI view
             if self.view:
@@ -485,6 +547,9 @@ class AttackPMKID(Attack):
 
             Color.pattack('PMKID', self.target, 'CAPTURE', 'Waiting for PMKID ({C}%s{W})' % str(self.timer))
             time.sleep(2)
+
+        # Preserve the hash captured before the grace window started.
+        pmkid_hash = captured_pmkid
 
         self.keep_capturing = False
         # Wait for dump tool thread to finish cleanup
@@ -556,12 +621,21 @@ class AttackPMKID(Attack):
             key = None
             for wordlist in wordlists_to_try:
                 wordlist_name = os.path.basename(wordlist)
+                if crack_cache.is_exhausted(self.target.bssid, wordlist):
+                    log_info('AttackPMKID',
+                             f'Skipping {wordlist_name}: already exhausted for '
+                             f'{self.target.bssid} in this run')
+                    Color.pl('{!} {O}Skipping {C}%s{W}: already exhausted for '
+                             'this target{W}' % wordlist_name)
+                    continue
                 Color.clear_entire_line()
                 Color.pattack('PMKID', self.target, 'CRACK', 'Cracking PMKID using {C}%s{W} ...\n' % wordlist_name)
 
                 try:
+                    crack_ran = False
                     with HashcatCracker(pmkid_file, wordlist) as cracker:
                         cracker.start(show_command=Configuration.verbose > 1)
+                        crack_ran = True
 
                         # Polling loop for progress tracking
                         while not cracker.is_finished():
@@ -581,6 +655,7 @@ class AttackPMKID(Attack):
 
                         key = cracker.get_result()
                         device_error = cracker.device_error
+                        run_error = cracker.run_error
                 except KeyboardInterrupt:
                     return self._handle_hashcat_failure(
                         '\n{!} {R}Failed to crack PMKID: {O}Cracking interrupted by user{W}'
@@ -593,6 +668,8 @@ class AttackPMKID(Attack):
                     break
                 if device_error:
                     self.crack_error = True
+                    self.crack_error_reason = ('hashcat has no usable OpenCL '
+                                               'device (capture kept)')
                     log_error('AttackPMKID',
                               'hashcat has no usable OpenCL device; '
                               'PMKID was captured but not tested')
@@ -600,6 +677,20 @@ class AttackPMKID(Attack):
                     Color.pl('{!} {O}The PMKID hash was saved; retry on a machine '
                              'with a working hashcat backend{W}')
                     break
+                if run_error:
+                    self.crack_error = True
+                    self.crack_error_reason = ('hashcat exited with an error '
+                                               '(capture kept)')
+                    log_error('AttackPMKID',
+                              'hashcat exited with an error; PMKID was '
+                              'captured but not tested')
+                    Color.pl('{!} {R}Cracking did not complete: '
+                             'hashcat exited with an error{W}')
+                    Color.pl('{!} {O}The PMKID hash was saved; check the hash '
+                             'file and retry{W}')
+                    break
+                if crack_ran:
+                    crack_cache.mark_exhausted(self.target.bssid, wordlist)
                 Color.pl('{!} {O}%s did not contain password{W}' % wordlist_name)
 
         if key is not None:
@@ -607,8 +698,9 @@ class AttackPMKID(Attack):
             return self._handle_pmkid_crack_success(key, pmkid_file)
         if self.crack_error:
             Color.pattack('PMKID', self.target, '{R}CRACK',
-                          '{R}Cracking unavailable{O} (no usable hashcat device); '
-                          'capture kept\n')
+                          '{R}Cracking unavailable{O} (%s); capture kept\n'
+                          % (self.crack_error_reason or
+                             'hashcat did not complete the run'))
             return False
         # Failed to crack.
         if Configuration.wordlist is not None:
@@ -642,14 +734,37 @@ class AttackPMKID(Attack):
         self.crack_result.dump()
         return True
 
-    def dumptool_thread(self):
-        """Runs hashcat's hcxdumptool until it dies or `keep_capturing == False`"""
+    def _shared_handshake_ready(self):
+        """True when the current capture already holds a crackable handshake."""
+        from ..model.handshake import Handshake
+
+        essid = self.target.essid if getattr(self.target, 'essid_known', True) else None
         try:
-            with HcxDumpTool(self.target, self.pcapng_file) as dumptool:
-                # Let the dump tool run until we have the hash.
-                while self.keep_capturing and dumptool.poll() is None:
+            handshake = Handshake(self.pcapng_file,
+                                  bssid=self.target.bssid,
+                                  essid=essid)
+            return handshake.has_handshake()
+        except (ValueError, OSError) as error:
+            log_debug('AttackPMKID', f'Handshake check failed: {error}')
+            return False
+
+    def dumptool_thread(self):
+        """Runs hcxdumptool until it dies or `keep_capturing == False`"""
+        try:
+            pmf_required = bool(getattr(self.target, 'pmf_required', False))
+            with HcxDumpTool(
+                    interface=Configuration.interface,
+                    channel=self.target.channel,
+                    target_bssid=self.target.bssid,
+                    output_file=self.pcapng_file,
+                    enable_deauth=True,
+                    pmf_required=pmf_required,
+                    manage_interface=True,
+                    band=getattr(self.target, 'band', None)) as dumptool:
+                # Let the dump tool run until we have the hashes.
+                while self.keep_capturing and dumptool.is_running():
                     time.sleep(0.5)
-                if self.keep_capturing and dumptool.poll() is not None:
+                if self.keep_capturing and not dumptool.is_running():
                     self._dumptool_died = True
         except Exception as e:
             if self.keep_capturing:

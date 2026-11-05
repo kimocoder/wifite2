@@ -135,5 +135,42 @@ class TestBuildCommand(unittest.TestCase):
         assert cpu_cmd[-2:] == [HASH_FILE, WORDLIST]
 
 
+class ExitCodeClassificationTest(unittest.TestCase):
+    def _cracker(self, returncode, stderr=''):
+        cracker = HashcatCracker(HASH_FILE, WORDLIST)
+        cracker.proc = FakeProcess(returncode, stderr)
+        return cracker
+
+    def test_cracked_and_exhausted_are_normal(self):
+        for returncode in (0, 1):
+            cracker = self._cracker(returncode)
+            cracker.is_finished()
+            assert cracker.run_error is False
+
+    def test_user_abort_is_not_an_error(self):
+        cracker = self._cracker(2)
+        cracker.is_finished()
+        assert cracker.run_error is False
+
+    def test_error_exit_codes_are_flagged(self):
+        for returncode in (3, 4, 255):
+            cracker = self._cracker(returncode, 'unrelated hashcat failure')
+            cracker.is_finished()
+            assert cracker.run_error is True
+            assert cracker.returncode == returncode
+
+    def test_signal_death_is_not_an_error(self):
+        cracker = self._cracker(-15)
+        cracker.is_finished()
+        assert cracker.run_error is False
+
+    def test_device_failure_does_not_set_run_error(self):
+        cracker = self._cracker(255, DEVICE_FAILURE)
+        cracker.cpu_fallback = True
+        cracker.is_finished()
+        assert cracker.device_error is True
+        assert cracker.run_error is False
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -22,6 +22,9 @@ class Wash(Dependency):
 
     @staticmethod
     def check_for_wps_and_update_targets(capfile, targets):
+        # No targets yet: scanning would only log "0 of 0 targets".
+        if not targets:
+            return
         if not Wash.exists():
             return
 

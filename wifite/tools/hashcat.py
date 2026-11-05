@@ -2,15 +2,9 @@
 # -*- coding: utf-8 -*-
 
 from .dependency import Dependency
-from .hcxdumptool import (
-    HcxDumpTool as _CanonicalHcxDumpTool,
-    _hand_over_monitor_mode,
-    _return_monitor_mode,
-)
 from ..config import Configuration
 from ..util.process import Process
 from ..util.color import Color
-from ..util.hcxtools import channel_spec
 from ..util.logger import log_debug, log_info, log_warning, log_error
 import os
 import re
@@ -45,6 +39,10 @@ class HashcatCracker:
     # Wordlists above this size are impractical on the CPU backend.
     LARGE_WORDLIST_BYTES = 50 * 1024 * 1024
 
+    # hashcat: 0 = cracked, 1 = exhausted, 2 = aborted by the user.
+    NORMAL_EXIT_CODES = (0, 1)
+    INTERRUPT_EXIT_CODE = 2
+
     def __init__(self, hash_file, wordlist, mode='22000', target_is_wpa3_sae=False):
         self.hash_file = hash_file
         self.wordlist = wordlist
@@ -58,6 +56,8 @@ class HashcatCracker:
         self._stop_reader = threading.Event()
         self.cpu_fallback = False
         self.device_error = False
+        self.run_error = False
+        self.returncode = None
         self.error_text = ''
         self._finish_checked = False
         self._stdout_tail = []
@@ -243,7 +243,7 @@ class HashcatCracker:
             return ''
 
     def _handle_exit(self):
-        """Inspect a finished run and retry on CPU when no device was usable."""
+        """Inspect a finished run; retry on CPU or flag a failed run."""
         if self._finish_checked:
             return
         self._finish_checked = True
@@ -252,7 +252,14 @@ class HashcatCracker:
         stderr = self._read_stderr()
         self.error_text = '\n'.join(
             part for part in (stderr, '\n'.join(self._stdout_tail)) if part)
+
+        try:
+            self.returncode = self.proc.poll() if self.proc else None
+        except (OSError, ValueError):
+            self.returncode = None
+
         if not self.is_device_error(self.error_text):
+            self._classify_exit_code()
             return
         if self.cpu_fallback:
             self.device_error = True
@@ -262,6 +269,19 @@ class HashcatCracker:
             Color.pl('{!} {O}Cracking did not run; the capture was NOT tested{W}')
             return
         self._restart_on_cpu()
+
+    def _classify_exit_code(self):
+        """Flag runs that stopped for a reason other than 'exhausted'."""
+        code = self.returncode
+        if code is None or code in self.NORMAL_EXIT_CODES:
+            return
+        if code == self.INTERRUPT_EXIT_CODE or code < 0:
+            log_debug('HashcatCracker', 'hashcat stopped (exit code %s)' % code)
+            return
+        self.run_error = True
+        log_error('HashcatCracker', 'hashcat exited with code %s' % code)
+        Color.pl('{!} {R}hashcat exited with code %s{W}' % code)
+        Color.pl('{!} {O}Cracking did not complete; the capture was NOT tested{W}')
 
     def _restart_on_cpu(self):
         """Retry the job on the PoCL CPU device (-D 1)."""
@@ -334,6 +354,7 @@ class Hashcat(Dependency):
     _backend_probe = None  # {'prefer_cpu': bool, 'reason': str}
     _cpu_notice_shown = False
     last_error = None  # Set when the last crack could not run at all
+    last_error_kind = None  # 'device' or 'run'
 
     @classmethod
     def is_device_failure(cls, text):
@@ -524,6 +545,7 @@ class Hashcat(Dependency):
         """Run hashcat via HashcatCracker with live progress printed on one line."""
         import time
         Hashcat.last_error = None
+        Hashcat.last_error_kind = None
         with HashcatCracker(hash_file, wordlist, mode=mode) as cracker:
             cracker.start(show_command=show_command)
             try:
@@ -541,7 +563,15 @@ class Hashcat(Dependency):
             if key is None and cracker.device_error:
                 Hashcat.last_error = (cracker.error_text or
                                       'hashcat has no usable OpenCL device')
+                Hashcat.last_error_kind = 'device'
                 log_error('Hashcat', 'Cracking could not run: no usable device')
+            elif key is None and cracker.run_error:
+                Hashcat.last_error = (cracker.error_text or
+                                      'hashcat exited with code %s'
+                                      % cracker.returncode)
+                Hashcat.last_error_kind = 'run'
+                log_error('Hashcat', 'Cracking did not complete: %s'
+                          % Hashcat.last_error)
             return key
 
     @staticmethod
@@ -644,48 +674,6 @@ class Hashcat(Dependency):
 
         # Fallback: pot-file lookup (hash may have been cracked previously)
         return Hashcat._check_potfile(pmkid_file, mode='22000')
-
-
-class HcxDumpTool(Dependency):
-    dependency_required = False
-    dependency_name = 'hcxdumptool'
-    dependency_url = 'apt install hcxdumptool'
-
-    def __init__(self, target, pcapng_file):
-        if os.path.exists(pcapng_file):
-            os.remove(pcapng_file)
-
-        paired, warning = _CanonicalHcxDumpTool.check_tool_pairing()
-        if not paired:
-            log_warning('HcxDumpTool', warning)
-            Color.pl('{!} {O}%s{W}' % warning)
-
-        # hcxdumptool owns the monitor lifecycle; hand it a managed radio.
-        self._monitor_restore = _hand_over_monitor_mode([Configuration.interface])
-
-        command = [
-            'hcxdumptool',
-            '-i', Configuration.interface,
-            '-c', channel_spec(target.channel,
-                               band=getattr(target, 'band', None)),
-            '-w', pcapng_file
-        ]
-
-        self.proc = Process(command)
-
-    def poll(self):
-        return self.proc.poll()
-
-    def interrupt(self):
-        if hasattr(self, 'proc') and self.proc:
-            self.proc.interrupt()
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        self.interrupt()
-        _return_monitor_mode(self._monitor_restore)
 
 
 class HcxPcapngTool(Dependency):

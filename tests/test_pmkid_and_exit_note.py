@@ -21,7 +21,7 @@ class TestHcxDumpToolDeath(unittest.TestCase):
     def _run(self, native_available):
         attack = self._attack()
         dumptool = MagicMock()
-        dumptool.poll.return_value = 1  # process already dead
+        dumptool.is_running.return_value = False  # process already dead
         dumptool_cls = MagicMock()
         dumptool_cls.return_value.__enter__.return_value = dumptool
         pcaptool = MagicMock()

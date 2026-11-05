@@ -204,28 +204,33 @@ class TestReadinessVersionGates(unittest.TestCase):
 
 
 class TestPmkidWrapperHandover(unittest.TestCase):
-    """The PMKID path uses the hashcat.py wrapper; it must still hand over."""
+    """The PMKID path uses the canonical wrapper and still hands over."""
 
     def test_hands_over_and_restores_monitor(self):
-        from wifite.tools.hashcat import HcxDumpTool as PmkidHcxDumpTool
+        from wifite.attack.pmkid import AttackPMKID
 
         manager = MagicMock()
         manager.hand_over_monitor.return_value = True
         manager.rearm_monitor.return_value = True
 
-        target = SimpleNamespace(channel=6, band=None)
+        attack = AttackPMKID.__new__(AttackPMKID)
+        attack.target = SimpleNamespace(
+            bssid='5C:E2:8C:23:DC:B0', essid='CYBERSPACE',
+            channel=6, band=None)
+        attack.pcapng_file = '/tmp/pmkid_test.pcapng'
+        attack.keep_capturing = False
 
         with patch.object(Configuration, 'interface', 'wlan0'), \
+             patch.object(Configuration, 'initialize'), \
              patch.object(Configuration, 'get_interface_manager',
                           return_value=manager), \
              patch('wifite.tools.hcxdumptool.HcxDumpTool.check_version',
                    return_value='8.0.0'), \
              patch('wifite.tools.hcxdumptool.HcxDumpTool.check_tool_pairing',
                    return_value=(True, None)), \
-             patch('wifite.tools.hashcat.Process'):
-            tool = PmkidHcxDumpTool(target, '/tmp/pmkid_test.pcapng')
-            with tool:
-                pass
+             patch('wifite.tools.hcxdumptool.Process') as process_cls:
+            process_cls.return_value.poll.return_value = 0
+            attack.dumptool_thread()
 
         manager.hand_over_monitor.assert_called_once_with('wlan0')
         manager.rearm_monitor.assert_called_once_with('wlan0')

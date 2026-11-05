@@ -298,6 +298,8 @@ class Tshark(Dependency):
 
         Uses native Scapy implementation if tshark is unavailable.
         """
+        if not targets:
+            return
         if not cls.exists():
             if cls._can_use_native():
                 try:
