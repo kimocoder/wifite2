@@ -694,8 +694,20 @@ def start_monitor(interface: str) -> str:
     if mode is None:
         raise NexmonRefused(f'could not determine the mode of {interface}')
     if mode == 'monitor':
-        log_debug('Nexmon', f'{interface} is already a monitor interface; reusing it')
-        return interface
+        # A brcmfmac interface in monitor type does not necessarily capture:
+        # a station vif flipped to monitor (which is what airodump-ng does
+        # to managed interfaces on its own) delivers no 802.11 frames at
+        # all — only a dedicated monitor vif does.  Reset to managed and
+        # run the normal lifecycle to get a known-good monitor interface.
+        log_debug('Nexmon',
+                  f'{interface} is in monitor mode; rebuilding a monitor vif')
+        _require_ok(
+            ['iw', 'dev', interface, 'set', 'type', 'managed'],
+            f'failed to reset {interface} to managed mode',
+        )
+        if _interface_mode(interface) != 'managed':
+            raise NexmonError(f'{interface} did not return to managed mode')
+        mode = 'managed'
     if mode != 'managed':
         raise NexmonRefused(
             f'{interface} is in {mode} mode; only a managed station can be taken over'

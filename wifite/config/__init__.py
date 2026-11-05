@@ -187,6 +187,24 @@ class Configuration:
             cls.interface = Airmon.ask()
             if cls.random_mac or cls.random_mac_vendor:
                 Macchanger.random(full_random=not cls.random_mac_vendor)
+        else:
+            # -i/--interface bypasses Airmon.ask(), where monitor mode is
+            # normally enabled.  Enable it here too: otherwise airodump-ng
+            # is handed a managed interface and switches it to plain
+            # monitor itself, which captures no frames on drivers that
+            # need a proper monitor lifecycle (e.g. brcmfmac/Nexmon).
+            from ..tools.airmon import Airmon
+            from ..tools.iw import Iw
+            iface_info = Airmon.get_iface_info(cls.interface)
+            if iface_info and iface_info.driver == 'brcmfmac':
+                from ..tools.nexmon import Nexmon
+                if Nexmon.probe(cls.interface) is not None:
+                    # Nexmon covers both states: managed gets the full
+                    # lifecycle; already-monitor gets radiotap verification.
+                    cls.interface = Airmon.start(cls.interface)
+                    return
+            if not Iw.is_monitor(cls.interface):
+                cls.interface = Airmon.start(cls.interface)
 
     @classmethod
     def load_from_arguments(cls):

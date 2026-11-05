@@ -395,6 +395,15 @@ class Airmon(Dependency):
         if len(monitor_interfaces) == 1:
             # Assume we're using the device already in monitor mode
             interface = monitor_interfaces[0]
+            iface_info = Airmon.get_iface_info(interface)
+            if iface_info and iface_info.driver == 'brcmfmac':
+                # Plain monitor on brcmfmac captures nothing without the
+                # Nexmon radiotap mode.  The reuse path only ensures that
+                # mode; it registers no session and takes no ownership of
+                # the pre-existing interface.
+                from .nexmon import Nexmon
+                if Nexmon.probe(interface) is not None:
+                    interface = Nexmon.start_monitor(interface)
             Color.clear_entire_line()
             Color.pl('{+} Using {G}%s{W} already in monitor mode' % interface)
             Airmon.base_interface = None

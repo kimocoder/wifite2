@@ -343,6 +343,64 @@ class TestInterfaceManagerIntegration(NexmonTestBase):
             self.assertFalse(InterfaceManager.check_monitor_mode_support('wlan0'))
 
 
+class TestMonitorReuse(NexmonTestBase):
+    def _reuse_mocks(self, state):
+        """Monitor vif reuse: reset to managed, then the full lifecycle."""
+        ifindexes = {'wlan0': 3}
+
+        def fake_create(station, phy, monitor):
+            ifindexes[monitor] = 42
+
+        def fake_delete(name):
+            ifindexes.pop(name, None)
+            return True
+
+        def fake_mode(name):
+            if name == 'wlan0':
+                return 'managed' if state.get('reset') else 'monitor'
+            return 'monitor'
+
+        def fake_run_ok(cmd, timeout=5):
+            if cmd[:4] == ['iw', 'dev', 'wlan0', 'set']:
+                state['reset'] = True
+            return True
+
+        return [
+            patch('wifite.tools.nexmon.probe', return_value=make_caps()),
+            patch('wifite.tools.nexmon._interface_mode', side_effect=fake_mode),
+            patch('wifite.tools.nexmon._read_phy', return_value='phy0'),
+            patch('wifite.tools.nexmon._assert_safe_to_take_over'),
+            patch('wifite.tools.nexmon._sweep_leaked_monitor', return_value=None),
+            patch('wifite.tools.nexmon._is_associated', return_value=False),
+            patch('wifite.tools.nexmon._is_up', return_value=False),
+            patch('wifite.tools.nexmon._power_save_state', return_value=False),
+            patch('wifite.tools.nexmon._create_monitor', side_effect=fake_create),
+            patch('wifite.tools.nexmon._ifindex',
+                  side_effect=lambda n: ifindexes.get(n)),
+            patch('wifite.tools.nexmon._run_ok', side_effect=fake_run_ok),
+            patch('wifite.tools.nexmon._radiotap_monitor_mode', return_value=2),
+            patch('wifite.tools.nexmon._delete_interface', side_effect=fake_delete),
+        ]
+
+    def test_monitor_interface_is_reset_and_rebuilt(self):
+        state = {}
+        with contextlib.ExitStack() as stack:
+            for m in self._reuse_mocks(state):
+                stack.enter_context(m)
+            monitor = nexmon.start_monitor('wlan0')
+        self.assertEqual(monitor, 'wlan0mon')
+        self.assertTrue(state.get('reset'), 'station vif was not reset to managed')
+        self.assertTrue(Nexmon.has_session('wlan0mon'))
+
+    def test_monitor_reset_failure_fails_closed(self):
+        with patch('wifite.tools.nexmon.probe', return_value=make_caps()), \
+                patch('wifite.tools.nexmon._interface_mode', return_value='monitor'), \
+                patch('wifite.tools.nexmon._run_ok', return_value=False):
+            with self.assertRaises(nexmon.NexmonError):
+                nexmon.start_monitor('wlan0')
+        self.assertFalse(Nexmon.has_session('wlan0'))
+
+
 class TestAirmonIntegration(NexmonTestBase):
     def setUp(self):
         super().setUp()
@@ -376,6 +434,30 @@ class TestAirmonIntegration(NexmonTestBase):
             self.assertEqual(Airmon.start('wlan0'), 'wlan0mon')
 
         legacy.assert_called_once_with('wlan0')
+
+    def test_ask_ensures_radiotap_on_brcmfmac_monitor(self):
+        with patch.object(Airmon, 'terminate_conflicting_processes'), \
+                patch('wifite.tools.airmon.Iw.get_interfaces',
+                      return_value=['wlan0mon']), \
+                patch.object(Airmon, 'get_iface_info',
+                             return_value=SimpleNamespace(driver='brcmfmac')), \
+                patch.object(Nexmon, 'probe', return_value=make_caps()), \
+                patch.object(Nexmon, 'start_monitor', return_value='wlan0mon') as start, \
+                patch('wifite.tools.airmon.Color'):
+            self.assertEqual(Airmon.ask(), 'wlan0mon')
+        start.assert_called_once_with('wlan0mon')
+        self.assertIsNone(Airmon.base_interface)
+
+    def test_ask_non_brcmfmac_monitor_shortcut_unchanged(self):
+        with patch.object(Airmon, 'terminate_conflicting_processes'), \
+                patch('wifite.tools.airmon.Iw.get_interfaces',
+                      return_value=['wlan0mon']), \
+                patch.object(Airmon, 'get_iface_info',
+                             return_value=SimpleNamespace(driver='mt76x0u')), \
+                patch.object(Airmon, 'start') as start, \
+                patch('wifite.tools.airmon.Color'):
+            self.assertEqual(Airmon.ask(), 'wlan0mon')
+        start.assert_not_called()
 
     def test_stop_delegates_to_nexmon_session(self):
         with patch.object(Nexmon, 'has_session', return_value=True), \
@@ -493,6 +575,64 @@ class TestLeakedMonitorSweep(NexmonTestBase):
         self.assertTrue(Nexmon.stop('wlan0'))
         self.assertFalse(Nexmon.has_session('wlan0'))
         self.assertFalse(Nexmon.has_session('wlan0mon'))
+
+
+class TestConfigMonitorModeSetup(unittest.TestCase):
+    def setUp(self):
+        from wifite.config import Configuration
+        self._saved = Configuration.interface
+
+    def tearDown(self):
+        from wifite.config import Configuration
+        Configuration.interface = self._saved
+
+    def test_interface_flag_still_enables_monitor_mode(self):
+        from wifite.config import Configuration
+        Configuration.interface = 'wlan0'
+        with patch('wifite.tools.airmon.Airmon.start',
+                   return_value='wlan0mon') as start, \
+                patch('wifite.tools.airmon.Airmon.get_iface_info',
+                      return_value=None), \
+                patch('wifite.tools.iw.Iw.is_monitor', return_value=False):
+            Configuration.get_monitor_mode_interface()
+        start.assert_called_once_with('wlan0')
+        self.assertEqual(Configuration.interface, 'wlan0mon')
+
+    def test_existing_monitor_interface_left_untouched(self):
+        from wifite.config import Configuration
+        Configuration.interface = 'wlan0mon'
+        with patch('wifite.tools.airmon.Airmon.start') as start, \
+                patch('wifite.tools.airmon.Airmon.get_iface_info',
+                      return_value=SimpleNamespace(driver='mt76x0u')), \
+                patch('wifite.tools.iw.Iw.is_monitor', return_value=True):
+            Configuration.get_monitor_mode_interface()
+        start.assert_not_called()
+        self.assertEqual(Configuration.interface, 'wlan0mon')
+
+    def test_brcmfmac_monitor_still_gets_radiotap_verification(self):
+        from wifite.config import Configuration
+        from wifite.tools.nexmon import NexmonCapabilities
+        Configuration.interface = 'wlan0'
+        caps = NexmonCapabilities(
+            interface='wlan0', driver='brcmfmac', mask=7, firmware='7.45.265')
+        with patch('wifite.tools.airmon.Airmon.start',
+                   return_value='wlan0') as start, \
+                patch('wifite.tools.airmon.Airmon.get_iface_info',
+                      return_value=SimpleNamespace(driver='brcmfmac')), \
+                patch('wifite.tools.nexmon.Nexmon.probe', return_value=caps), \
+                patch('wifite.tools.iw.Iw.is_monitor', return_value=True):
+            Configuration.get_monitor_mode_interface()
+        start.assert_called_once_with('wlan0')
+
+    def test_auto_selection_flow_unchanged(self):
+        from wifite.config import Configuration
+        Configuration.interface = None
+        with patch('wifite.tools.airmon.Airmon.ask', return_value='wlan0mon') as ask, \
+                patch('wifite.tools.airmon.Airmon.start') as start:
+            Configuration.get_monitor_mode_interface()
+        ask.assert_called_once()
+        start.assert_not_called()
+        self.assertEqual(Configuration.interface, 'wlan0mon')
 
 
 class TestRadiotapMonitorMode(NexmonTestBase):
