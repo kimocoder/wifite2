@@ -431,10 +431,14 @@ class Configuration:
             if nexmon_restored:
                 pass
             elif not cls.daemon:
-                Color.pl('{!} {O}Note:{W} Leaving interface in Monitor Mode!')
-                Color.pl('{!} To disable Monitor Mode when finished: '
-                         '{C}ip link set %s down && iw dev %s set type managed && ip link set %s up{W}'
-                         % (cls.interface, cls.interface, cls.interface))
+                from ..tools.iw import Iw
+                # Only print the hint when a monitor interface actually
+                # remains (the Nexmon monitor may already be torn down).
+                if Iw.is_monitor(cls.interface):
+                    Color.pl('{!} {O}Note:{W} Leaving interface in Monitor Mode!')
+                    Color.pl('{!} To disable Monitor Mode when finished: '
+                             '{C}ip link set %s down && iw dev %s set type managed && ip link set %s up{W}'
+                             % (cls.interface, cls.interface, cls.interface))
             else:
                 # Stop monitor mode
                 Airmon.stop(cls.interface)

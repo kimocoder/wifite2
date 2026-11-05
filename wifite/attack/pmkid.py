@@ -402,6 +402,7 @@ class AttackPMKID(Attack):
 
         # Start hcxdumptool
         log_debug('AttackPMKID', 'Starting hcxdumptool thread')
+        self._dumptool_died = False
         t = Thread(target=self.dumptool_thread)
         t.start()
 
@@ -413,6 +414,21 @@ class AttackPMKID(Attack):
         max_invalid_retries = 5  # Max consecutive invalid hashes before giving up
         log_debug('AttackPMKID', f'Starting PMKID capture loop (timeout: {Configuration.pmkid_timeout}s)')
         while self.timer.remaining() > 0:
+            # hcxdumptool exits immediately on drivers it cannot arm (e.g.
+            # brcmfmac/Nexmon).  Never spin for the full timeout without a
+            # capturer: fall back to the native Scapy capture when possible.
+            if self._dumptool_died:
+                log_warning('AttackPMKID', 'hcxdumptool exited during PMKID capture')
+                Color.pl('\n{!} {O}hcxdumptool stopped unexpectedly (incompatible driver?){W}')
+                self.keep_capturing = False
+                try:
+                    t.join(timeout=5)
+                except Exception:
+                    pass
+                if NATIVE_PMKID_AVAILABLE:
+                    Color.pl('{+} {G}Falling back to native PMKID capture (Scapy){W}')
+                    return self.capture_pmkid_native()
+                break
             attempts += 1
             log_debug('AttackPMKID', f'PMKID capture attempt {attempts}')
             pmkid_hash = pcaptool.get_pmkid_hash(self.pcapng_file)
@@ -591,7 +607,11 @@ class AttackPMKID(Attack):
                 # Let the dump tool run until we have the hash.
                 while self.keep_capturing and dumptool.poll() is None:
                     time.sleep(0.5)
+                if self.keep_capturing and dumptool.poll() is not None:
+                    self._dumptool_died = True
         except Exception as e:
+            if self.keep_capturing:
+                self._dumptool_died = True
             if Configuration.verbose > 0:
                 Color.pl(f'\n{{!}} {{R}}HcxDumpTool error{{W}}: {str(e)}')
         # Context manager will handle cleanup automatically

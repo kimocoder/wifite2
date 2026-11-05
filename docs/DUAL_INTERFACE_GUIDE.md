@@ -80,7 +80,7 @@ For optimal performance, use adapters with these characteristics:
 
 **Limited Support:**
 - Intel wireless (iwlwifi) - No AP mode or injection
-- Broadcom (brcmfmac) - Limited injection support
+- Broadcom (brcmfmac) - Monitor/injection only with Nexmon-patched firmware (requires `nexutil`)
 
 ### Checking Your Hardware
 
@@ -474,8 +474,24 @@ Before starting an attack, wifite2 validates the interface assignment:
 - ✓ Primary and secondary interfaces are different
 - ✓ Primary interface has required capabilities for its role
 - ✓ Secondary interface has required capabilities for its role
-- ⚠ Warning if both interfaces share the same physical device (phy)
 - ⚠ Warning if interfaces have problematic driver combinations
+
+Interfaces that share the same physical device (PHY) count as **one**
+monitor-capable candidate: a station and the monitor interface wifite2
+created from it are a single radio, not two attack interfaces.  When only
+one physical device remains after this deduplication, wifite2 falls back to
+single interface mode instead of running dual mode with a shared-PHY
+conflict warning.
+
+### Monitor Mode Setup
+
+Monitor setup always goes through the proper driver lifecycle before
+scanning, including when `-i/--interface` is given (previously the flag
+bypassed setup and airodump-ng switched the managed interface to plain
+monitor itself, capturing no frames on brcmfmac).  On brcmfmac/Nexmon a
+station vif already flipped to monitor type is reset to managed and a
+dedicated monitor vif is created, because only a dedicated monitor vif
+captures 802.11 frames on that driver.
 
 ## Best Practices
 

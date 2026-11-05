@@ -153,6 +153,13 @@ class ScapyPMKID:
         """
         if not SCAPY_AVAILABLE:
             return None
+
+        # Monitor interfaces may be created after Scapy first populated its
+        # interface cache (e.g. the Nexmon monitor vif created at startup).
+        # Reload it, otherwise sniff() resolves a stale ifindex and fails
+        # with ENODEV.
+        from scapy.all import conf
+        conf.ifaces.reload()
         
         bssid = bssid.upper()
         
