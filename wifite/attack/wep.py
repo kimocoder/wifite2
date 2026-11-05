@@ -21,7 +21,7 @@ class AttackWEP(Attack):
         Contains logic for attacking a WEP-encrypted access point.
     """
 
-    fakeauth_wait = 5  # TODO: Configuration?
+    fakeauth_wait = 5
 
     def __init__(self, target):
         super(AttackWEP, self).__init__(target)
@@ -206,7 +206,6 @@ class AttackWEP(Attack):
                                 if not xor_file:
                                     # If .xor is not there, the process failed.
                                     Color.pl('\n{!} {O}%s attack{R} did not generate a .xor file' % attack_name)
-                                    # XXX: For debugging
                                     Color.pl('{?} {O}Command: {R}%s{W}' % ' '.join(aireplay.cmd))
                                     Color.pl('{?} {O}Output:\n{R}%s{W}' % aireplay.get_output())
                                     break
@@ -381,14 +380,15 @@ class AttackWEP(Attack):
         Returns: True if successful, False is unsuccessful.
         """
         Color.p('\r{+} attempting {G}fake-authentication{W} with {C}%s{W}...' % self.target.bssid)
-        fakeauth = Aireplay.fakeauth(self.target, timeout=AttackWEP.fakeauth_wait)
+        fakeauth_wait = Configuration.wep_fakeauth_time or AttackWEP.fakeauth_wait
+        fakeauth = Aireplay.fakeauth(self.target, timeout=fakeauth_wait)
         if fakeauth:
             Color.pl(' {G}success{W}')
         else:
             Color.pl(' {R}failed{W}')
             if Configuration.require_fakeauth:
                 # Fakeauth is required, fail
-                raise Exception('Fake-authenticate did not complete within %d seconds' % AttackWEP.fakeauth_wait)
+                raise Exception('Fake-authenticate did not complete within %d seconds' % fakeauth_wait)
             # Warn that fakeauth failed
             Color.pl('{!} {O} unable to fake-authenticate with target (%s){W}' % self.target.bssid)
             Color.pl('{!} continuing attacks because {G}--require-fakeauth{W} was not set')

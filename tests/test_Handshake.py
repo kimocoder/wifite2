@@ -3,6 +3,7 @@
 
 import sys
 import unittest
+from unittest.mock import patch
 
 import pytest
 
@@ -16,6 +17,18 @@ pytestmark = pytest.mark.timeout(30)
 
 class TestHandshake(unittest.TestCase):
     """ Test suite for Target parsing an generation """
+
+    def test_preset_bssid_is_not_retargeted(self):
+        """A BSSID from the attack context must not be swapped for another AP."""
+        hs = Handshake('/tmp/multi.cap', bssid='5C:E2:8C:23:DC:B0', essid=None)
+        pairs = [('AA:BB:CC:DD:EE:01', 'One'), ('AA:BB:CC:DD:EE:02', 'Two')]
+
+        with patch('wifite.model.handshake.Tshark.bssid_essid_pairs',
+                   return_value=pairs):
+            hs.divine_bssid_and_essid()
+
+        assert hs.bssid == '5C:E2:8C:23:DC:B0'
+        assert hs.essid is None
 
     def getFile(self, filename):
         """ Helper method to parse targets from filename """

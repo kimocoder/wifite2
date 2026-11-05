@@ -43,12 +43,36 @@ class Handshake:
 
         if not self.essid and not self.bssid and len(pairs) > 0:
             # We do not know the bssid nor the essid
-            # TODO: Display menu for user to select from list
-            # HACK: Just use the first one we see
-            self.bssid = pairs[0][0]
-            self.essid = pairs[0][1]
-            Color.pl('{!} {O}Warning{W}: {O}Arbitrarily selected ' +
-                     '{R}bssid{O} {C}%s{O} and {R}essid{O} "{C}%s{O}"{W}' % (self.bssid, self.essid))
+            if len(pairs) == 1:
+                self.bssid = pairs[0][0]
+                self.essid = pairs[0][1]
+            else:
+                # Multiple networks in capture; no prior context to choose from.
+                # TODO: Display menu for user to select from list
+                chosen_bssid, chosen_essid = pairs[0]
+                Color.pl(
+                    '{!} {O}Warning{W}: Multiple networks found in capture file. '
+                    'Using first: {C}%s{W} ({C}%s{W}). '
+                    'Use {G}--bssid{W} to target a specific network.' % (chosen_bssid, chosen_essid)
+                )
+                self.bssid = chosen_bssid
+                self.essid = chosen_essid
+        elif not self.essid and self.bssid and len(pairs) > 1:
+            # BSSID is already set (e.g. from attack context or filename); try to match it.
+            matched = next(
+                ((bssid, essid) for (bssid, essid) in pairs if bssid.lower() == self.bssid.lower()),
+                None,
+            )
+            if matched:
+                self.essid = matched[1]
+            else:
+                # Never retarget a pre-set BSSID: that would validate a
+                # different network than the one under attack.
+                Color.pl(
+                    '{!} {O}Warning{W}: BSSID {C}%s{W} was not found among the '
+                    'networks in this capture; keeping the requested target{W}'
+                    % self.bssid
+                )
 
         if not self.bssid:
             # We already know essid

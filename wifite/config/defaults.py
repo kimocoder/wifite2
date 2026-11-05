@@ -72,6 +72,7 @@ def initialize_defaults(cls):
     cls.wep_timeout = 600  # Seconds to wait before failing
     cls.wep_crack_at_ivs = 10000  # Minimum IVs to start cracking
     cls.require_fakeauth = False
+    cls.wep_fakeauth_time = 5  # Seconds to wait for fake-authentication to complete
     cls.wep_restart_stale_ivs = 11  # Seconds to wait before restarting
     # Aireplay if IVs don't increase.
     # '0' means never restart.
@@ -154,6 +155,7 @@ def initialize_defaults(cls):
     cls.wps_timeout_threshold = 100  # Max number of timeouts
 
     # Commands
+    cls.show_cracking_command = False  # Print exact cracking command to stdout (--print-crack-cmd)
     cls.show_cracked = False
     cls.show_ignored = False
     cls.check_handshake = None

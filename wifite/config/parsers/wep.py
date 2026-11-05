@@ -18,6 +18,11 @@ def parse_wep_args(cls, args):
         cls.wep_timeout = args.wep_timeout
         Color.pl('{+} {C}option:{W} WEP attack timeout set to {G}%d seconds{W}' % args.wep_timeout)
 
+    if args.wep_fakeauth_time:
+        cls.wep_fakeauth_time = args.wep_fakeauth_time
+        Color.pl('{+} {C}option:{W} WEP fake-authentication timeout set to {G}%d seconds{W}'
+                 % args.wep_fakeauth_time)
+
     if args.require_fakeauth:
         cls.require_fakeauth = True
         Color.pl('{+} {C}option:{W} fake-authentication is {G}required{W} for WEP attacks')

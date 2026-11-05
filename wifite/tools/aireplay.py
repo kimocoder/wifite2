@@ -519,6 +519,42 @@ class Aireplay(Thread, Dependency):
             return False, 0
 
 
+    @staticmethod
+    def fakeauth(target, timeout=5, num_attempts=3):
+        """
+        Tries a one-time fake-authenticate with a target AP.
+        Params:
+            target (py.Target): Instance of py.Target
+            timeout (int): Time to wait for fakeuth to succeed.
+            num_attempts (int): Number of fakeauth attempts to make.
+        Returns:
+            (bool): True if fakeauth succeeds, otherwise False
+        """
+
+        cmd = [
+            'aireplay-ng',
+            '-1', '0',  # Fake auth, no delay
+            '-a', target.bssid,
+            '-T', str(num_attempts)
+        ]
+        if target.essid_known:
+            cmd.extend(['-e', target.essid])
+        cmd.append(Configuration.interface)
+        fakeauth_proc = Process(cmd,
+                                devnull=False,
+                                cwd=Configuration.temp())
+
+        timer = Timer(timeout)
+        while fakeauth_proc.poll() is None and not timer.ended():
+            time.sleep(0.1)
+        if fakeauth_proc.poll() is None or timer.ended():
+            fakeauth_proc.interrupt()
+            return False
+
+        output = fakeauth_proc.stdout()
+        return 'association successful' in output.lower()
+
+
 class ContinuousDeauth(Thread):
     """
     Continuous deauthentication attack for Evil Twin.
@@ -753,37 +789,3 @@ class ContinuousDeauth(Thread):
             'running': self.running
         }
 
-    @staticmethod
-    def fakeauth(target, timeout=5, num_attempts=3):
-        """
-        Tries a one-time fake-authenticate with a target AP.
-        Params:
-            target (py.Target): Instance of py.Target
-            timeout (int): Time to wait for fakeuth to succeed.
-            num_attempts (int): Number of fakeauth attempts to make.
-        Returns:
-            (bool): True if fakeauth succeeds, otherwise False
-        """
-
-        cmd = [
-            'aireplay-ng',
-            '-1', '0',  # Fake auth, no delay
-            '-a', target.bssid,
-            '-T', str(num_attempts)
-        ]
-        if target.essid_known:
-            cmd.extend(['-e', target.essid])
-        cmd.append(Configuration.interface)
-        fakeauth_proc = Process(cmd,
-                                devnull=False,
-                                cwd=Configuration.temp())
-
-        timer = Timer(timeout)
-        while fakeauth_proc.poll() is None and not timer.ended():
-            time.sleep(0.1)
-        if fakeauth_proc.poll() is None or timer.ended():
-            fakeauth_proc.interrupt()
-            return False
-
-        output = fakeauth_proc.stdout()
-        return 'association successful' in output.lower()
