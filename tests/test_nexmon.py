@@ -568,13 +568,13 @@ class TestLeakedMonitorSweep(NexmonTestBase):
                 patch('wifite.tools.nexmon._delete_interface', side_effect=fake_delete):
             monitor = nexmon.start_monitor('wlan0')
 
-        self.assertEqual(monitor, 'wlan0mon')
-        self.assertEqual(deleted, ['wlan0mon'])
-        self.assertEqual(ifindexes.get('wlan0mon'), 43)
-        self.assertTrue(Nexmon.has_session('wlan0mon'))
-        self.assertTrue(Nexmon.stop('wlan0'))
-        self.assertFalse(Nexmon.has_session('wlan0'))
-        self.assertFalse(Nexmon.has_session('wlan0mon'))
+            self.assertEqual(monitor, 'wlan0mon')
+            self.assertEqual(deleted, ['wlan0mon'])
+            self.assertEqual(ifindexes.get('wlan0mon'), 43)
+            self.assertTrue(Nexmon.has_session('wlan0mon'))
+            self.assertTrue(Nexmon.stop('wlan0'))
+            self.assertFalse(Nexmon.has_session('wlan0'))
+            self.assertFalse(Nexmon.has_session('wlan0mon'))
 
 
 class TestConfigMonitorModeSetup(unittest.TestCase):
