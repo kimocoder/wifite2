@@ -38,6 +38,13 @@ class AttackAll:
             # Warn that WPS attacks are not available.
             Color.pl('{!} {O}Note: WPS attacks are not possible because you do not have {C}reaver{O} nor {C}bully{W}')
 
+        if Configuration.wps_only and not any(t.wps for t in targets):
+            Color.pl('{!} {O}--wps-only is set, but no scanned AP advertises WPS{W}')
+            Color.pl('{!} {O}WPS must be enabled on the AP and visible in its '
+                     'beacon/probe WPS information element{W}')
+            Color.pl('{!} {O}Re-run without {C}--wps-only{O} to attack these '
+                     'targets with PMKID/handshake instead{W}')
+
         # Initialize infinite mode monitor if in infinite mode
         infinite_monitor = None
         if Configuration.infinite_mode:

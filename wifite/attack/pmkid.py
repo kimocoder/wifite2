@@ -493,6 +493,15 @@ class AttackPMKID(Attack):
         except Exception:
             pass
 
+        # The same session also collects EAPOL frames. Publish the capture so
+        # the handshake attack can reuse it instead of capturing again.
+        try:
+            from ..util import capture_cache
+            capture_cache.register(self.target.bssid, self.pcapng_file)
+        except Exception as error:
+            log_debug('AttackPMKID',
+                      f'Could not publish capture for reuse: {error}')
+
         if pmkid_hash is None:
             log_warning('AttackPMKID', f'PMKID capture failed: timeout after {attempts} attempt(s)')
             if self.view:
@@ -533,7 +542,8 @@ class AttackPMKID(Attack):
 
             key = None
         else:
-            wordlists_to_try = [wl for wl in Configuration.wordlists if os.path.exists(wl)]
+            wordlists_to_try = Hashcat.order_wordlists(
+                [wl for wl in Configuration.wordlists if os.path.exists(wl)])
             if not wordlists_to_try:
                 wordlists_to_try = [Configuration.wordlist]
 

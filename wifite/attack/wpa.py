@@ -314,7 +314,7 @@ class AttackWPA(Attack):
             self.view.set_attack_type("WPA Handshake Capture")
 
         # Skip if target is not WPS
-        if Configuration.wps_only and self.target.wps is False:
+        if Configuration.wps_only and not self.target.wps:
             Color.pl('\r{!} {O}Skipping WPA-Handshake attack on {R}%s{O} because {R}--wps-only{O} is set{W}'
                      % self.target.essid)
             self.success = False
@@ -381,7 +381,8 @@ class AttackWPA(Attack):
             )
 
         # Get list of wordlists to try
-        wordlists_to_try = [wl for wl in Configuration.wordlists if os.path.exists(wl)]
+        wordlists_to_try = Hashcat.order_wordlists(
+            [wl for wl in Configuration.wordlists if os.path.exists(wl)])
         if not wordlists_to_try:
             Color.pl('{!} {O}Not cracking handshake because no valid wordlist files were found')
             self.success = False
@@ -523,6 +524,34 @@ class AttackWPA(Attack):
         self.success = False
         return False
 
+    def _reuse_shared_capture(self):
+        """Reuse an hcxdumptool capture published by an earlier attack."""
+        from ..util import capture_cache
+
+        capfile = capture_cache.get(self.target.bssid)
+        if not capfile:
+            return None
+
+        essid = self.target.essid if self.target.essid_known else None
+        try:
+            handshake = Handshake(capfile, bssid=self.target.bssid, essid=essid)
+            if not handshake.has_handshake():
+                log_debug('AttackWPA',
+                          'Shared capture has no handshake for %s'
+                          % self.target.bssid)
+                return None
+        except (ValueError, OSError) as error:
+            log_debug('AttackWPA', 'Shared capture unusable: %s' % error)
+            return None
+
+        log_info('AttackWPA',
+                 'Reusing handshake from the combined hcxdumptool session: %s'
+                 % capfile)
+        Color.pl('{+} {G}Reusing handshake from the combined hcxdumptool '
+                 'session{W}')
+        Color.pl('{+} {C}No second monitor-mode cycle needed{W}')
+        return handshake
+
     def _run_dual_interface(self):
         """
         Run WPA attack with two interfaces (continuous capture, parallel deauth).
@@ -538,6 +567,10 @@ class AttackWPA(Attack):
         """
         from ..tools.airmon import Airmon
         from ..tools.hcxdumptool import HcxDumpTool
+
+        shared = self._reuse_shared_capture()
+        if shared:
+            return shared
         
         # Check if hcxdump mode is requested (FT targets need pcapng capture)
         use_hcxdump_mode = False
@@ -1458,6 +1491,10 @@ class AttackWPA(Attack):
 
     def capture_handshake(self):
         """Returns captured or stored handshake, otherwise None."""
+        shared = self._reuse_shared_capture()
+        if shared:
+            return shared
+
         # Check if hcxdump mode is requested for single interface (FT needs it)
         target_uses_ft = getattr(self.target, 'wpa_ft', False)
         if Configuration.use_hcxdump or target_uses_ft:

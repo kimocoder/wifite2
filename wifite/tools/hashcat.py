@@ -16,6 +16,15 @@ import os
 import re
 import threading
 
+# Output markers hashcat emits when an OpenCL device cannot be used. Seen on
+# rusticl/V3D (CL_INVALID_QUEUE_PROPERTIES) and on machines with no device.
+DEVICE_FAILURE_MARKERS = (
+    'no devices found',
+    'cl_invalid_queue_properties',
+    'no opencl devices found',
+    'unstable opencl driver',
+)
+
 class HashcatCracker:
     """
     Runs hashcat and streams live progress from its own stdout.
@@ -31,12 +40,10 @@ class HashcatCracker:
     # hcxdumptool-style device failures. Hashcat exits 255 and prints one of
     # these when every OpenCL device is unusable (e.g. rusticl on V3D with
     # CL_INVALID_QUEUE_PROPERTIES). It must not be reported as "not found".
-    DEVICE_ERROR_MARKERS = (
-        'no devices found',
-        'cl_invalid_queue_properties',
-        'no opencl devices found',
-        'unstable opencl driver',
-    )
+    DEVICE_ERROR_MARKERS = DEVICE_FAILURE_MARKERS
+
+    # Wordlists above this size are impractical on the CPU backend.
+    LARGE_WORDLIST_BYTES = 50 * 1024 * 1024
 
     def __init__(self, hash_file, wordlist, mode='22000', target_is_wpa3_sae=False):
         self.hash_file = hash_file
@@ -80,6 +87,21 @@ class HashcatCracker:
         # never see any STATUS lines and progress would stay at 0%.
         # The reader thread filters for STATUS / WPA* lines and drops
         # everything else, so the banner noise is invisible to the user.
+        if not self.cpu_fallback:
+            probe = Hashcat.probe_backend()
+            if probe['prefer_cpu']:
+                self.cpu_fallback = True
+                if not Hashcat._cpu_notice_shown:
+                    Hashcat._cpu_notice_shown = True
+                    log_warning('Hashcat',
+                                'OpenCL backend unusable (%s); using CPU (-D 1)'
+                                % probe['reason'])
+                    Color.pl('{!} {O}OpenCL backend unusable ({R}%s{O}); '
+                             'cracking on the {C}CPU{O} device (-D 1){W}'
+                             % probe['reason'])
+                    Color.pl('{!} {O}Expect hundreds of H/s: try a targeted '
+                             'wordlist first{W}')
+
         command = self._build_command()
 
         if show_command:
@@ -91,7 +113,29 @@ class HashcatCracker:
         self._reader_thread = threading.Thread(
             target=self._read_output, daemon=True)
         self._reader_thread.start()
+
+        if self.cpu_fallback:
+            self._warn_large_cpu_wordlist()
         return self.proc
+
+    def _warn_large_cpu_wordlist(self):
+        """Warn once when a large wordlist is about to run on the CPU."""
+        if getattr(self, '_wordlist_notice', False):
+            return
+        self._wordlist_notice = True
+        try:
+            size = os.path.getsize(self.wordlist)
+        except OSError:
+            return
+        if size < self.LARGE_WORDLIST_BYTES:
+            return
+
+        megabytes = size // (1024 * 1024)
+        log_warning('HashcatCracker',
+                    'CPU-only backend with a %d MB wordlist' % megabytes)
+        Color.pl('{!} {O}CPU-only backend and a {R}%d MB{O} wordlist: this '
+                 'run will be very slow{W}' % megabytes)
+        Color.pl('{!} {O}Try the smallest targeted list first ({C}--dict{W}){W}')
 
     def _read_output(self):
         """Consume hashcat stdout; update status and capture cracked hash."""
@@ -287,7 +331,64 @@ class Hashcat(Dependency):
 
     _cached_version = None  # Cache parsed version tuple
     _force_cache = None  # Cache the one-time -I device probe
+    _backend_probe = None  # {'prefer_cpu': bool, 'reason': str}
+    _cpu_notice_shown = False
     last_error = None  # Set when the last crack could not run at all
+
+    @classmethod
+    def is_device_failure(cls, text):
+        """True when hashcat output reports an unusable OpenCL device."""
+        if not text:
+            return False
+        lowered = text.lower()
+        return any(marker in lowered for marker in DEVICE_FAILURE_MARKERS)
+
+    @classmethod
+    def probe_backend(cls):
+        """Detect a broken OpenCL backend once per run.
+
+        rusticl on V3D fails queue creation with CL_INVALID_QUEUE_PROPERTIES
+        while `hashcat -I` still lists the device and exits 0, so the exit
+        code alone is not enough: inspect the whole output.
+        """
+        if cls._backend_probe is not None:
+            return dict(cls._backend_probe)
+
+        result = {'prefer_cpu': False, 'reason': ''}
+        try:
+            if Process.exists('hashcat'):
+                stdout, stderr = Process(['hashcat', '-I']).get_output(timeout=20)
+                combined = '%s\n%s' % (stdout or '', stderr or '')
+                if cls.is_device_failure(combined):
+                    result['prefer_cpu'] = True
+                    result['reason'] = 'OpenCL device failed to initialise'
+                elif 'none of them is usable for this run' in combined.lower():
+                    result['prefer_cpu'] = True
+                    result['reason'] = 'hashcat found no usable device'
+        except Exception as error:
+            log_debug('Hashcat', 'backend probe failed: %s' % error)
+
+        cls._backend_probe = result
+        return dict(result)
+
+    @classmethod
+    def prefer_cpu_device(cls):
+        return cls.probe_backend()['prefer_cpu']
+
+    @classmethod
+    def order_wordlists(cls, wordlists):
+        """Put the smallest (most targeted) lists first on the CPU backend."""
+        wordlists = list(wordlists)
+        if len(wordlists) < 2 or not cls.prefer_cpu_device():
+            return wordlists
+
+        def _size(path):
+            try:
+                return os.path.getsize(path)
+            except OSError:
+                return 0
+
+        return sorted(wordlists, key=_size)
 
     @staticmethod
     def get_version():
