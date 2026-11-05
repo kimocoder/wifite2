@@ -380,7 +380,14 @@ class EvilTwin(Attack):
         """
         try:
             from ..tools.airmon import Airmon
-            
+            from ..tools.nexmon import Nexmon
+
+            # A Nexmon session keeps a monitor vif on the same PHY, and
+            # brcmfmac cannot run AP mode alongside it.  Tear the session
+            # down before configuring this interface for hostapd.
+            if Nexmon.has_session(interface):
+                Nexmon.stop(interface)
+
             # Bring interface down
             log_debug('EvilTwin', f'Bringing down interface {interface}')
             Airmon.put_interface_down(interface)

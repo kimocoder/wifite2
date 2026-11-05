@@ -106,5 +106,30 @@ class TestScapyInterfaceCacheRefresh(unittest.TestCase):
         self.assertIsNone(result)
 
 
+class TestEvilTwinApConfig(unittest.TestCase):
+    def _configure(self, has_session):
+        from wifite.attack.eviltwin import EvilTwin
+        attack = EvilTwin.__new__(EvilTwin)
+        with patch('wifite.tools.nexmon.Nexmon.has_session',
+                   return_value=has_session), \
+                patch('wifite.tools.nexmon.Nexmon.stop', return_value=True) as stop, \
+                patch('wifite.tools.airmon.Airmon.put_interface_down'), \
+                patch('wifite.tools.airmon.Airmon.put_interface_up'), \
+                patch('wifite.tools.airmon.Airmon.set_interface_mode',
+                      return_value=True):
+            result = attack._configure_ap_interface('wlan0')
+        return result, stop
+
+    def test_ap_config_stops_nexmon_session(self):
+        result, stop = self._configure(has_session=True)
+        self.assertTrue(result)
+        stop.assert_called_once_with('wlan0')
+
+    def test_ap_config_without_session_untouched(self):
+        result, stop = self._configure(has_session=False)
+        self.assertTrue(result)
+        stop.assert_not_called()
+
+
 if __name__ == '__main__':
     unittest.main()
