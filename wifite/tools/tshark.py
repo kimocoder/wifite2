@@ -12,6 +12,7 @@ from .dependency import Dependency
 from ..model.target import WPSState
 from ..util.process import Process
 import re
+import select
 
 
 class Tshark(Dependency):
@@ -399,15 +400,25 @@ class TsharkMonitor:
         self.proc = Process(command, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
         return self.proc
 
-    def read_frame(self):
+    def read_frame(self, timeout=0.1):
         """
         Read and parse next frame from tshark output.
+
+        Returns None when no line is available within ``timeout`` seconds,
+        so callers can run periodic checks (e.g. the attack monitor's
+        duration deadline) between frames instead of blocking forever on
+        an idle channel.
         """
         if not self.proc or not self.proc.pid or not self.proc.pid.stdout:
             return None
 
         try:
-            line = self.proc.pid.stdout.readline()
+            stdout = self.proc.pid.stdout
+            ready, _, _ = select.select([stdout], [], [], timeout)
+            if not ready:
+                return None
+
+            line = stdout.readline()
             if not line:
                 return None
 
