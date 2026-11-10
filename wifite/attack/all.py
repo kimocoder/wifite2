@@ -15,6 +15,7 @@ from ..util.color import Color
 from ..util.logger import log_info
 from ..util.wpa3_tools import WPA3ToolChecker
 from ..util.memory import MemoryMonitor, get_infinite_monitor
+from ..util.supervisor import TargetScopeCancelled, TargetTimeoutExpired
 
 class Answer(Enum):
     Skip = 1
@@ -236,6 +237,18 @@ class AttackAll:
                     if result:
                         attack_successful = True
                         break  # Attack was successful, stop other attacks.
+                # TargetTimeoutExpired subclasses TimeoutError (an OSError),
+                # so this must precede the OSError handler below.
+                except (TargetTimeoutExpired, TargetScopeCancelled) as e:
+                    # The supervised time budget is exhausted: record what the
+                    # interrupted attack already captured, then stop the chain
+                    # (no remaining attack can run with zero budget).
+                    if getattr(attack, 'capture_success', False):
+                        capture_successful = True
+                    if getattr(attack, 'crack_error', False):
+                        crack_error = True
+                    Color.pl('\r {!} {R}Target timeout{W}: %s' % str(e))
+                    break
                 except OSError as e:
                     Color.pl('\r {!} {R}System Error{W}: %s' % str(e))
                     continue

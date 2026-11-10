@@ -175,6 +175,32 @@ def test_hashcat_polling_respects_target_deadline(tmp_path, monkeypatch):
     assert FakeHashcatCracker.instances[0].closed
 
 
+def test_budget_expiry_stops_wordlist_loop(tmp_path, monkeypatch):
+    from wifite.util import crack_cache
+
+    # Regression test: once the target budget expires, the crack loop used to
+    # restart hashcat for every remaining wordlist (each failing instantly
+    # with the same deadline error). It must stop after the first expiry.
+    wordlists = []
+    for index in range(3):
+        wordlist = tmp_path / f'words{index}.txt'
+        wordlist.write_text('password\n')
+        wordlists.append(str(wordlist))
+    scope = FakeScope(error=TargetTimeoutExpired('expired'))
+    attack = AttackPMKID(target())
+    attack.set_scope(scope)
+    crack_cache.clear()
+    FakeHashcatCracker.instances = []
+    monkeypatch.setattr(Configuration, 'wordlist', wordlists[0])
+    monkeypatch.setattr(Configuration, 'wordlists', wordlists)
+    monkeypatch.setattr('wifite.attack.pmkid.HashcatCracker', FakeHashcatCracker)
+    monkeypatch.setattr('wifite.attack.pmkid.Hashcat.order_wordlists', lambda values: values)
+
+    assert attack.crack_pmkid_file('fixture.22000') is False
+    assert len(FakeHashcatCracker.instances) == 1
+    assert FakeHashcatCracker.instances[0].closed
+
+
 def test_finished_capture_health_is_cleared_before_cracking(tmp_path, monkeypatch):
     from wifite.util import crack_cache
 

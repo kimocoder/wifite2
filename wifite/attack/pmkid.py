@@ -12,6 +12,7 @@ from ..util.output import OutputManager
 from ..model.pmkid_result import CrackResultPMKID
 from ..tools.airodump import Airodump
 from ..util.wpasec_uploader import WpaSecUploader
+from ..util.supervisor import TargetScopeCancelled, TargetTimeoutExpired
 from ..util.logger import log_debug, log_info, log_warning, log_error, mask_sensitive
 from threading import Thread, active_count
 import os
@@ -605,6 +606,7 @@ class AttackPMKID(Attack):
             self.scope.clear_health()
 
         # Check that wordlist exists before cracking.
+        budget_expired = False
         if Configuration.wordlist is None:
             log_warning('AttackPMKID', 'PMKID crack skipped: no wordlist specified')
             if self.view:
@@ -667,6 +669,14 @@ class AttackPMKID(Attack):
                     return self._handle_hashcat_failure(
                         '\n{!} {R}Failed to crack PMKID: {O}Cracking interrupted by user{W}'
                     )
+                except (TargetTimeoutExpired, TargetScopeCancelled) as e:
+                    # The supervised budget is exhausted: no further wordlist
+                    # can run, so stop the loop instead of retrying each one.
+                    log_error('AttackPMKID', f'Target budget expired during crack: {e}')
+                    Color.pl('\n{!} {R}Target timeout:{W} %s' % str(e))
+                    key = None
+                    budget_expired = True
+                    break
                 except Exception as e:
                     log_error('AttackPMKID', f'Error during hashcat polling: {e}')
                     continue
@@ -708,6 +718,11 @@ class AttackPMKID(Attack):
                           '{R}Cracking unavailable{O} (%s); capture kept\n'
                           % (self.crack_error_reason or
                              'hashcat did not complete the run'))
+            return False
+        if budget_expired:
+            # The 'Target timeout' line printed when the budget expired is the
+            # final status; the wordlists were not exhausted, so 'passphrase
+            # not found' would be misleading.
             return False
         # Failed to crack.
         if Configuration.wordlist is not None:
