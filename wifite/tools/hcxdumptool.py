@@ -16,6 +16,7 @@ from ..util.logger import log_warning
 from ..config import Configuration
 
 import os
+import re
 import time
 import signal
 
@@ -64,6 +65,69 @@ def _return_monitor_mode(interfaces):
             manager.rearm_monitor(iface)
         except Exception:
             pass
+
+
+_ANSI_ESCAPE = re.compile(r'\x1b\[[0-9;?]*[A-Za-z]')
+
+
+def _exit_reason(text):
+    """Translate hcxdumptool's own stop lines into one human sentence.
+
+    hcxdumptool reports why it stopped in its closing lines, and it exits 0
+    for both a watchdog timeout and a --tot expiry, so the status alone
+    cannot tell a dead radio from a finished capture.
+
+    Returns '' for anything unrecognised, including hcxdumptool's real error
+    lines, so callers fall back to showing those verbatim. The error count is
+    checked before our own SIGTERM line: the SIGTERM is ours, the errors are
+    the news.
+    """
+    if not text:
+        return ''
+    clean = _ANSI_ESCAPE.sub('', text)
+    if re.search(r'exit on watchdog', clean, re.I):
+        return 'no packets received (watchdog timeout)'
+    if re.search(r'exit on tot\b', clean, re.I):
+        return 'capture timer expired'
+    match = re.search(r'(\d+) ERROR\(s\) during runtime', clean)
+    if match:
+        return ('%s runtime error(s); usually a broken driver or a shared '
+                'interface' % match.group(1))
+    return ''
+
+
+_RDS_ROW = re.compile(r'^\d+\|')
+_BENIGN_EXIT = re.compile(r'exit on (?:sigterm|eapol)$', re.I)
+# hcxdumptool prints these on every start. Returning one as the reason says
+# nothing about why a capture stopped, so they are skipped, never returned.
+_NOISE_LINE = re.compile(
+    r'^(?:warning|make sure hcxdumptool|checkout \(and understand\)|'
+    r'starting in headless mode|this is a highly experimental|'
+    r'it is made to detect|misuse within a network|irreparable damage|'
+    r'not understanding what you were doing|\d+ Packet\(s\) (?:captured|dropped)'
+    r' by kernel)', re.I)
+
+
+def _last_meaningful_line(text):
+    """Last line of hcxdumptool output that tells a human anything.
+
+    Skips display rows, ANSI-only fragments and blank lines. A trailing
+    benign exit line ends the search with '' : the stop was ours (SIGTERM)
+    or a success (--exitoneapol), so nothing went wrong and the statistics
+    above it are not a failure reason.
+    """
+    for line in reversed(text.splitlines()):
+        clean = _ANSI_ESCAPE.sub('', line).strip()
+        if not clean:
+            continue
+        if _RDS_ROW.match(clean):
+            continue
+        if _NOISE_LINE.match(clean):
+            continue
+        if _BENIGN_EXIT.search(clean):
+            return ''
+        return clean
+    return ''
 
 
 class HcxDumpTool(Dependency):
@@ -135,6 +199,10 @@ class HcxDumpTool(Dependency):
         self.exitoneapol = exitoneapol
         self.scope = scope
         self.log_path = None
+        # Bytes already in that log when this spawn started: the log is per
+        # scope and appended across spawns, so anything before this offset
+        # belongs to an earlier hcxdumptool session.
+        self._log_offset = 0
         self._bpf_file = None
         # Interfaces handed back to managed mode for hcxdumptool; re-armed
         # on __exit__ so the rest of wifite keeps its monitor interface.
@@ -245,7 +313,9 @@ class HcxDumpTool(Dependency):
         command = [
             'hcxdumptool',
             '-w', self.output_file,  # Changed from -o to -w for hcxdumptool 7.x compatibility
-            '--rds=1'  # Enable real-time display: 1 = show APs on current channel, show CLIENTs
+            # Headless: stdout is piped into the session log and never read,
+            # so the real-time display only pads that log with AP rows.
+            '--rds=0'
         ]
 
         # Add all interfaces with separate -i flags for multi-interface capture
@@ -288,6 +358,10 @@ class HcxDumpTool(Dependency):
         # Start the process
         if self.scope:
             self.log_path = self.scope.create_log('hcxdumptool')
+            try:
+                self._log_offset = os.path.getsize(self.log_path)
+            except OSError:
+                self._log_offset = 0
             self.proc = self.scope.spawn(
                 command, role='hcxdumptool', log_path=self.log_path)
         else:
@@ -377,6 +451,42 @@ class HcxDumpTool(Dependency):
             self._last_data_size = current
             return True
         return False
+
+    def get_failure_reason(self, timeout: int = 2) -> str:
+        """Return a human reason for a capture that stopped on its own.
+
+        A supervised run (``scope``) sends both streams to ``log_path``,
+        where ``Process.get_output()`` is empty by construction, so the log
+        tail is the only source there. The read is bounded because that file
+        may still be growing.
+        """
+        text = ''
+        if self.log_path:
+            try:
+                offset = getattr(self, '_log_offset', 0) or 0
+                with open(self.log_path, 'rb') as handle:
+                    end = handle.seek(0, os.SEEK_END)
+                    start = max(offset, end - 4096)
+                    handle.seek(start)
+                    text = handle.read(4096).decode('utf-8', errors='replace')
+                    if start > offset:
+                        # The window opened mid-line; that fragment is not
+                        # this session's output.
+                        text = text.split('\n', 1)[1] if '\n' in text else ''
+            except OSError:
+                text = ''
+
+        if not text and self.proc:
+            try:
+                stdout, stderr = self.proc.get_output(timeout=timeout)
+            except Exception:
+                stdout, stderr = '', ''
+            text = '\n'.join(
+                part for part in ((stdout or ''), (stderr or '')) if part)
+
+        if not text:
+            return ''
+        return _exit_reason(text) or _last_meaningful_line(text)
 
     @staticmethod
     def exists() -> bool:
@@ -525,6 +635,7 @@ class HcxDumpToolPassive:
             'hcxdumptool',
             '-i', self.interface,
             *self.PASSIVE_OPTIONS,
+            '--rds=0',  # headless: the display is never read
             '-w', self.output_file,
         ]
 
@@ -580,17 +691,23 @@ class HcxDumpToolPassive:
         return 0
 
     def get_failure_reason(self, timeout: int = 2) -> str:
-        """Return the last error line from a capture that exited early."""
+        """Return a human reason for a capture that exited early."""
         if not self.proc:
             return ''
         try:
             stdout, stderr = self.proc.get_output(timeout=timeout)
         except Exception:
             return ''
-        text = (stderr or '').strip() or (stdout or '').strip()
-        if not text:
+        stdout = (stdout or '').strip()
+        stderr = (stderr or '').strip()
+        if not stdout and not stderr:
             return ''
-        return text.splitlines()[-1].strip()
+        # Both streams are searched: hcxdumptool splits its summary and its
+        # error text, and we do not know which one carries the stop line.
+        reason = _exit_reason('\n'.join(part for part in (stdout, stderr) if part))
+        if reason:
+            return reason
+        return _last_meaningful_line('\n'.join(part for part in (stdout, stderr) if part))
 
 
 class HcxPcapngTool(Dependency):

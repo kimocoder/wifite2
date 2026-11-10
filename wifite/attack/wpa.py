@@ -22,6 +22,20 @@ from shutil import copy
 from contextlib import contextmanager
 
 
+def _hcxdumptool_stop_hint(reason, exitoneapol):
+    """One line telling the user why an hcxdumptool capture ended.
+
+    A clean `--exitoneapol` stop reports no failure reason, but the caller
+    only reaches this when no crackable handshake came out of it, so that
+    case is named instead of leaving the user with the generic cause list.
+    """
+    if reason:
+        return reason
+    if exitoneapol:
+        return 'exited on EAPOL but no crackable handshake was found'
+    return ''
+
+
 class AttackWPA(Attack):
     supervised = True
 
@@ -1232,29 +1246,26 @@ class AttackWPA(Attack):
                 if not hcxdump.is_running():
                     from ..util.logger import log_error, log_info
                     
-                    # Capture error output to help diagnose the issue
-                    error_output = ''
+                    # Ask the wrapper: it reads the supervisor log for scoped
+                    # runs and translates hcxdumptool's own stop lines.
+                    reason = ''
                     try:
-                        if hcxdump.proc:
-                            stdout, stderr = hcxdump.proc.get_output()
-                            if stderr:
-                                error_output = stderr.strip()
-                            elif stdout:
-                                error_output = stdout.strip()
+                        reason = _hcxdumptool_stop_hint(
+                            hcxdump.get_failure_reason(), hcxdump.exitoneapol)
                     except Exception:
                         pass
                     
-                    log_error('AttackWPA', f'hcxdumptool process died unexpectedly during capture. Error: {error_output if error_output else "No error output captured"}')
+                    log_error('AttackWPA', f'hcxdumptool process died unexpectedly during capture. Reason: {reason if reason else "no reason reported"}')
                     log_info('AttackWPA', 'Falling back to airodump-ng capture method')
                     
                     Color.pl('\n{!} {R}hcxdumptool process died unexpectedly{W}')
-                    if error_output:
-                        Color.pl('{!} {O}Error: {R}%s{W}' % error_output[:200])
+                    if reason:
+                        Color.pl('{!} {O}Reason: {R}%s{W}' % reason[:200])
                     Color.pl('{!} {O}Falling back to airodump-ng mode{W}')
                     if self.view:
                         self.view.add_log('hcxdumptool process died - falling back to airodump-ng')
-                        if error_output:
-                            self.view.add_log(f'Error: {error_output[:100]}')
+                        if reason:
+                            self.view.add_log(f'Reason: {reason[:100]}')
                     
                     # Fall back to airodump-ng capture
                     return self._capture_handshake_dual_airodump()
@@ -1467,25 +1478,21 @@ class AttackWPA(Attack):
                         if self.save_handshake(exited):
                             return exited
 
-                    # Capture error output to help diagnose the issue
-                    error_output = ''
+                    # Ask the wrapper: it reads the supervisor log for scoped
+                    # runs and translates hcxdumptool's own stop lines.
+                    reason = ''
                     try:
-                        if hcxdump.proc:
-                            stdout, stderr = hcxdump.proc.get_output()
-                            if stderr:
-                                error_output = stderr.strip()
-                            elif stdout:
-                                error_output = stdout.strip()
+                        reason = _hcxdumptool_stop_hint(
+                            hcxdump.get_failure_reason(), hcxdump.exitoneapol)
                     except Exception:
                         pass
                     
-                    log_error('AttackWPA', f'hcxdumptool process died unexpectedly during capture. Error: {error_output if error_output else "No error output captured"}')
+                    log_error('AttackWPA', f'hcxdumptool process died unexpectedly during capture. Reason: {reason if reason else "no reason reported"}')
                     Color.pl('\n{!} {R}hcxdumptool process died unexpectedly{W}')
                     
-                    if error_output:
-                        # Display the actual error to help user diagnose
-                        Color.pl('{!} {O}Error output: {R}%s{W}' % error_output[:200])
-                        log_error('AttackWPA', f'Full hcxdumptool error: {error_output}')
+                    if reason:
+                        # Display the actual reason to help user diagnose
+                        Color.pl('{!} {O}Reason: {R}%s{W}' % reason[:200])
                     
                     Color.pl('{!} {O}Common causes:{W}')
                     Color.pl('{!} {O}  - Interface not in monitor mode{W}')
@@ -1495,8 +1502,8 @@ class AttackWPA(Attack):
                     
                     if self.view:
                         self.view.add_log('hcxdumptool process died unexpectedly')
-                        if error_output:
-                            self.view.add_log(f'Error: {error_output[:100]}')
+                        if reason:
+                            self.view.add_log(f'Reason: {reason[:100]}')
                     return None
                 
                 # Validate only when new frames were written; has_handshake()

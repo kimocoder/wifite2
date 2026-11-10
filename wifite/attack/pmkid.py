@@ -421,6 +421,7 @@ class AttackPMKID(Attack):
         # Start hcxdumptool
         log_debug('AttackPMKID', 'Starting hcxdumptool thread')
         self._dumptool_died = False
+        self._dumptool_reason = ''
         t = Thread(target=self.dumptool_thread)
         t.start()
 
@@ -445,8 +446,14 @@ class AttackPMKID(Attack):
                                 'hcxdumptool exited during the handshake grace '
                                 'window; keeping the captured PMKID')
                     break
-                log_warning('AttackPMKID', 'hcxdumptool exited during PMKID capture')
-                Color.pl('\n{!} {O}hcxdumptool stopped unexpectedly (incompatible driver?){W}')
+                reason = getattr(self, '_dumptool_reason', '')
+                log_warning('AttackPMKID',
+                            'hcxdumptool exited during PMKID capture'
+                            + (f': {reason}' if reason else ''))
+                if reason:
+                    Color.pl('\n{!} {O}hcxdumptool stopped unexpectedly: {R}%s{W}' % reason)
+                else:
+                    Color.pl('\n{!} {O}hcxdumptool stopped unexpectedly (incompatible driver?){W}')
                 self.keep_capturing = False
                 try:
                     t.join(timeout=5)
@@ -790,6 +797,14 @@ class AttackPMKID(Attack):
                 while self.keep_capturing and dumptool.is_running():
                     self._sleep_scope(0.5)
                 if self.keep_capturing and not dumptool.is_running():
+                    # Ask while the context still owns the process: the
+                    # supervised log handle is closed on exit. The reason is
+                    # recorded before the flag, because the capture loop
+                    # prints as soon as it sees the flag.
+                    try:
+                        self._dumptool_reason = dumptool.get_failure_reason()
+                    except Exception:
+                        self._dumptool_reason = ''
                     self._dumptool_died = True
         except Exception as e:
             if self.keep_capturing:

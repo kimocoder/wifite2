@@ -124,6 +124,24 @@ class TestHcxDumpToolMultiInterface(unittest.TestCase):
     @patch('wifite.tools.hcxdumptool.Process')
     @patch('wifite.tools.hcxdumptool.time.sleep')
     @patch('wifite.tools.hcxdumptool.os.kill')
+    def test_capture_command_is_headless(self, mock_kill, mock_sleep, mock_process, mock_config_init):
+        """Capture must not force the real-time display it never reads."""
+        mock_proc_instance = MagicMock()
+        mock_proc_instance.pid.pid = 12345
+        mock_proc_instance.poll.return_value = None
+        mock_process.return_value = mock_proc_instance
+
+        tool = HcxDumpTool(interface='wlan0', channel=6, output_file='/tmp/test.pcapng')
+
+        with tool:
+            call_args = mock_process.call_args[0][0]
+            self.assertIn('--rds=0', call_args)
+            self.assertNotIn('--rds=1', call_args)
+
+    @patch('wifite.tools.hcxdumptool.Configuration.initialize')
+    @patch('wifite.tools.hcxdumptool.Process')
+    @patch('wifite.tools.hcxdumptool.time.sleep')
+    @patch('wifite.tools.hcxdumptool.os.kill')
     def test_command_building_dual_interface(self, mock_kill, mock_sleep, mock_process, mock_config_init):
         """Test command building with dual interfaces"""
         mock_proc_instance = MagicMock()
@@ -249,6 +267,23 @@ class TestHcxDumpToolPassive(unittest.TestCase):
             # Verify PID was set
             self.assertEqual(tool.pid, 12345)
             self.assertIsNotNone(tool.proc)
+
+    @patch('wifite.tools.hcxdumptool.Configuration.initialize')
+    @patch('wifite.tools.hcxdumptool.Process')
+    @patch('wifite.tools.hcxdumptool.time.sleep')
+    def test_passive_command_is_headless(self, mock_sleep, mock_process, mock_config_init):
+        """Passive capture must ask for headless mode instead of relying on the binary default."""
+        mock_proc_instance = MagicMock()
+        mock_proc_instance.pid.pid = 12345
+        mock_proc_instance.poll.return_value = None
+        mock_process.return_value = mock_proc_instance
+
+        tool = HcxDumpToolPassive(interface='wlan0', output_file='/tmp/passive.pcapng')
+
+        with tool:
+            call_args = mock_process.call_args[0][0]
+            self.assertIn('--rds=0', call_args)
+            self.assertNotIn('--rds=1', call_args)
 
     @patch('wifite.tools.hcxdumptool.Configuration.initialize')
     @patch('wifite.tools.hcxdumptool.Process')
