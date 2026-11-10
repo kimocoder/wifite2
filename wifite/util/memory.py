@@ -225,7 +225,7 @@ class MemoryMonitor:
         cls._cleanup_count += 1
 
         # Clean up finished processes
-        ProcessManager().cleanup_all()
+        ProcessManager().reap_finished()
         Process.cleanup_zombies()
 
         # Run garbage collection
@@ -247,12 +247,12 @@ class MemoryMonitor:
 
         cls._cleanup_count += 1
         
-        # Force cleanup of all processes
-        ProcessManager().cleanup_all()
+        # Reap completed children without interrupting active attack processes
+        ProcessManager().reap_finished()
         Process.cleanup_zombies()
         
         # Clear caches in Configuration
-        if hasattr(Configuration, 'existing_commands'):
+        if isinstance(Configuration.existing_commands, dict):
             if len(Configuration.existing_commands) > 50:
                 # Keep only the 20 most recent
                 Configuration.existing_commands = dict(
@@ -289,7 +289,7 @@ class MemoryMonitor:
         Process.cleanup_zombies()
         
         # Clean up finished processes
-        ProcessManager().cleanup_all()
+        ProcessManager().reap_finished()
         
         # Check result
         new_count = cls.get_open_fd_count()

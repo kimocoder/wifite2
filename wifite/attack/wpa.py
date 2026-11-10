@@ -23,6 +23,7 @@ from contextlib import contextmanager
 
 
 class AttackWPA(Attack):
+    supervised = True
 
     # Maximum retry attempts for recoverable errors
     MAX_RETRY_ATTEMPTS = 3
@@ -86,7 +87,7 @@ class AttackWPA(Attack):
             # Check for specific recoverable errors
             if e.errno == 24:  # Too many open files
                 log_warning('AttackWPA', 'Too many open files, triggering cleanup')
-                ProcessManager().cleanup_all()
+                ProcessManager().reap_finished()
                 Process.cleanup_zombies()
                 MemoryMonitor.force_cleanup()
                 self._recovered_from_error = True
@@ -102,7 +103,7 @@ class AttackWPA(Attack):
             self._last_error = e
             log_error('AttackWPA', f'{operation_name} subprocess error: {e}', e)
             # Clean up and let caller decide whether to retry
-            ProcessManager().cleanup_all()
+            ProcessManager().reap_finished()
             raise
             
         except MemoryError as e:
@@ -351,6 +352,7 @@ class AttackWPA(Attack):
         self.capture_success = True
 
         # Analyze handshake
+        self._check_scope()
         Color.pl('\n{+} analysis of captured handshake file:')
         handshake.analyze()
 
@@ -368,7 +370,8 @@ class AttackWPA(Attack):
                 self.target.bssid,
                 self.target.essid,
                 capture_type=capture_type,
-                view=self.view
+                view=self.view,
+                scope=self.scope
             )
 
         # Check for the --skip-crack flag
@@ -449,6 +452,7 @@ class AttackWPA(Attack):
                             crack_ran = True
 
                             while not cracker.is_finished():
+                                self._check_scope()
                                 status = cracker.poll_status()
                                 if self.view:
                                     self.view.update_progress({
@@ -458,7 +462,7 @@ class AttackWPA(Attack):
                                             'ETA': status['eta']
                                         }
                                     })
-                                time.sleep(2)
+                                self._sleep_scope(2)
 
                             key = cracker.get_result()
                             device_error = cracker.device_error
@@ -772,10 +776,11 @@ class AttackWPA(Attack):
                     Color.pl('\n{+} Using handshake from {C}%s{W}' % handshake.capfile)
                     return handshake
             
-            timeout_timer = Timer(Configuration.wpa_attack_timeout)
+            timeout_timer = Timer(self._cap_timeout(Configuration.wpa_attack_timeout))
             deauth_timer = Timer(Configuration.wpa_deauth_timeout)
             
             while handshake is None and not timeout_timer.ended():
+                self._check_scope()
                 step_timer = Timer(1)
                 
                 # Update TUI view if available
@@ -804,7 +809,7 @@ class AttackWPA(Attack):
                 cap_files = airodump.find_files(endswith='.cap')
                 if len(cap_files) == 0:
                     # No cap files yet
-                    time.sleep(step_timer.remaining())
+                    self._sleep_scope(step_timer.remaining())
                     continue
                 cap_file = cap_files[0]
                 
@@ -866,7 +871,8 @@ class AttackWPA(Attack):
                             self.target.bssid,
                             self.target.essid,
                             capture_type=capture_type,
-                            view=self.view
+                            view=self.view,
+                            scope=self.scope
                         )
                     
                     break
@@ -900,7 +906,7 @@ class AttackWPA(Attack):
                     self._deauth_dual(airodump_target)
                     deauth_timer = Timer(Configuration.wpa_deauth_timeout)
                 
-                time.sleep(step_timer.remaining())
+                self._sleep_scope(step_timer.remaining())
         
         if handshake is None:
             Color.pl('\n{!} {O}WPA handshake capture {R}FAILED:{O} Timed out after %d seconds' % (
@@ -1030,6 +1036,20 @@ class AttackWPA(Attack):
             log_warning('AttackWPA', f'Failed to verify channel synchronization: {e}')
             Color.pl('{!} {O}Warning: Could not verify channel synchronization{W}')
 
+    def _deauth_once(self, bssid, client, interface=None):
+        self._check_scope()
+        timeout = self._cap_timeout(2)
+        if timeout <= 0:
+            return
+        interface = interface or Configuration.interface
+        if self.scope:
+            with self.scope.supervisor.radio(interface, 'deauth', self.scope):
+                Aireplay.deauth(
+                    bssid, client_mac=client, timeout=timeout, interface=interface)
+        else:
+            Aireplay.deauth(
+                bssid, client_mac=client, timeout=timeout, interface=interface)
+
     def _deauth_dual(self, target):
         """
         Send deauthentication packets using dedicated deauth interface.
@@ -1055,10 +1075,8 @@ class AttackWPA(Attack):
                 self.view.add_log(f'Deauth [DUAL] to {target_name} from {self.deauth_interface}')
             
             # Send deauth from dedicated deauth interface
-            Aireplay.deauth(target.bssid, 
-                          client_mac=client, 
-                          timeout=2,
-                          interface=self.deauth_interface)
+            self._deauth_once(
+                target.bssid, client, interface=self.deauth_interface)
 
     def _deauth_parallel(self, target):
         """
@@ -1092,10 +1110,7 @@ class AttackWPA(Attack):
                         from ..util.logger import log_debug
                         client_name = '*broadcast*' if client is None else client
                         log_debug('AttackWPA', f'Sending deauth to {client_name} from {interface}')
-                    Aireplay.deauth(bssid, 
-                                  client_mac=client, 
-                                  timeout=2,
-                                  interface=interface)
+                    self._deauth_once(bssid, client, interface=interface)
             except Exception as e:
                 from ..util.logger import log_debug
                 log_debug('AttackWPA', f'Deauth error on {interface}: {e}')
@@ -1167,8 +1182,11 @@ class AttackWPA(Attack):
                         enable_deauth=False,  # We'll use aireplay-ng for deauth
                         pmf_required=pmf_required,
                         manage_interface=True,
-                        band=getattr(self.target, 'band', None)) as hcxdump:
-            
+                        band=getattr(self.target, 'band', None),
+                        scope=self.scope) as hcxdump:
+            if self.scope:
+                self.scope.register_health('hcxdumptool', hcxdump.is_running)
+
             Color.clear_entire_line()
             Color.pattack('WPA', self.target, 'Handshake capture', 
                          'Starting hcxdumptool [DUAL-HCX]...')
@@ -1177,12 +1195,13 @@ class AttackWPA(Attack):
                 self.view.add_log('hcxdumptool capture started')
             
             # Initialize timers
-            timeout_timer = Timer(Configuration.wpa_attack_timeout)
+            timeout_timer = Timer(self._cap_timeout(Configuration.wpa_attack_timeout))
             deauth_timer = Timer(Configuration.wpa_deauth_timeout)
             
             self.clients = []
             
             while handshake is None and not timeout_timer.ended():
+                self._check_scope()
                 step_timer = Timer(3)
                 
                 # Update TUI view if available
@@ -1246,7 +1265,7 @@ class AttackWPA(Attack):
                     if deauth_timer.ended():
                         self._deauth_parallel(self.target)
                         deauth_timer = Timer(Configuration.wpa_deauth_timeout)
-                    time.sleep(step_timer.remaining())
+                    self._sleep_scope(step_timer.remaining())
                     continue
 
                 # Monitor capture file size to prevent memory issues
@@ -1319,7 +1338,8 @@ class AttackWPA(Attack):
                                 self.target.bssid,
                                 self.target.essid if hasattr(self.target, 'essid') else None,
                                 capture_type=capture_type,
-                                view=self.view
+                                view=self.view,
+                                scope=self.scope
                             )
                         
                         break
@@ -1334,7 +1354,7 @@ class AttackWPA(Attack):
                     deauth_timer = Timer(Configuration.wpa_deauth_timeout)
                 
                 # Sleep for remaining time
-                time.sleep(step_timer.remaining())
+                self._sleep_scope(step_timer.remaining())
         
         if handshake is None:
             Color.pl('\n{!} {O}WPA handshake capture {R}FAILED:{O} Timed out after %d seconds' % (
@@ -1386,8 +1406,11 @@ class AttackWPA(Attack):
                         pmf_required=pmf_required,
                         manage_interface=True,
                         band=getattr(self.target, 'band', None),
-                        exitoneapol=6) as hcxdump:
-            
+                        exitoneapol=6,
+                        scope=self.scope) as hcxdump:
+            if self.scope:
+                self.scope.register_health('hcxdumptool', hcxdump.is_running)
+
             Color.clear_entire_line()
             Color.pattack('WPA', self.target, 'Handshake capture', 
                          'Starting hcxdumptool [HCX]...')
@@ -1398,9 +1421,10 @@ class AttackWPA(Attack):
                 self.view.add_log('hcxdumptool capture started')
             
             # Initialize timers
-            timeout_timer = Timer(Configuration.wpa_attack_timeout)
+            timeout_timer = Timer(self._cap_timeout(Configuration.wpa_attack_timeout))
             
             while handshake is None and not timeout_timer.ended():
+                self._check_scope()
                 step_timer = Timer(3)
                 
                 # Update TUI view if available
@@ -1478,7 +1502,7 @@ class AttackWPA(Attack):
                 # Validate only when new frames were written; has_handshake()
                 # spawns tshark/cowpatty and must not run every loop tick.
                 if not hcxdump.has_new_data():
-                    time.sleep(step_timer.remaining())
+                    self._sleep_scope(step_timer.remaining())
                     continue
                 
                 # Check for handshake in the capture file
@@ -1523,7 +1547,8 @@ class AttackWPA(Attack):
                             self.target.bssid,
                             self.target.essid,
                             capture_type=capture_type,
-                            view=self.view
+                            view=self.view,
+                            scope=self.scope
                         )
                     
                     break
@@ -1531,7 +1556,7 @@ class AttackWPA(Attack):
                 # No handshake yet
                 handshake = None
                 
-                time.sleep(step_timer.remaining())
+                self._sleep_scope(step_timer.remaining())
         
         if handshake is None:
             Color.pl('\n{!} {O}WPA handshake capture {R}FAILED:{O} Timed out after %d seconds' % (
@@ -1607,10 +1632,11 @@ class AttackWPA(Attack):
                     Color.pl('\n{+} Using handshake from {C}%s{W}' % handshake.capfile)
                     return handshake
 
-            timeout_timer = Timer(Configuration.wpa_attack_timeout)
+            timeout_timer = Timer(self._cap_timeout(Configuration.wpa_attack_timeout))
             deauth_timer = Timer(Configuration.wpa_deauth_timeout)
 
             while handshake is None and not timeout_timer.ended():
+                self._check_scope()
                 step_timer = Timer(1)
                 
                 # Update TUI view if available
@@ -1636,7 +1662,7 @@ class AttackWPA(Attack):
                 cap_files = airodump.find_files(endswith='.cap')
                 if len(cap_files) == 0:
                     # No cap files yet
-                    time.sleep(step_timer.remaining())
+                    self._sleep_scope(step_timer.remaining())
                     continue
                 cap_file = cap_files[0]
 
@@ -1713,7 +1739,7 @@ class AttackWPA(Attack):
                     deauth_timer = Timer(Configuration.wpa_deauth_timeout)
 
                 # Sleep for at-most 1 second
-                time.sleep(step_timer.remaining())
+                self._sleep_scope(step_timer.remaining())
 
         if handshake is None:
             # No handshake, attack failed.
@@ -1808,7 +1834,7 @@ class AttackWPA(Attack):
             if self.view:
                 self.view.add_log(f'Sending deauth to {target_name}')
             
-            Aireplay.deauth(target.bssid, client_mac=client, timeout=2)
+            self._deauth_once(target.bssid, client)
 
 
 if __name__ == '__main__':

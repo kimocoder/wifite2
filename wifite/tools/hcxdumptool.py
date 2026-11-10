@@ -76,7 +76,7 @@ class HcxDumpTool(Dependency):
     def __init__(self, interface=None, channel=None, target_bssid=None,
                  output_file=None, enable_deauth=True, pmf_required=False,
                  manage_interface=False, band=None, active_monitor=None,
-                 exitoneapol=None):
+                 exitoneapol=None, scope=None):
         """
         Initialize hcxdumptool wrapper.
 
@@ -133,6 +133,8 @@ class HcxDumpTool(Dependency):
                                           'hcxdump_active_monitor', False))
         self.active_monitor = bool(active_monitor)
         self.exitoneapol = exitoneapol
+        self.scope = scope
+        self.log_path = None
         self._bpf_file = None
         # Interfaces handed back to managed mode for hcxdumptool; re-armed
         # on __exit__ so the rest of wifite keeps its monitor interface.
@@ -284,7 +286,12 @@ class HcxDumpTool(Dependency):
             command.append('-A')
 
         # Start the process
-        self.proc = Process(command, devnull=False)
+        if self.scope:
+            self.log_path = self.scope.create_log('hcxdumptool')
+            self.proc = self.scope.spawn(
+                command, role='hcxdumptool', log_path=self.log_path)
+        else:
+            self.proc = Process(command, devnull=False)
         # Get the actual PID safely from the Popen object
         if self.proc and hasattr(self.proc, 'pid') and self.proc.pid and hasattr(self.proc.pid, 'pid'):
             self.pid = self.proc.pid.pid
@@ -311,22 +318,25 @@ class HcxDumpTool(Dependency):
         Called at end of 'with' block.
         """
         if self.proc and self.proc.poll() is None:
-            # Send SIGTERM to gracefully stop
-            try:
-                self.proc.interrupt()
-                time.sleep(0.5)
+            if self.scope:
+                self.proc.stop_owned()
+            else:
+                try:
+                    self.proc.interrupt()
+                    time.sleep(0.5)
 
-                # Force kill if still running
-                if self.proc.poll() is None and self.pid is not None:
-                    try:
-                        os.kill(self.pid, signal.SIGKILL)
-                    except ProcessLookupError:
-                        pass  # Process already exited
-            except Exception as e:
-                from ..util.logger import log_debug
-                log_debug('HcxDumpTool', f'Kill process error: {e}')
+                    if self.proc.poll() is None and self.pid is not None:
+                        try:
+                            os.kill(self.pid, signal.SIGKILL)
+                        except ProcessLookupError:
+                            pass
+                except Exception as e:
+                    from ..util.logger import log_debug
+                    log_debug('HcxDumpTool', f'Kill process error: {e}')
 
         _return_monitor_mode(self._monitor_restore)
+        if self.scope:
+            self.scope.unregister_health('hcxdumptool')
 
     def is_running(self) -> bool:
         """Check if hcxdumptool process is still running."""

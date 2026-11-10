@@ -371,6 +371,14 @@ against the real AP and captures valid passwords.
                           type=int,
                           help=Color.s('Attacks the first {C}attack_max{W} targets'))
 
+        glob.add_argument('--target-timeout',
+                          action='store',
+                          dest='target_timeout',
+                          metavar='seconds',
+                          type=int,
+                          help=Color.s('Total time budget per supervised target in seconds; '
+                                       '{C}0{W} means unlimited (default: {G}900{W})'))
+
         glob.add_argument('-b',
                           action='store',
                           dest='target_bssid',

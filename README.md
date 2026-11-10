@@ -276,6 +276,36 @@ Features
 * **Process Monitoring** - Prevents zombie processes and file descriptor leaks
 * **Error Recovery** - Graceful handling of tool failures and system errors
 
+#### Supervised target lifecycle
+
+Evil Twin, WPA handshake capture, PMKID, and WPA3 attacks share a per-target
+supervisor. `--target-timeout SECONDS` sets a **900-second (15-minute) default
+budget** across the supervised chain, including setup, capture, fallback,
+analysis, cracking, and upload. Use `--target-timeout 0` for unlimited time;
+shorter attack-specific timeouts still apply. This also bounds Evil Twin by
+default, even when `--eviltwin-timeout` is zero.
+
+```bash
+# Allow up to ten minutes for each supervised target
+sudo wifite --target-timeout 600
+
+# Keep existing attack-specific limits without a total supervised budget
+sudo wifite --target-timeout 0
+```
+
+This rollout does not migrate WEP, WPS, or OWE. In a WPS → PMKID/WPA chain,
+legacy WPS runs first and the supervised budget begins at the first PMKID/WPA
+attempt. Scan time and standalone passive-monitor modes are not part of this
+per-target budget.
+
+Supervised operations coordinate access to interfaces and their physical radios.
+Owned child processes are stopped by target scope; memory and file-descriptor
+maintenance reap completed children rather than terminating active attacks.
+Supervised hostapd, dnsmasq, and hcxdumptool output goes to owner-only per-run
+log files in the wifite temporary directory, and required-service health is
+checked in attack loops. These temporary service logs are removed during normal
+application cleanup.
+
 ### Convenience Features
 * **Wordlist Cracking** - Test captured handshakes/PMKID against wordlists (`--crack`)
 * **Flexible Targeting** - Target specific networks by BSSID, ESSID, or channel

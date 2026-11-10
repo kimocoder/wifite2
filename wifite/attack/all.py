@@ -216,68 +216,70 @@ class AttackAll:
         attack_successful = False
         capture_successful = False
         crack_error = False
-        while attacks:
-            # Needed by infinite attack mode in order to count how many targets were attacked
-            target.attacked = True
-            attack = attacks.pop(0)
-            try:
-                result = attack.run()
-                if getattr(attack, 'capture_success', False):
-                    capture_successful = True
-                if getattr(attack, 'crack_error', False):
-                    crack_error = True
-                if result:
-                    attack_successful = True
-                    break  # Attack was successful, stop other attacks.
-            except OSError as e:
-                # File system or process errors
-                Color.pl('\r {!} {R}System Error{W}: %s' % str(e))
-                continue
-            except subprocess.CalledProcessError as e:
-                # Command execution failures
-                Color.pl('\r {!} {R}Command Failed{W}: %s' % str(e))
-                continue
-            except ValueError as e:
-                # Invalid data or configuration
-                Color.pl('\r {!} {R}Configuration Error{W}: %s' % str(e))
-                continue
-            except PermissionError as e:
-                # Permission issues
-                Color.pl('\r {!} {R}Permission Error{W}: %s' % str(e))
-                continue
-            except Exception as e:
-                # Unexpected errors - still catch but log more info
-                Color.pl('\r {!} {R}Unexpected Error{W}: %s' % str(e))
-                if Configuration.verbose > 0:
-                    Color.pexception(e)
-                # Force cleanup on unexpected errors to prevent resource leaks
-                from ..util.process import ProcessManager, Process
-                ProcessManager().cleanup_all()
-                Process.cleanup_zombies()
-                continue
-            except KeyboardInterrupt:
-                Color.pl('\n{!} {O}Interrupted{W}\n')
-                answer = cls.user_wants_to_continue(targets_remaining, len(attacks))
-                if answer == Answer.Continue:
-                    continue  # Keep attacking the same target (continue)
-                elif answer == Answer.Skip:
-                    # Mark as failed in session
-                    if session and session_mgr:
-                        session_mgr.mark_target_failed(session, target.bssid, "Skipped by user")
-                        session_mgr.save_session(session)
-                        Color.pl('{+} {D}Session updated: target {C}%s{D} marked as {R}failed{W}' % target.bssid)
-                    return True  # Keep attacking other targets (skip)
-                elif answer == Answer.Ignore:
-                    from ..model.result import CrackResult
-                    CrackResult.ignore_target(target)
-                    # Mark as failed in session
-                    if session and session_mgr:
-                        session_mgr.mark_target_failed(session, target.bssid, "Ignored by user")
-                        session_mgr.save_session(session)
-                        Color.pl('{+} {D}Session updated: target {C}%s{D} marked as {R}failed{W}' % target.bssid)
-                    return True  # Ignore current target and keep attacking other targets (ignore)
-                else:
-                    return False  # Stop all attacks (exit)
+        scope = None
+        try:
+            while attacks:
+                # Needed by infinite attack mode in order to count how many targets were attacked
+                target.attacked = True
+                attack = attacks.pop(0)
+                if getattr(attack, 'supervised', False):
+                    if scope is None:
+                        scope = Configuration.get_supervisor().target_scope(
+                            target, Configuration.target_timeout)
+                    attack.set_scope(scope)
+                try:
+                    result = attack.run()
+                    if getattr(attack, 'capture_success', False):
+                        capture_successful = True
+                    if getattr(attack, 'crack_error', False):
+                        crack_error = True
+                    if result:
+                        attack_successful = True
+                        break  # Attack was successful, stop other attacks.
+                except OSError as e:
+                    Color.pl('\r {!} {R}System Error{W}: %s' % str(e))
+                    continue
+                except subprocess.CalledProcessError as e:
+                    Color.pl('\r {!} {R}Command Failed{W}: %s' % str(e))
+                    continue
+                except ValueError as e:
+                    Color.pl('\r {!} {R}Configuration Error{W}: %s' % str(e))
+                    continue
+                except PermissionError as e:
+                    Color.pl('\r {!} {R}Permission Error{W}: %s' % str(e))
+                    continue
+                except Exception as e:
+                    Color.pl('\r {!} {R}Unexpected Error{W}: %s' % str(e))
+                    if Configuration.verbose > 0:
+                        Color.pexception(e)
+                    from ..util.process import ProcessManager, Process
+                    ProcessManager().reap_finished()
+                    Process.cleanup_zombies()
+                    continue
+                except KeyboardInterrupt:
+                    Color.pl('\n{!} {O}Interrupted{W}\n')
+                    answer = cls.user_wants_to_continue(targets_remaining, len(attacks))
+                    if answer == Answer.Continue:
+                        continue
+                    elif answer == Answer.Skip:
+                        if session and session_mgr:
+                            session_mgr.mark_target_failed(session, target.bssid, "Skipped by user")
+                            session_mgr.save_session(session)
+                            Color.pl('{+} {D}Session updated: target {C}%s{D} marked as {R}failed{W}' % target.bssid)
+                        return True
+                    elif answer == Answer.Ignore:
+                        from ..model.result import CrackResult
+                        CrackResult.ignore_target(target)
+                        if session and session_mgr:
+                            session_mgr.mark_target_failed(session, target.bssid, "Ignored by user")
+                            session_mgr.save_session(session)
+                            Color.pl('{+} {D}Session updated: target {C}%s{D} marked as {R}failed{W}' % target.bssid)
+                        return True
+                    else:
+                        return False
+        finally:
+            if scope is not None:
+                scope.close()
 
         # Update session after target completion
         if session and session_mgr:

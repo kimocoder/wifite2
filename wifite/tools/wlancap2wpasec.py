@@ -17,7 +17,7 @@ class Wlancap2wpasec(Dependency):
     dependency_url = 'apt install hcxtools'
 
     @staticmethod
-    def upload(capfile, api_key, url=None, timeout=None, email=None, remove_on_success=False):
+    def upload(capfile, api_key, url=None, timeout=None, email=None, remove_on_success=False, scope=None):
         """
         Upload capture file to wpa-sec using wlancap2wpasec.
         
@@ -80,12 +80,11 @@ class Wlancap2wpasec(Dependency):
         command.append(capfile)
         
         try:
-            # Execute wlancap2wpasec
-            proc = Process(command, devnull=False)
-            proc.wait()
-            
-            stdout = proc.stdout()
-            stderr = proc.stderr()
+            if scope:
+                proc = scope.spawn(command, role='wpasec-upload')
+            else:
+                proc = Process(command, devnull=False)
+            stdout, stderr = proc.get_output(timeout=timeout)
             exit_code = proc.poll()
             
             # Parse output for success/failure

@@ -31,6 +31,7 @@ import os
 
 
 class AttackWPA3SAE(Attack):
+    supervised = True
     """
     WPA3-SAE attack implementation.
 
@@ -356,6 +357,7 @@ class AttackWPA3SAE(Attack):
             self.view.add_log('Trying PMKID fallback')
         try:
             pmkid_attack = AttackPMKID(self.target)
+            pmkid_attack.set_scope(self.scope)
             result = pmkid_attack.run()
             if result:
                 self.success = True
@@ -665,6 +667,7 @@ class AttackWPA3SAE(Attack):
             wordlist=wordlist_path,
             show_command=True,
             verbose=True,
+            scope=self.scope,
         )
         if key:
             Color.pl('{+} {G}Dragonblood timing attack successful!{W}')
@@ -818,7 +821,8 @@ class AttackWPA3SAE(Attack):
                                       airodump_interface),
                                   pmf_required=False,
                                   manage_interface=True,
-                                  band=getattr(self.target, 'band', None))
+                                  band=getattr(self.target, 'band', None),
+                                  scope=self.scope)
             hcxdump.__enter__()
 
             # airodump must never share an interface with hcxdumptool.
@@ -858,6 +862,7 @@ class AttackWPA3SAE(Attack):
             # is a fast first attempt that falls back to SAE capture, so it
             # shouldn't occupy the full wpa_attack_timeout (300s) by default.
             timeout_value = Configuration.wpa3_attack_timeout or 30
+            timeout_value = self._cap_timeout(timeout_value)
             downgrade_timeout = Timer(timeout_value)
             # Warn once if no clients appear partway through (the downgrade
             # needs active clients). Half the window, floored so short timeouts
@@ -876,6 +881,7 @@ class AttackWPA3SAE(Attack):
             progress_interval = 5  # Update progress every 5 seconds
             
             while handshake is None and not downgrade_timeout.ended():
+                self._check_scope()
                 step_timer = Timer(1)
                 
                 # Calculate progress percentage
@@ -928,7 +934,7 @@ class AttackWPA3SAE(Attack):
                             self.view.add_log('Warning: No clients detected')
                         no_clients_warning_shown = True
                     
-                    time.sleep(step_timer.remaining())
+                    self._sleep_scope(step_timer.remaining())
                     continue
                 
                 # Deauth clients periodically to trigger reconnection. External deauth
@@ -1005,7 +1011,7 @@ class AttackWPA3SAE(Attack):
                 status_msg = 'Listening for WPA2 handshake (clients: %d, deauths: %d)' % (len(self.clients), deauth_attempts)
                 Color.pattack('WPA3', self.target, 'Downgrade', status_msg)
                 
-                time.sleep(step_timer.remaining())
+                self._sleep_scope(step_timer.remaining())
             
             # Timeout or max attempts reached
             if not handshake:
@@ -1101,14 +1107,18 @@ class AttackWPA3SAE(Attack):
                             enable_deauth=enable_deauth,
                             pmf_required=pmf_required,
                             manage_interface=True,
-                            band=getattr(self.target, 'band', None))
+                            band=getattr(self.target, 'band', None),
+                            scope=self.scope)
             hcxdump.__enter__()
-            
+            if self.scope:
+                self.scope.register_health('hcxdumptool', hcxdump.is_running)
+
             Color.clear_entire_line()
             Color.pattack('WPA3', self.target, 'SAE Capture', 'Starting capture...')
             
             # Set timeout for SAE capture (use WPA3-specific timeout if configured)
             timeout_value = Configuration.wpa3_attack_timeout if Configuration.wpa3_attack_timeout else Configuration.wpa_attack_timeout
+            timeout_value = self._cap_timeout(timeout_value)
             capture_timeout = Timer(timeout_value)
             
             Color.pl('{+} {C}Capturing SAE handshake with hcxdumptool...{W}')
@@ -1126,6 +1136,7 @@ class AttackWPA3SAE(Attack):
             total_time = timeout_value
             
             while not capture_timeout.ended():
+                self._check_scope()
                 step_timer = Timer(1)
                 
                 # Calculate progress
@@ -1200,7 +1211,7 @@ class AttackWPA3SAE(Attack):
                 status_msg = 'Listening for SAE authentication (%s)' % capture_timeout
                 Color.pattack('WPA3', self.target, 'SAE Capture', status_msg)
                 
-                time.sleep(step_timer.remaining())
+                self._sleep_scope(step_timer.remaining())
             
             # Timeout reached
             if not handshake:
@@ -1278,28 +1289,33 @@ class AttackWPA3SAE(Attack):
                             enable_deauth=False,  # Passive mode
                             pmf_required=True,
                             manage_interface=True,
-                            band=getattr(self.target, 'band', None))
+                            band=getattr(self.target, 'band', None),
+                            scope=self.scope)
             hcxdump.__enter__()
-            
+            if self.scope:
+                self.scope.register_health('hcxdumptool', hcxdump.is_running)
+
             Color.clear_entire_line()
             Color.pattack('WPA3', self.target, 'Passive Capture', 'Waiting for natural reconnections...')
             
             # Set timeout for passive capture (longer than active, use WPA3-specific timeout if configured)
             timeout_value = Configuration.wpa3_attack_timeout if Configuration.wpa3_attack_timeout else Configuration.wpa_attack_timeout
-            capture_timeout = Timer(timeout_value * 2)
-            
+            timeout_value = self._cap_timeout(timeout_value * 2)
+            capture_timeout = Timer(timeout_value)
+
             Color.pl('{+} {C}Passive SAE capture - waiting for client reconnections...{W}')
             Color.pl('{!} {O}This may take longer as we cannot force reconnections{W}')
             Color.pl('{!} {O}PMF prevents deauth attacks - waiting for natural authentication{W}')
-            
+
             incomplete_handshake_count = 0
             last_status_time = time.time()
             status_interval = 30  # Show status every 30 seconds
-            
+
             # Progress tracking
-            total_time = timeout_value * 2  # Passive mode uses 2x timeout
-            
+            total_time = timeout_value
+
             while not capture_timeout.ended():
+                self._check_scope()
                 step_timer = Timer(1)
                 
                 # Calculate progress
@@ -1362,7 +1378,7 @@ class AttackWPA3SAE(Attack):
                 status_msg = 'Waiting for SAE authentication (%s)' % capture_timeout
                 Color.pattack('WPA3', self.target, 'Passive Capture', status_msg)
                 
-                time.sleep(step_timer.remaining())
+                self._sleep_scope(step_timer.remaining())
             
             # Timeout reached
             if not handshake:

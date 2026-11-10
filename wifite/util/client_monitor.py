@@ -412,71 +412,65 @@ class ClientMonitor(Thread):
     
     def _handle_client_connect(self, mac: str):
         """Handle client connection event."""
+        callback = None
         with self.clients_lock:
             if mac not in self.clients or not self.clients[mac].is_connected():
-                # New connection or reconnection
                 client = ClientConnection(mac_address=mac)
                 self.clients[mac] = client
                 self.total_connections += 1
-                
-                # Record statistics
                 self.statistics.record_client_connect(mac)
-                
                 from ..util.logger import log_info
                 log_info('ClientMonitor', f'Client connected: {mac}')
-                
-                # Trigger callback
-                if self.on_client_connect:
-                    try:
-                        self.on_client_connect(client)
-                    except Exception as e:
-                        from ..util.logger import log_error
-                        log_error('ClientMonitor', f'Error in connect callback: {e}', e)
+                callback = self.on_client_connect
             else:
-                # Update last seen time
                 self.clients[mac].last_seen = time.time()
+
+        if callback:
+            try:
+                callback(client)
+            except Exception as e:
+                from ..util.logger import log_error
+                log_error('ClientMonitor', f'Error in connect callback: {e}', e)
     
     def _handle_client_disconnect(self, mac: str):
         """Handle client disconnection event."""
+        callback = None
         with self.clients_lock:
             if mac in self.clients and self.clients[mac].is_connected():
                 client = self.clients[mac]
                 client.disconnect_time = time.time()
                 self.total_disconnections += 1
-                
-                # Record statistics
                 self.statistics.record_client_disconnect(mac)
-                
                 from ..util.logger import log_info
                 log_info('ClientMonitor', f'Client disconnected: {mac}')
-                
-                # Trigger callback
-                if self.on_client_disconnect:
-                    try:
-                        self.on_client_disconnect(client)
-                    except Exception as e:
-                        from ..util.logger import log_error
-                        log_error('ClientMonitor', f'Error in disconnect callback: {e}', e)
+                callback = self.on_client_disconnect
+
+        if callback:
+            try:
+                callback(client)
+            except Exception as e:
+                from ..util.logger import log_error
+                log_error('ClientMonitor', f'Error in disconnect callback: {e}', e)
     
     def _handle_client_dhcp(self, mac: str, ip: str, hostname: Optional[str]):
         """Handle DHCP lease event."""
+        callback = None
         with self.clients_lock:
             if mac in self.clients:
                 client = self.clients[mac]
                 client.ip_address = ip
                 client.hostname = hostname
                 client.last_seen = time.time()
-                
                 from ..util.logger import log_info
                 log_info('ClientMonitor', f'Client DHCP: {mac} -> {ip} ({hostname})')
-                
-                # Trigger callback
-                if self.on_client_dhcp:
-                    try:
-                        self.on_client_dhcp(client)
-                    except Exception as e:
-                        from ..util.logger import log_error
-                        log_error('ClientMonitor', f'Error in DHCP callback: {e}', e)
+                callback = self.on_client_dhcp
+
+        if callback:
+            try:
+                callback(client)
+            except Exception as e:
+                from ..util.logger import log_error
+                log_error('ClientMonitor', f'Error in DHCP callback: {e}', e)
     
     def _cleanup_old_clients(self, max_age: int = 3600):
         """

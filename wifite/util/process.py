@@ -19,11 +19,9 @@ from ..util.logger import log_debug, log_info, log_warning, log_error
 
 
 class ProcessManager:
-    """Global process manager to track and cleanup all processes"""
+    """Track processes and clean up only explicitly selected ownership scopes."""
     _instance = None
-    _lock = threading.RLock()  # Reentrant lock to prevent deadlocks during nested cleanup
-
-    # Maximum number of concurrent processes
+    _lock = threading.RLock()
     MAX_PROCESSES = 100
 
     def __new__(cls):
@@ -36,42 +34,18 @@ class ProcessManager:
         return cls._instance
 
     def register_process(self, process):
-        """Register a process for cleanup tracking"""
         with self._lock:
-            # Check if approaching limit and trigger cleanup
+            self.reap_finished()
             if len(self._processes) >= self.MAX_PROCESSES:
-                log_warning('ProcessManager', f'Process limit reached ({len(self._processes)}/{self.MAX_PROCESSES}), triggering cleanup')
-                if Configuration.verbose > 0:
-                    Color.pl(f'\n{{!}} {{O}}Warning: Process limit reached ({len(self._processes)}/{self.MAX_PROCESSES}), triggering cleanup{{W}}')
-
-                # Identify and remove finished processes
-                finished = [p for p in self._processes if hasattr(p, 'is_running') and not p.is_running()]
-                if finished:
-                    log_info('ProcessManager', f'Removing {len(finished)} finished process(es) from registry')
-                    if Configuration.verbose > 1:
-                        Color.pl(f'{{+}} {{C}}Removing {len(finished)} finished process(es){{W}}')
-                    for p in finished:
-                        self._processes.remove(p)
-
-                # Force-kill oldest processes if still over limit
-                if len(self._processes) >= self.MAX_PROCESSES:
-                    oldest = self._processes[:10]
-                    log_warning('ProcessManager', f'Force-killing {len(oldest)} oldest process(es) to stay under limit')
-                    if Configuration.verbose > 0:
-                        Color.pl(f'{{!}} {{O}}Force-killing {len(oldest)} oldest process(es){{W}}')
-                    for p in oldest:
-                        try:
-                            p.force_kill()
-                        except Exception as e:
-                            log_debug('ProcessManager', f'force_kill failed during limit enforcement: {e}')
-                    self._processes = self._processes[10:]
-
+                from .supervisor import ProcessLimitError
+                raise ProcessLimitError(
+                    f'Active process limit reached ({self.MAX_PROCESSES}); refusing new process'
+                )
             self._processes.append(process)
             log_debug('ProcessManager', f'Registered process (total: {len(self._processes)}/{self.MAX_PROCESSES})')
             if not self._registered_cleanup:
                 atexit.register(self.cleanup_all)
                 self._registered_cleanup = True
-                log_debug('ProcessManager', 'Registered atexit cleanup handler')
 
     def unregister_process(self, process):
         with self._lock:
@@ -79,23 +53,44 @@ class ProcessManager:
                 self._processes.remove(process)
             except ValueError:
                 pass
-            log_debug('ProcessManager', f'Unregistered process (remaining: {len(self._processes)})')
+
+    def processes(self, scope_id=None):
+        with self._lock:
+            return [
+                process for process in self._processes
+                if scope_id is None or process.scope_id == scope_id
+            ]
+
+    def reap_finished(self):
+        with self._lock:
+            finished = [process for process in self._processes if not process.is_running()]
+        for process in finished:
+            process.cleanup()
+        return len(finished)
+
+    def cleanup_scope(self, scope_id):
+        processes = self.processes(scope_id)
+        for process in processes:
+            try:
+                if process.stop_owned():
+                    process.cleanup()
+            except Exception as e:
+                log_debug('ProcessManager', f'Scoped cleanup failed for {process.role}: {e}')
 
     def cleanup_all(self):
+        """Explicit application-shutdown cleanup for every registered process."""
         with self._lock:
-            process_count = len(self._processes)
-            if process_count > 0:
-                log_info('ProcessManager', f'Cleaning up {process_count} registered process(es)')
-            for process in list(self._processes):
-                try:
+            processes = list(self._processes)
+        for process in processes:
+            try:
+                if process.scope_id:
+                    if process.stop_owned():
+                        process.cleanup()
+                else:
                     process.force_kill()
-                except (ProcessLookupError, OSError):
-                    pass  # Process already exited
-                except Exception as e:
-                    log_debug('ProcessManager', f'Error during process cleanup: {str(e)}')
-            self._processes.clear()
-            if process_count > 0:
-                log_info('ProcessManager', 'Process cleanup complete')
+                    process.cleanup()
+            except Exception as e:
+                log_debug('ProcessManager', f'Shutdown cleanup failed: {e}')
 
 
 class Process:
@@ -205,18 +200,23 @@ class Process:
             Configuration.existing_commands.update({program: exist})
         return exist
 
-    def __init__(self, command, devnull=False, stdout=PIPE, stderr=PIPE, cwd=None, bufsize=0, stdin=PIPE):
+    def __init__(self, command, devnull=False, stdout=PIPE, stderr=PIPE, cwd=None, bufsize=0,
+                 stdin=PIPE, scope_id=None, role=None, owned_group=False):
         if isinstance(command, str):
             command = shlex.split(command)
 
         self.command = command
+        self.scope_id = scope_id
+        self.role = role or 'process'
+        self.owned_group = owned_group
+        self.pgid = None
+        self._start_identity = None
         self._cleaned_up = False
         self._communicated = False
         self._manager = ProcessManager()
         self._devnull_handles = []
 
         cmd_str = " ".join(command) if isinstance(command, list) else str(command)
-        # Avoid logging sensitive arguments in clear text
         try:
             safe_cmd_str = re.sub(r"(-k)\s+\S+", r"\1 ****", cmd_str)
             safe_cmd_str = re.sub(r"(--key)\s+\S+", r"\1 ****", safe_cmd_str)
@@ -225,21 +225,17 @@ class Process:
         except (re.error, AttributeError):
             safe_cmd_str = cmd_str
         log_debug('Process', f'Creating process: {safe_cmd_str}')
-        
-        if Configuration.verbose > 1:
-            Color.pe(f'\n {{C}}[?] {{W}} Executing: {{B}}{" ".join(command)}{{W}}')
 
-        # Check file descriptor limit before creating process
+        if Configuration.verbose > 1:
+            Color.pe(f'\n {{C}}[?] {{W}} Executing: {{B}}{safe_cmd_str}{{W}}')
+
         if Process.check_fd_limit():
             log_warning('Process', 'Delaying process creation due to high FD usage')
-            if Configuration.verbose > 0:
-                Color.pl('{!} {O}Delaying process creation due to high FD usage{W}')
-            time.sleep(0.1)  # Brief delay to allow cleanup to complete
+            time.sleep(0.1)
 
         self.out = None
         self.err = None
         if devnull:
-            log_debug('Process', 'Redirecting stdout/stderr to devnull')
             sout = DEVNULL
             serr = DEVNULL
         else:
@@ -247,28 +243,49 @@ class Process:
             serr = stderr
 
         self.start_time = time.time()
+        popen_kwargs = {
+            'stdout': sout,
+            'stderr': serr,
+            'stdin': stdin,
+            'cwd': cwd,
+            'bufsize': bufsize,
+        }
+        if owned_group:
+            popen_kwargs['start_new_session'] = True
 
         try:
-            self.pid = Popen(command, stdout=sout, stderr=serr, stdin=stdin, cwd=cwd, bufsize=bufsize)
-            log_info('Process', f'Process created successfully (PID: {self.pid.pid})')
+            self.pid = Popen(command, **popen_kwargs)
         except OSError as e:
-            if e.errno == 24:  # Too many open files
-                log_error('Process', 'Too many open files (errno 24), triggering emergency cleanup', e)
-                if Configuration.verbose > 0:
-                    Color.pl('{!} {O}Too many open files, triggering emergency cleanup{W}')
-                ProcessManager().cleanup_all()
+            if e.errno == 24:
+                ProcessManager().reap_finished()
                 Process.cleanup_zombies()
                 time.sleep(0.1)
-                self.pid = Popen(command, stdout=sout, stderr=serr, stdin=stdin, cwd=cwd, bufsize=bufsize)
-                log_info('Process', f'Process created after emergency cleanup (PID: {self.pid.pid})')
+                self.pid = Popen(command, **popen_kwargs)
             else:
-                log_error('Process', f'Failed to create process: {str(e)}', e)
                 raise
 
-        self._manager.register_process(self)
-        # weakref.finalize fires when the object is GC'd, even during interpreter
-        # shutdown when __del__ can no longer safely acquire locks or import modules.
+        self.pgid = os.getpgid(self.pid.pid) if owned_group else None
+        self._start_identity = (
+            self._read_start_identity(self.pid.pid) if owned_group else None
+        )
+        try:
+            self._manager.register_process(self)
+        except Exception:
+            self.force_kill()
+            for stream in (self.pid.stdin, self.pid.stdout, self.pid.stderr):
+                if stream:
+                    with contextlib.suppress(OSError):
+                        stream.close()
+            raise
         self._finalizer = weakref.finalize(self, Process._do_finalize, self.pid)
+
+    @staticmethod
+    def _read_start_identity(pid):
+        try:
+            with open(f'/proc/{pid}/stat') as handle:
+                return handle.read().rsplit(') ', 1)[1].split()[19]
+        except (OSError, IndexError):
+            return None
 
     @staticmethod
     def _do_finalize(pid):
@@ -298,7 +315,8 @@ class Process:
         try:
             self.out, self.err = self.pid.communicate(timeout=timeout)
         except subprocess.TimeoutExpired:
-            self.force_kill()
+            if not self.stop_owned():
+                self.force_kill()
             try:
                 self.out, self.err = self.pid.communicate(timeout=2)
             except (OSError, ValueError):
@@ -499,6 +517,48 @@ class Process:
         except (OSError, ValueError):
             pass
 
+    def _identity_matches(self):
+        if not self._start_identity:
+            return False
+        return self._read_start_identity(self.pid.pid) == self._start_identity
+
+    def stop_owned(self, wait_time=2.0):
+        if not self.owned_group or not self.scope_id:
+            return False
+        leader_running = self.pid.poll() is None
+        if leader_running and not self._identity_matches():
+            log_warning('Process', f'Refusing to signal changed process identity for PID {self.pid.pid}')
+            return False
+
+        try:
+            os.killpg(self.pgid, 0)
+        except (OSError, ProcessLookupError):
+            return self.pid.poll() is not None
+
+        try:
+            os.killpg(self.pgid, signal.SIGINT)
+        except (OSError, ProcessLookupError):
+            return self.pid.poll() is not None
+
+        deadline = time.monotonic() + wait_time
+        while time.monotonic() < deadline:
+            self.pid.poll()
+            try:
+                os.killpg(self.pgid, 0)
+            except (OSError, ProcessLookupError):
+                break
+            time.sleep(0.05)
+
+        try:
+            os.killpg(self.pgid, signal.SIGKILL)
+        except (OSError, ProcessLookupError):
+            pass
+        try:
+            self.pid.wait(timeout=max(0.1, deadline - time.monotonic()))
+        except (OSError, ValueError, subprocess.TimeoutExpired):
+            pass
+        return self.pid.poll() is not None
+
     def is_running(self):
         return hasattr(self, 'pid') and self.pid and self.pid.poll() is None
 
@@ -552,14 +612,11 @@ class Process:
                     if Configuration.verbose > 0:
                         Color.pl(f'\n{{!}} {{O}}Warning: High file descriptor usage ({current}/{soft}, {usage_percent}%){{W}}')
 
-                    # Trigger cleanup
-                    log_info('Process', 'Triggering automatic cleanup due to high FD usage')
-                    if Configuration.verbose > 1:
-                        Color.pl('{+} {C}Triggering automatic cleanup...{W}')
-                    ProcessManager().cleanup_all()
+                    log_info('Process', 'Reaping finished processes due to high FD usage')
+                    ProcessManager().reap_finished()
                     Process.cleanup_zombies()
+                    Process._fd_cache_time = 0
 
-                    # Check again after cleanup
                     new_count = Process.get_open_fd_count()
                     freed = current - new_count
                     log_info('Process', f'FD cleanup complete: freed {freed} descriptors (now {new_count}/{soft})')

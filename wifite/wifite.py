@@ -1420,6 +1420,8 @@ def main():
             import threading
 
             def graceful_exit():
+                if Configuration.supervisor is not None:
+                    Configuration.supervisor.close()
                 Configuration.exit_gracefully()
 
             exit_thread = threading.Thread(target=graceful_exit)

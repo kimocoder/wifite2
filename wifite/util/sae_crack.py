@@ -35,7 +35,7 @@ class SAECracker:
     # Hashcat mode for WPA3-SAE
     HASHCAT_MODE = '22000'
     
-    def __init__(self, sae_handshake: SAEHandshake, wordlist: Optional[str] = None):
+    def __init__(self, sae_handshake: SAEHandshake, wordlist: Optional[str] = None, scope=None):
         """
         Initialize SAE cracker.
         
@@ -45,9 +45,10 @@ class SAECracker:
         """
         self.sae_handshake = sae_handshake
         self.wordlist = wordlist or Configuration.wordlist
+        self.scope = scope
         self.hash_file = None
         self.cracked_key = None
-        
+
     @staticmethod
     def crack_sae_handshake(
         sae_handshake: SAEHandshake,
@@ -55,7 +56,8 @@ class SAECracker:
         rules: Optional[str] = None,
         mask: Optional[str] = None,
         show_command: bool = False,
-        verbose: bool = True
+        verbose: bool = True,
+        scope=None
     ) -> Optional[str]:
         """
         Crack a SAE handshake using hashcat mode 22000.
@@ -71,7 +73,7 @@ class SAECracker:
         Returns:
             Cracked password if successful, None otherwise
         """
-        cracker = SAECracker(sae_handshake, wordlist)
+        cracker = SAECracker(sae_handshake, wordlist, scope=scope)
         
         # Convert handshake to hashcat format
         if not cracker._prepare_hash_file():
@@ -246,6 +248,8 @@ class SAECracker:
             cracker.start(show_command=show_command)
             try:
                 while not cracker.is_finished():
+                    if self.scope:
+                        self.scope.check()
                     if verbose:
                         status = cracker.poll_status()
                         Color.clear_entire_line()
@@ -254,7 +258,11 @@ class SAECracker:
                             '{C}Speed:{W} %s  {C}ETA:{W} %s'
                             % (status['progress'] * 100,
                                status['speed'], status['eta']))
-                    time.sleep(cracker.STATUS_TIMER_SECONDS)
+                    if self.scope:
+                        self.scope.sleep(min(
+                            cracker.STATUS_TIMER_SECONDS, self.scope.remaining()))
+                    else:
+                        time.sleep(cracker.STATUS_TIMER_SECONDS)
             except KeyboardInterrupt:
                 Color.pl('')
                 raise
@@ -290,9 +298,13 @@ class SAECracker:
         if show_command:
             Color.pl('{+} {D}Running: {W}{P}%s{W}' % ' '.join(command))
 
-        proc = Process(command, devnull=False)
-        proc.wait()
-        stdout, stderr = proc.get_output()
+        if self.scope:
+            self.scope.check()
+            proc = self.scope.spawn(command, role='hashcat-sae')
+            stdout, stderr = proc.get_output(timeout=self.scope.remaining())
+        else:
+            proc = Process(command, devnull=False)
+            stdout, stderr = proc.get_output(timeout=None)
         return self._parse_cracked_password(stdout, stderr)
     
     def _check_pot_file(self, show_command: bool = False) -> Optional[str]:
@@ -315,9 +327,14 @@ class SAECracker:
         if show_command:
             Color.pl('{+} {D}Checking pot file: {W}{P}%s{W}' % ' '.join(command))
         
-        proc = Process(command, devnull=False)
-        stdout = proc.stdout()
-        
+        if self.scope:
+            self.scope.check()
+            proc = self.scope.spawn(command, role='hashcat-sae-show')
+            stdout, _ = proc.get_output(timeout=self.scope.remaining())
+        else:
+            proc = Process(command, devnull=False)
+            stdout, _ = proc.get_output(timeout=None)
+
         return self._parse_cracked_password(stdout, '')
     
     def _parse_cracked_password(self, stdout: str, stderr: str) -> Optional[str]:

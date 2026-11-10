@@ -106,6 +106,11 @@ def parse_settings_args(cls, args):
         cls.attack_max = args.attack_max
         Color.pl(f'{{+}} {{C}}option:{{W}} Attack first {{G}}{cls.attack_max:d}{{W}} targets from list')
 
+    if getattr(args, 'target_timeout', None) is not None:
+        cls.target_timeout = args.target_timeout
+        Color.pl(f'{{+}} {{C}}option:{{W}} supervised target time budget '
+                 f'{{G}}{cls.target_timeout:d}{{W}} seconds')
+
     if args.target_essid:
         cls.target_essid = args.target_essid
         Color.pl('{+} {C}option:{W} targeting ESSID {G}%s{W}' % args.target_essid)

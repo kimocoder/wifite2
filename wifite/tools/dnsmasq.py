@@ -30,7 +30,7 @@ class Dnsmasq(Dependency):
     def __init__(self, interface, gateway_ip='192.168.100.1', 
                  dhcp_range_start='192.168.100.10', 
                  dhcp_range_end='192.168.100.100',
-                 portal_ip=None):
+                 portal_ip=None, scope=None):
         """
         Initialize Dnsmasq configuration.
 
@@ -49,6 +49,8 @@ class Dnsmasq(Dependency):
         self.dhcp_range_end = dhcp_range_end
         self.portal_ip = portal_ip or gateway_ip
 
+        self.scope = scope
+        self.log_path = None
         self.config_file = None
         self.lease_file = None
         self.process = None
@@ -194,7 +196,13 @@ class Dnsmasq(Dependency):
             if Configuration.verbose > 0:
                 Color.pl('{+} Starting dnsmasq: {D}%s{W}' % ' '.join(cmd))
 
-            self.process = Process(cmd, devnull=False)
+            if self.scope:
+                self.log_path = self.scope.create_log('dnsmasq')
+                self.process = self.scope.spawn(
+                    cmd, role='dnsmasq', log_path=self.log_path)
+                self.scope.register_health('dnsmasq', self.is_running)
+            else:
+                self.process = Process(cmd, devnull=False)
 
             # Wait a moment for startup
             time.sleep(1)

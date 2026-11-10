@@ -26,7 +26,7 @@ class Hostapd(Dependency):
     dependency_name = 'hostapd'
     dependency_url = 'https://w1.fi/hostapd/'
 
-    def __init__(self, interface, ssid, channel, password=None):
+    def __init__(self, interface, ssid, channel, password=None, scope=None):
         """
         Initialize Hostapd configuration.
 
@@ -46,6 +46,8 @@ class Hostapd(Dependency):
         # create a WPA2-PSK AP when a real passphrase is supplied.
         self.password = password or None
 
+        self.scope = scope
+        self.log_path = None
         self.config_file = None
         self.process = None
         self.running = False
@@ -246,7 +248,13 @@ class Hostapd(Dependency):
             if Configuration.verbose > 0:
                 Color.pl('{+} Starting hostapd: {D}%s{W}' % ' '.join(cmd))
 
-            self.process = Process(cmd, devnull=False)
+            if self.scope:
+                self.log_path = self.scope.create_log('hostapd')
+                self.process = self.scope.spawn(
+                    cmd, role='hostapd', log_path=self.log_path)
+                self.scope.register_health('hostapd', self.is_running)
+            else:
+                self.process = Process(cmd, devnull=False)
 
             # Wait a moment for startup
             time.sleep(2)

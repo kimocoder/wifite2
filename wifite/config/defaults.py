@@ -86,6 +86,7 @@ def initialize_defaults(cls):
     cls.owe_filter = False  # Only attack OWE networks
     cls.wpa_deauth_timeout = 15  # Wait time between deauths
     cls.wpa_attack_timeout = 300  # Wait time before failing
+    cls.target_timeout = 900  # Total budget for each supervised target; 0 is unlimited
     cls.wpa_handshake_dir = 'hs'  # Dir to store handshakes
     cls.wpa_strip_handshake = False  # Strip non-handshake packets
     cls.ignore_old_handshakes = False  # Always fetch a new handshake

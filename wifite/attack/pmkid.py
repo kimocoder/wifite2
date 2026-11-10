@@ -29,6 +29,7 @@ except BaseException:
 
 
 class AttackPMKID(Attack):
+    supervised = True
     # Keep the PMKID hcxdumptool session alive this long after the PMKID
     # lands so the same capture can also yield an EAPOL handshake.
     HANDSHAKE_GRACE_SECONDS = 10
@@ -208,6 +209,8 @@ class AttackPMKID(Attack):
 
         # A valid hash exists on disk even if cracking later fails.
         self.capture_success = True
+        if self.scope:
+            self.scope.clear_health()
 
         # Log that we have a PMKID and will proceed to crack
         if self.view:
@@ -229,7 +232,8 @@ class AttackPMKID(Attack):
                     self.target.bssid,
                     self.target.essid,
                     capture_type='pmkid',
-                    view=self.view
+                    view=self.view,
+                    scope=self.scope
                 )
             # Silently skip if pcapng doesn't exist - this is normal when using existing hash files
 
@@ -306,9 +310,10 @@ class AttackPMKID(Attack):
             #         Color.pl('\n{+} Using handshake from {C}%s{W}' % handshake.capfile)
             #         return handshake
 
-            timeout_timer = Timer(Configuration.wpa_attack_timeout)
+            timeout_timer = Timer(self._cap_timeout(Configuration.wpa_attack_timeout))
 
             while not timeout_timer.ended():
+                self._check_scope()
                 step_timer = Timer(1)
                 Color.clear_entire_line()
                 Color.pattack('WPA',
@@ -320,7 +325,7 @@ class AttackPMKID(Attack):
                 cap_files = airodump.find_files(endswith='.cap')
                 if len(cap_files) == 0:
                     # No cap files yet
-                    time.sleep(step_timer.remaining())
+                    self._sleep_scope(step_timer.remaining())
                     continue
                 cap_file = cap_files[0]
 
@@ -365,7 +370,7 @@ class AttackPMKID(Attack):
                 #     deauth_timer = Timer(Configuration.wpa_deauth_timeout)
 
                 # # Sleep for at-most 1 second
-                time.sleep(step_timer.remaining())
+                self._sleep_scope(step_timer.remaining())
                 # continue # Handshake listen+deauth loop
 
         if capture is None:
@@ -398,14 +403,14 @@ class AttackPMKID(Attack):
         """
         log_info('AttackPMKID', f'Starting PMKID capture for {self.target.essid} ({self.target.bssid})')
         self.keep_capturing = True
-        self.timer = Timer(Configuration.pmkid_timeout)
+        self.timer = Timer(self._cap_timeout(Configuration.pmkid_timeout))
 
         # Check file descriptor usage and thread count before starting
         from ..util.process import Process
         if Process.check_fd_limit() or active_count() > 20:  # Limit concurrent threads
             log_warning('AttackPMKID', f'Delaying PMKID attack due to high resource usage (threads: {active_count()})')
             Color.pl('{!} {O}Delaying PMKID attack due to high resource usage{W}')
-            time.sleep(2)  # Brief delay to allow cleanup
+            self._sleep_scope(2)  # Brief delay to allow cleanup
 
         # Update TUI view if available
         if self.view:
@@ -429,6 +434,7 @@ class AttackPMKID(Attack):
         log_debug('AttackPMKID', f'Starting PMKID capture loop (timeout: {Configuration.pmkid_timeout}s)')
         last_capture_size = -1
         while self.timer.remaining() > 0:
+            self._check_scope()
             # hcxdumptool exits immediately on drivers it cannot arm (e.g.
             # brcmfmac/Nexmon).  Never spin for the full timeout without a
             # capturer: fall back to the native Scapy capture when possible.
@@ -477,7 +483,7 @@ class AttackPMKID(Attack):
                 Color.pattack('PMKID', self.target, 'CAPTURE',
                               'PMKID captured; waiting for handshake '
                               '({C}%s{W})' % str(handshake_grace))
-                time.sleep(2)
+                self._sleep_scope(2)
                 continue
 
             # hcxpcapngtool is only useful when the capture has grown;
@@ -511,7 +517,7 @@ class AttackPMKID(Attack):
 
                     pmkid_hash = None
                     # Brief backoff before retry to let pcapng accumulate more data
-                    time.sleep(min(2 * invalid_hash_count, 5))
+                    self._sleep_scope(min(2 * invalid_hash_count, 5))
                     continue
 
                 # Valid hash - reset invalid counter. Keep capturing briefly so a
@@ -546,7 +552,7 @@ class AttackPMKID(Attack):
                 self.view.add_log(f"Waiting for PMKID... ({int(elapsed)}s / {Configuration.pmkid_timeout}s)")
 
             Color.pattack('PMKID', self.target, 'CAPTURE', 'Waiting for PMKID ({C}%s{W})' % str(self.timer))
-            time.sleep(2)
+            self._sleep_scope(2)
 
         # Preserve the hash captured before the grace window started.
         pmkid_hash = captured_pmkid
@@ -595,6 +601,8 @@ class AttackPMKID(Attack):
         """
         log_info('AttackPMKID', f'Starting PMKID crack for {self.target.essid} ({self.target.bssid})')
         log_debug('AttackPMKID', f'PMKID file: {pmkid_file}')
+        if self.scope:
+            self.scope.clear_health()
 
         # Check that wordlist exists before cracking.
         if Configuration.wordlist is None:
@@ -639,6 +647,7 @@ class AttackPMKID(Attack):
 
                         # Polling loop for progress tracking
                         while not cracker.is_finished():
+                            self._check_scope()
                             status = cracker.poll_status()
                             if self.view:
                                 self.view.update_progress({
@@ -649,9 +658,7 @@ class AttackPMKID(Attack):
                                     }
                                 })
 
-                            # Update TUI status line periodically (approx every 2 seconds)
-                            # We use a simple sleep since this is a dedicated attack thread
-                            time.sleep(2)
+                            self._sleep_scope(2)
 
                         key = cracker.get_result()
                         device_error = cracker.device_error
@@ -760,10 +767,13 @@ class AttackPMKID(Attack):
                     enable_deauth=True,
                     pmf_required=pmf_required,
                     manage_interface=True,
-                    band=getattr(self.target, 'band', None)) as dumptool:
+                    band=getattr(self.target, 'band', None),
+                    scope=self.scope) as dumptool:
+                if self.scope:
+                    self.scope.register_health('hcxdumptool', dumptool.is_running)
                 # Let the dump tool run until we have the hashes.
                 while self.keep_capturing and dumptool.is_running():
-                    time.sleep(0.5)
+                    self._sleep_scope(0.5)
                 if self.keep_capturing and not dumptool.is_running():
                     self._dumptool_died = True
         except Exception as e:
@@ -803,7 +813,7 @@ class AttackPMKID(Attack):
                     log_warning('AttackPMKID', f'Could not set channel: {e}')
 
             # Capture PMKID with timeout
-            timeout = Configuration.pmkid_timeout
+            timeout = self._cap_timeout(Configuration.pmkid_timeout)
             self.timer = Timer(timeout)
 
             # Track progress for TUI

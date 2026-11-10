@@ -12,6 +12,7 @@ import os
 import re
 import time
 import signal
+import threading
 from typing import TYPE_CHECKING
 from enum import Enum
 
@@ -28,6 +29,7 @@ from ..util.client_monitor import ClientMonitor, ClientConnection
 from ..util.cleanup import CleanupManager
 from ..util.adaptive_deauth import AdaptiveDeauthManager
 from ..util.process import Process
+from ..util.supervisor import ServiceHealthError, TargetScopeCancelled, TargetTimeoutExpired
 
 
 class AttackState(Enum):
@@ -55,7 +57,9 @@ class EvilTwin(Attack):
     forcing clients to connect and enter credentials through a
     captive portal.
     """
-    
+
+    supervised = True
+
     def __init__(self, target, interface_ap=None, interface_deauth=None):
         """
         Initialize Evil Twin attack.
@@ -106,6 +110,7 @@ class EvilTwin(Attack):
         # Lazily-created validator that checks captured credentials against the
         # real target AP (see _verify_password). None until first use.
         self.credential_validator = None
+        self._validation_lock = threading.RLock()
         # True once we've switched the dual-mode deauth interface into monitor
         # mode, so _cleanup() knows to restore it to managed afterwards.
         self._deauth_monitor_enabled = False
@@ -479,7 +484,8 @@ class EvilTwin(Attack):
                 interface=interface,
                 ssid=self.target.essid,
                 channel=self.target.channel,
-                password=None  # Open network for captive portal
+                password=None,  # Open network for captive portal
+                scope=self.scope,
             )
             
             # Start hostapd on the dedicated AP interface
@@ -526,7 +532,8 @@ class EvilTwin(Attack):
                 interface=self.interface_ap,
                 gateway_ip='192.168.100.1',
                 dhcp_range_start='192.168.100.10',
-                dhcp_range_end='192.168.100.100'
+                dhcp_range_end='192.168.100.100',
+                scope=self.scope,
             )
 
             if not self.dnsmasq.start():
@@ -549,11 +556,15 @@ class EvilTwin(Attack):
                 return False
 
             log_info('EvilTwin', f'Captive portal started on port {portal_port}')
+            if self.scope:
+                self.scope.register_health('portal', self.portal_server.is_running)
 
-            # Start client monitor so credential captures and client
-            # connect/disconnect events are tracked during the attack.
-            hostapd_log_path = os.path.join(Configuration.temp(), 'hostapd.log')
-            dnsmasq_log_path = os.path.join(Configuration.temp(), 'dnsmasq.log')
+            hostapd_log_path = getattr(self.hostapd, 'log_path', None)
+            dnsmasq_log_path = getattr(self.dnsmasq, 'log_path', None)
+            if not hostapd_log_path:
+                hostapd_log_path = os.path.join(Configuration.temp(), 'hostapd.log')
+            if not dnsmasq_log_path:
+                dnsmasq_log_path = os.path.join(Configuration.temp(), 'dnsmasq.log')
             self._setup_client_monitor(hostapd_log_path, dnsmasq_log_path)
 
             return True
@@ -662,6 +673,8 @@ class EvilTwin(Attack):
             
             while self.running and self.crack_result is None:
                 try:
+                    if self.scope:
+                        self.scope.check()
                     # Send deauth if needed
                     self._handle_deauth()
                     
@@ -680,7 +693,10 @@ class EvilTwin(Attack):
                         break
                     
                     # Sleep briefly
-                    time.sleep(0.5)
+                    if self.scope:
+                        self.scope.sleep(0.5)
+                    else:
+                        time.sleep(0.5)
                     
                 except KeyboardInterrupt:
                     Color.pl('\n{!} {O}Attack interrupted by user{W}')
@@ -838,31 +854,37 @@ class EvilTwin(Attack):
             
             while self.running and self.crack_result is None:
                 try:
+                    if self.scope:
+                        self.scope.check()
                     # Send deauth if adaptive manager says it's time
                     self._handle_deauth()
-                    
+
                     self._update_status()
-                    time.sleep(0.5)  # Reduced from 1s for more responsive deauth
-                    
+                    if self.scope:
+                        self.scope.sleep(0.5)
+                    else:
+                        time.sleep(0.5)
+
                     # Periodically save session state
                     if time.time() - last_session_save >= session_save_interval:
                         self._save_session_state()
                         last_session_save = time.time()
-                    
+
                     # Check for timeout
                     if timeout > 0:
                         elapsed = time.time() - self.start_time
                         if elapsed > timeout:
                             Color.pl('\n{!} {O}Attack timeout reached{W}')
                             break
-                            
+
                 except KeyboardInterrupt:
-                    # Handle Ctrl+C gracefully
                     raise
-                    
+                except (ServiceHealthError, TargetTimeoutExpired, TargetScopeCancelled) as e:
+                    log_warning('EvilTwin', f'Stopping supervised attack: {e}')
+                    self.state = AttackState.FAILED
+                    return False
                 except Exception as e:
                     log_error('EvilTwin', f'Error in attack loop: {e}', e)
-                    # Continue running unless it's a critical error
                     if 'critical' in str(e).lower():
                         raise
             
@@ -1168,7 +1190,8 @@ class EvilTwin(Attack):
                 interface=self.interface_ap,
                 ssid=self.target.essid,
                 channel=self.target.channel,
-                password=None  # Open network for captive portal
+                password=None,  # Open network for captive portal
+                scope=self.scope,
             )
 
             if not self.hostapd.start():
@@ -1187,7 +1210,8 @@ class EvilTwin(Attack):
                 interface=self.interface_ap,
                 gateway_ip='192.168.100.1',
                 dhcp_range_start='192.168.100.10',
-                dhcp_range_end='192.168.100.100'
+                dhcp_range_end='192.168.100.100',
+                scope=self.scope,
             )
 
             if not self.dnsmasq.start():
@@ -1213,14 +1237,16 @@ class EvilTwin(Attack):
                 return False
 
             log_info('EvilTwin', f'Captive portal started on port {portal_port}')
+            if self.scope:
+                self.scope.register_health('portal', self.portal_server.is_running)
 
             # -- 4. Start client monitor ------------------------------------
-            hostapd_log = getattr(self.hostapd, 'config_file', None)
-            # ClientMonitor tolerates missing/non-existent log paths
-            # gracefully — it checks os.path.exists() each cycle.
-            hostapd_log_path = os.path.join(
-                Configuration.temp(), 'hostapd.log') if not hostapd_log else None
-            dnsmasq_log_path = os.path.join(Configuration.temp(), 'dnsmasq.log')
+            hostapd_log_path = getattr(self.hostapd, 'log_path', None)
+            dnsmasq_log_path = getattr(self.dnsmasq, 'log_path', None)
+            if not hostapd_log_path:
+                hostapd_log_path = os.path.join(Configuration.temp(), 'hostapd.log')
+            if not dnsmasq_log_path:
+                dnsmasq_log_path = os.path.join(Configuration.temp(), 'dnsmasq.log')
             self._setup_client_monitor(hostapd_log_path, dnsmasq_log_path)
 
             # -- 5. Validate deauth interface -------------------------------
@@ -1336,6 +1362,14 @@ class EvilTwin(Attack):
         return True
 
     def _verify_password(self, ssid: str, password: str):
+        iface = self.interface_deauth
+        with self._validation_lock:
+            if self.scope and iface and iface != self.interface_ap:
+                with self.scope.supervisor.radio(iface, 'credential-validation', self.scope):
+                    return self._verify_password_on_radio(ssid, password)
+            return self._verify_password_on_radio(ssid, password)
+
+    def _verify_password_on_radio(self, ssid: str, password: str):
         """
         Verify a submitted password against the REAL target AP.
 
@@ -1467,6 +1501,13 @@ class EvilTwin(Attack):
             log_error('EvilTwin', f'Error handling deauth: {e}', e)
     
     def _send_deauth(self, client_mac: str, count: int = 5):
+        if self.scope and self.interface_deauth:
+            with self.scope.supervisor.radio(
+                    self.interface_deauth, 'deauth', self.scope):
+                return self._send_deauth_on_radio(client_mac, count)
+        return self._send_deauth_on_radio(client_mac, count)
+
+    def _send_deauth_on_radio(self, client_mac: str, count: int = 5):
         """
         Send deauth packets to a client using the dedicated deauth interface.
         

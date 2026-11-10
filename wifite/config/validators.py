@@ -10,6 +10,8 @@ from ..util.color import Color
 
 def validate(cls):
     """Top-level configuration validation."""
+    if getattr(cls, 'target_timeout', 0) < 0:
+        raise ValueError('--target-timeout must be zero or a positive number of seconds')
     if cls.use_pmkid_only and cls.wps_only:
         Color.pl('{!} {R}Bad Configuration:{O} --pmkid and --wps-only are not compatible')
         raise RuntimeError('Unable to attack networks: --pmkid and --wps-only are not compatible together')

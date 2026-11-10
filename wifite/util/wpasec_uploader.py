@@ -271,7 +271,7 @@ class WpaSecUploader:
             return False
     
     @staticmethod
-    def upload_capture(capfile, bssid, essid, capture_type='handshake', view=None):
+    def upload_capture(capfile, bssid, essid, capture_type='handshake', view=None, scope=None):
         """
         Upload capture file to wpa-sec with validation and user feedback.
         
@@ -434,13 +434,19 @@ class WpaSecUploader:
                 })
             
             upload_start_time = datetime.now()
+            timeout = Configuration.wpasec_timeout if Configuration.wpasec_timeout else None
+            if scope:
+                scope.check()
+                remaining = scope.remaining()
+                timeout = remaining if timeout is None else min(timeout, remaining)
             success, message = Wlancap2wpasec.upload(
                 capfile=capfile,
                 api_key=Configuration.wpasec_api_key,
                 url=Configuration.wpasec_url if Configuration.wpasec_url else None,
-                timeout=Configuration.wpasec_timeout if Configuration.wpasec_timeout else None,
+                timeout=timeout,
                 email=Configuration.wpasec_email if Configuration.wpasec_email else None,
-                remove_on_success=Configuration.wpasec_remove_after_upload
+                remove_on_success=Configuration.wpasec_remove_after_upload,
+                scope=scope
             )
             upload_end_time = datetime.now()
             upload_duration = (upload_end_time - upload_start_time).total_seconds()

@@ -43,6 +43,8 @@ class Configuration:
     inf_wait_time = None
     interface = None
     interface_manager = None  # Per-process InterfaceManager state owner
+    supervisor = None  # Per-process radio/process coordination owner
+    target_timeout = None
     kill_conflicting_processes = None
     manufacturers = None
     min_power = None
@@ -192,6 +194,16 @@ class Configuration:
             from ..util.interface_manager import InterfaceManager
             cls.interface_manager = InterfaceManager()
         return cls.interface_manager
+
+    @classmethod
+    def get_supervisor(cls):
+        """Return the single per-process radio/process supervisor."""
+        if cls.supervisor is None:
+            from ..util.supervisor import RadioProcessSupervisor
+            cls.supervisor = RadioProcessSupervisor(
+                interface_manager=cls.get_interface_manager()
+            )
+        return cls.supervisor
 
     @classmethod
     def hcxdumptool_owns_radio(cls):
@@ -413,13 +425,13 @@ class Configuration:
     def cleanup_memory(cls):
         """ Periodic memory cleanup during long operations """
         # Clear command cache periodically
-        if hasattr(cls, 'existing_commands') and len(cls.existing_commands) > 100:
+        if isinstance(cls.existing_commands, dict) and len(cls.existing_commands) > 100:
             # Keep only the most recently used commands
             cls.existing_commands = dict(list(cls.existing_commands.items())[-50:])
 
-        # Clean up processes and file descriptors
+        # Reap completed children without interrupting active attack processes
         from ..util.process import ProcessManager, Process
-        ProcessManager().cleanup_all()
+        ProcessManager().reap_finished()
         Process.cleanup_zombies()
 
         # Force garbage collection
