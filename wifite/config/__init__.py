@@ -44,11 +44,6 @@ class Configuration:
     interface = None
     interface_manager = None  # Per-process InterfaceManager state owner
     supervisor = None  # Per-process radio/process coordination owner
-    # Set when SIGINT/SIGTERM arrives. Attack phases may absorb the
-    # KeyboardInterrupt internally (e.g. the crack loops), so the attack
-    # chain checks this flag between phases/targets instead of relying on
-    # the exception propagating.
-    interrupt_requested = False
     target_timeout = None
     kill_conflicting_processes = None
     manufacturers = None

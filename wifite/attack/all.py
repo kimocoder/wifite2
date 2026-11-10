@@ -56,9 +56,6 @@ class AttackAll:
         attacked_targets = 0
         targets_remaining = len(targets)
         for index, target in enumerate(targets, start=1):
-            if Configuration.interrupt_requested:
-                Color.pl('\n{!} {O}Interrupted; not attacking remaining target(s){W}')
-                break
             if Configuration.attack_max != 0 and index > Configuration.attack_max:
                 print(("Attacked %d targets, stopping because of the --first flag" % Configuration.attack_max))
                 break
@@ -224,24 +221,15 @@ class AttackAll:
         scope = None
         try:
             while attacks:
+                # Needed by infinite attack mode in order to count how many targets were attacked
+                target.attacked = True
+                attack = attacks.pop(0)
+                if getattr(attack, 'supervised', False):
+                    if scope is None:
+                        scope = Configuration.get_supervisor().target_scope(
+                            target, Configuration.target_timeout)
+                    attack.set_scope(scope)
                 try:
-                    # A SIGINT/SIGTERM absorbed inside the previous attack
-                    # phase (crack loops catch KeyboardInterrupt and merely
-                    # stop the phase) must not silently continue the chain:
-                    # treat the recorded request as an interrupt at the phase
-                    # boundary, feeding the same user menu as a direct Ctrl+C.
-                    # Checked before the pop so "continue" re-runs the
-                    # pending attack instead of discarding it.
-                    if Configuration.interrupt_requested:
-                        raise KeyboardInterrupt
-                    # Needed by infinite attack mode in order to count how many targets were attacked
-                    target.attacked = True
-                    attack = attacks.pop(0)
-                    if getattr(attack, 'supervised', False):
-                        if scope is None:
-                            scope = Configuration.get_supervisor().target_scope(
-                                target, Configuration.target_timeout)
-                        attack.set_scope(scope)
                     result = attack.run()
                     if getattr(attack, 'capture_success', False):
                         capture_successful = True
@@ -286,19 +274,14 @@ class AttackAll:
                     Color.pl('\n{!} {O}Interrupted{W}\n')
                     answer = cls.user_wants_to_continue(targets_remaining, len(attacks))
                     if answer == Answer.Continue:
-                        # Explicit user decision supersedes the recorded
-                        # interrupt request; allow the chain to proceed.
-                        Configuration.interrupt_requested = False
                         continue
                     elif answer == Answer.Skip:
-                        Configuration.interrupt_requested = False
                         if session and session_mgr:
                             session_mgr.mark_target_failed(session, target.bssid, "Skipped by user")
                             session_mgr.save_session(session)
                             Color.pl('{+} {D}Session updated: target {C}%s{D} marked as {R}failed{W}' % target.bssid)
                         return True
                     elif answer == Answer.Ignore:
-                        Configuration.interrupt_requested = False
                         from ..model.result import CrackResult
                         CrackResult.ignore_target(target)
                         if session and session_mgr:
@@ -307,8 +290,6 @@ class AttackAll:
                             Color.pl('{+} {D}Session updated: target {C}%s{D} marked as {R}failed{W}' % target.bssid)
                         return True
                     else:
-                        # ExitOrReturn: keep the flag set so attack_multiple
-                        # also stops before the next target.
                         return False
         finally:
             if scope is not None:
