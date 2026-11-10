@@ -9,11 +9,14 @@ from wifite.wifite import emergency_exit, main, sigterm_handler
 
 
 class TestExitStatus(unittest.TestCase):
-    def invoke_main(self, constructor_error=None, start_error=None):
+    def invoke_main(self, constructor_error=None, start_error=None,
+                    interrupt_requested=False):
         with ExitStack() as stack:
             wifite_class = stack.enter_context(patch('wifite.wifite.Wifite'))
             stack.enter_context(patch('wifite.wifite.Configuration.exit_gracefully'))
             stack.enter_context(patch.object(Configuration, 'interface_manager', None, create=True))
+            stack.enter_context(patch.object(Configuration, 'interrupt_requested',
+                                             interrupt_requested))
             stack.enter_context(patch('wifite.util.process.ProcessManager'))
             stack.enter_context(patch('subprocess.run'))
             stack.enter_context(patch('signal.signal'))
@@ -40,8 +43,12 @@ class TestExitStatus(unittest.TestCase):
         self.assertEqual(self.invoke_main(constructor_error=SystemExit('invalid arguments')), 1)
 
     def test_sigterm_handler_raises_keyboard_interrupt(self):
+        # The handler records the request in global state; don't leak it
+        # into tests that run the attack chain afterwards.
+        self.addCleanup(setattr, Configuration, 'interrupt_requested', False)
         with self.assertRaises(KeyboardInterrupt):
             sigterm_handler(signal.SIGTERM, None)
+        self.assertTrue(Configuration.interrupt_requested)
 
     def test_main_installs_sigterm_handler(self):
         with ExitStack() as stack:
@@ -75,6 +82,11 @@ class TestExitStatus(unittest.TestCase):
 
     def test_keyboard_interrupt_uses_conventional_exit_status(self):
         self.assertEqual(self.invoke_main(start_error=KeyboardInterrupt()), 130)
+
+    def test_absorbed_interrupt_still_exits_conventional_status(self):
+        # The attack menu can convert an absorbed Ctrl+C/SIGTERM into a
+        # clean "exit" choice; main() must still report 130.
+        self.assertEqual(self.invoke_main(interrupt_requested=True), 130)
 
     def test_non_root_execution_exits_nonzero(self):
         from wifite.wifite import Wifite

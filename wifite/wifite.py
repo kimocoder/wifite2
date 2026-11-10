@@ -1322,6 +1322,19 @@ def sigterm_handler(signum, frame):
     immediately and the ``finally`` cleanup in ``main()`` (interface
     teardown, Nexmon monitor removal) never executes.
     """
+    Configuration.interrupt_requested = True
+    raise KeyboardInterrupt
+
+
+def sigint_handler(signum, frame):
+    """Record the interrupt request, then behave like the default SIGINT.
+
+    Attack phases absorb KeyboardInterrupt internally (crack loops treat
+    it as "stop this phase"), so the flag lets the attack chain in
+    AttackAll stop after the current phase instead of starting the next
+    one with no budget/user intent left.
+    """
+    Configuration.interrupt_requested = True
     raise KeyboardInterrupt
 
 
@@ -1343,7 +1356,10 @@ def main():
     import subprocess
     import signal as _signal
 
-    _original_sigint = _signal.getsignal(_signal.SIGINT)
+    # SIGINT: same as the default disposition (raise KeyboardInterrupt in
+    # the main thread), but also records the request so absorbed interrupts
+    # still stop the attack chain.
+    _signal.signal(_signal.SIGINT, sigint_handler)
     # SIGTERM (kill, systemd stop) must run the same cleanup as Ctrl+C.
     _signal.signal(_signal.SIGTERM, sigterm_handler)
     exit_code = 0
@@ -1351,6 +1367,11 @@ def main():
     try:
         wifite = Wifite()
         wifite.start()
+        if Configuration.interrupt_requested:
+            # The run ended because of Ctrl+C/SIGTERM (the attack menu may
+            # have converted it into a clean "exit" choice); still report
+            # the conventional interrupt status so scripts can tell.
+            exit_code = 130
     except SystemExit as e:
         if e.code is None:
             exit_code = 0
