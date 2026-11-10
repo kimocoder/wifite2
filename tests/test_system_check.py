@@ -232,17 +232,62 @@ class TestSystemCheckInterfaces(unittest.TestCase):
         # Driver from sysfs
         mock_readlink.return_value = '/sys/bus/pci/drivers/ath9k'
 
-        # MAC from sysfs
+        # sysfs reads, keyed by path
         from unittest.mock import mock_open as mo
-        mock_open.side_effect = [
-            mo(read_data='aa:bb:cc:dd:ee:ff\n')(),
-            mo(read_data='up\n')(),
-        ]
+
+        def open_side(path, *args, **kwargs):
+            path = str(path)
+            if path.endswith('/address'):
+                return mo(read_data='aa:bb:cc:dd:ee:ff\n')()
+            if path.endswith('/flags'):
+                return mo(read_data='0x1003\n')()  # IFF_UP set
+            return mo(read_data='up\n')()
+
+        mock_open.side_effect = open_side
 
         results = self.checker.check_interfaces()
         self.assertEqual(len(results), 1)
         self.assertEqual(results[0].name, 'wlan0')
         self.assertEqual(results[0].driver, 'ath9k')
+        self.assertTrue(results[0].is_up)
+
+    @patch('os.listdir')
+    @patch('os.path.isdir')
+    @patch('os.readlink')
+    @patch('builtins.open', create=True)
+    @patch('subprocess.run')
+    def test_monitor_interface_reported_up(self, mock_run, mock_open, mock_readlink,
+                                           mock_isdir, mock_listdir):
+        """Regression test: a monitor interface is administratively up even
+        though its operstate is "dormant". syscheck used to read operstate
+        and report "Up: no" for every monitor interface.
+        """
+        mock_listdir.return_value = ['wlan1']
+        mock_isdir.side_effect = lambda p: 'wireless' in p and 'wlan1' in p
+        mock_run.return_value = MagicMock(
+            stdout='Interface wlan1\n\twiphy 0\n\ttype monitor\n',
+            stderr='', returncode=0
+        )
+        mock_readlink.return_value = '/sys/bus/usb/drivers/mt76x0u'
+
+        from unittest.mock import mock_open as mo
+
+        def open_side(path, *args, **kwargs):
+            path = str(path)
+            if path.endswith('/address'):
+                return mo(read_data='00:c0:ca:ab:48:16\n')()
+            if path.endswith('/flags'):
+                return mo(read_data='0x323\n')()  # IFF_UP set (real wlan1 value)
+            if path.endswith('/operstate'):
+                return mo(read_data='dormant\n')()
+            raise OSError('no such file')
+
+        mock_open.side_effect = open_side
+
+        results = self.checker.check_interfaces()
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0].mode, 'monitor')
+        self.assertTrue(results[0].is_up)
 
 
 class TestAttackReadiness(unittest.TestCase):

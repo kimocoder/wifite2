@@ -411,11 +411,14 @@ class SystemCheck:
             except Exception:
                 pass
 
-            # Interface up/down
+            # Interface up/down. Reuse InterfaceManager's helper: it checks
+            # the netdev IFF_UP flag, whereas operstate reports carrier state
+            # and is "dormant" for every monitor interface — reading
+            # operstate here reported monitor-mode interfaces as down.
             try:
-                with open(f'/sys/class/net/{iface}/operstate') as f:
-                    result.is_up = f.read().strip().lower() in ('up', 'unknown')
-            except OSError:
+                from .interface_manager import InterfaceManager
+                result.is_up = InterfaceManager._is_interface_up(iface)
+            except Exception:
                 pass
 
             # Supported modes and bands from iw phy info
