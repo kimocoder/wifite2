@@ -8,6 +8,7 @@ except (ValueError, ImportError) as e:
 
 
 from .util.color import Color
+from .util.input import interactive_input
 
 import os
 import sys
@@ -689,7 +690,7 @@ class Wifite:
 
                     Color.p('{+} Select session to resume [{G}1{W}]: ')
                     try:
-                        choice = input().strip()
+                        choice = interactive_input().strip()
                         if not choice:
                             choice = '1'
                         idx = int(choice) - 1
@@ -762,7 +763,7 @@ class Wifite:
                 Color.pl('{+} {G}All targets in this session have been attacked{W}')
                 Color.p('{+} Delete this session? [{G}Y{W}/n]: ')
                 try:
-                    if input().strip().lower() != 'n':
+                    if interactive_input().strip().lower() != 'n':
                         session_mgr.delete_session(session.session_id)
                         Color.pl('{+} Session deleted')
                 except KeyboardInterrupt:
@@ -793,7 +794,7 @@ class Wifite:
             # Confirm resumption
             Color.p('{+} Resume this session? [{G}Y{W}/n]: ')
             try:
-                if input().strip().lower() == 'n':
+                if interactive_input().strip().lower() == 'n':
                     Color.pl('{!} {O}Cancelled{W}')
                     return
             except KeyboardInterrupt:
@@ -890,7 +891,7 @@ class Wifite:
             Color.pl('')
             Color.p('{+} Delete corrupted session? [{G}Y{W}/n]: ')
             try:
-                response = input().strip().lower()
+                response = interactive_input().strip().lower()
                 if response != 'n':
                     # Try to delete the corrupted session
                     try:

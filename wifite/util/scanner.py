@@ -6,6 +6,7 @@ from time import sleep, time
 from ..config import Configuration
 from ..tools.airodump import Airodump
 from ..util.color import Color
+from ..util.input import interactive_input
 from ..util.output import OutputManager
 
 # Check for native scanner availability
@@ -157,7 +158,7 @@ class Scanner:
         Color.clear_entire_line()
         Color.p(prompt)
         try:
-            answer = input().lower()
+            answer = interactive_input().lower()
         except KeyboardInterrupt:
             # If user presses Ctrl+C during input, default to exit
             Color.pl('\n{!} {O}Interrupted during input, exiting...{W}')
@@ -746,7 +747,7 @@ class Scanner:
 
         Color.p(input_str)
         try:
-            user_input = input()
+            user_input = interactive_input()
         except KeyboardInterrupt:
             # If user presses Ctrl+C during input, return empty list to exit
             Color.pl('\n{!} {O}Interrupted during target selection, exiting...{W}')

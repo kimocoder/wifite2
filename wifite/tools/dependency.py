@@ -6,6 +6,8 @@ import shlex
 import shutil
 import subprocess
 
+from ..util.input import interactive_input
+
 
 class PackageManager:
     """
@@ -531,7 +533,7 @@ class Dependency:
         Color.p('{+} Auto-install %s tool(s) (%s) using {C}%s{W}? [Y/n]: ' % (label, names, mgr))
 
         try:
-            answer = input().strip().lower()
+            answer = interactive_input().strip().lower()
         except (KeyboardInterrupt, EOFError):
             Color.pl('')
             return False

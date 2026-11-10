@@ -4,6 +4,7 @@
 import os
 from json import loads
 from ..config import Configuration
+from ..util.input import interactive_input
 from ..model.handshake import Handshake
 from ..model.pmkid_result import CrackResultPMKID
 from ..model.wpa_result import CrackResultWPA
@@ -120,7 +121,7 @@ class CrackHelper:
         # Get wordlist
         if not Configuration.wordlist:
             Color.p('\n{+} Enter wordlist file or directory to use for cracking: {G}')
-            user_input = input()
+            user_input = interactive_input()
             Color.p('{W}')
 
             if not os.path.exists(user_input):
@@ -183,7 +184,7 @@ class CrackHelper:
         else:
             Color.p('\n{+} Enter the {C}cracking tool{W} to use ({C}%s{W}): {G}' % (
                 '{W}, {C}'.join(available_tools)))
-            tool_name = input()
+            tool_name = interactive_input()
             Color.p('{W}')
 
             if tool_name not in available_tools:
@@ -344,7 +345,7 @@ class CrackHelper:
         Color.p(
             '{+} Select handshake(s) to crack ({G}%d{W}-{G}%d{W}, select multiple with '
             '{C},{W} or {C}-{W} or {C}all{W}): {G}' % (1, len(handshakes)))
-        choices = input()
+        choices = interactive_input()
         Color.p('{W}')
 
         selection = []

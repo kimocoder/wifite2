@@ -12,6 +12,7 @@ from ..tools.aireplay import Aireplay, WEPAttackType
 from ..tools.airodump import Airodump
 from ..tools.ip import Ip
 from ..util.color import Color
+from ..util.input import interactive_input
 from ..util.logger import log_info
 from ..util.output import OutputManager
 
@@ -335,7 +336,7 @@ class AttackWEP(Attack):
         Color.pl('     {G}%d{W}: {R}Stop attacking, {O}Move onto next target{W}' % attack_index)
         while True:
             Color.p('{?} Select an option ({G}1-%d{W}): ' % attack_index)
-            answer = input()
+            answer = interactive_input()
             if not answer.isdigit() or int(answer) < 1 or int(answer) > attack_index:
                 Color.pl('{!} {R}Invalid input: {O}Must enter a number between {G}1-%d{W}' % attack_index)
                 continue

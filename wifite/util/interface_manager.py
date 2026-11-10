@@ -17,6 +17,7 @@ from typing import Optional
 from dataclasses import dataclass, field
 
 from ..tools.iw import Iw
+from ..util.input import interactive_input
 from ..tools.ip import Ip
 from ..tools.airmon import Airmon
 from ..util.process import Process
@@ -1488,7 +1489,7 @@ class InterfaceManager:
         
         Color.p('\n{+} Select interface for AP mode ({G}1-%d{W}): ' % len(ap_interfaces))
         try:
-            choice = int(input())
+            choice = int(interactive_input())
             if 1 <= choice <= len(ap_interfaces):
                 interface = ap_interfaces[choice - 1].interface
                 log_info('InterfaceManager', f'User selected interface: {interface}')

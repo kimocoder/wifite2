@@ -7,6 +7,7 @@ Maintains backward compatibility with the original scrolling text interface
 """
 
 from ..util.color import Color
+from ..util.input import interactive_input
 
 
 class ClassicScannerOutput:
@@ -102,7 +103,7 @@ class ClassicSelectorOutput:
         Color.p('{?} ')
         
         try:
-            answer = input().strip().lower()
+            answer = interactive_input().strip().lower()
         except (KeyboardInterrupt, EOFError):
             return []
         

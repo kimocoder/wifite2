@@ -12,6 +12,24 @@ import termios
 import tty
 from typing import Optional
 
+from .color import Color
+
+
+def interactive_input():
+    """Read a line of interactive input, treating closed stdin like Ctrl+C.
+
+    Non-interactive runs (piped stdin, ``< /dev/null``, CI) used to crash
+    at prompts with "Unexpected Error: EOF when reading a line". Every
+    prompt site already handles KeyboardInterrupt, so EOF is reported once
+    here and raised as KeyboardInterrupt to reuse those graceful exits.
+    """
+    try:
+        return input()
+    except EOFError:
+        Color.pl('\n{!} {O}No interactive input available (stdin closed); '
+                 'aborting prompt{W}')
+        raise KeyboardInterrupt
+
 
 class KeyboardInput:
     """Non-blocking keyboard input handler."""

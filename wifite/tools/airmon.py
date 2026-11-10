@@ -13,6 +13,7 @@ from .ip import Ip
 from .iw import Iw
 from ..config import Configuration
 from ..util.color import Color
+from ..util.input import interactive_input
 from ..util.process import Process
 from ..util.logger import log_debug
 
@@ -422,7 +423,7 @@ class Airmon(Dependency):
         else:
             # Multiple interfaces found
             Color.p('{+} Select wireless interface ({G}1-%d{W}): ' % len(a.interfaces))
-            choice = input()
+            choice = interactive_input()
 
         selected = a.get(choice)
 

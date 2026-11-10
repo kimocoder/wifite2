@@ -23,6 +23,7 @@ from ..model.attack import Attack
 from ..model.eviltwin_result import CrackResultEvilTwin
 from ..config import Configuration
 from ..util.color import Color
+from ..util.input import interactive_input
 from ..util.timer import Timer
 from ..util.logger import log_info, log_error, log_warning, log_debug, mask_sensitive
 from ..util.client_monitor import ClientMonitor, ClientConnection
@@ -1079,7 +1080,7 @@ class EvilTwin(Attack):
                 
                 try:
                     Color.p('{+} Stop the running attack and clean up? ({G}y{W}/{R}n{W}): ')
-                    response = input().strip().lower()
+                    response = interactive_input().strip().lower()
                     
                     if response in ['y', 'yes']:
                         orphaned = kill_orphaned_processes()
@@ -1126,7 +1127,7 @@ class EvilTwin(Attack):
             # Ask user if they want to kill conflicting processes
             try:
                 Color.p('{+} Kill conflicting processes? ({G}y{W}/{R}n{W}): ')
-                response = input().strip().lower()
+                response = interactive_input().strip().lower()
                 
                 if response in ['y', 'yes']:
                     killed_count = 0
