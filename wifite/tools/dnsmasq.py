@@ -9,6 +9,7 @@ Used by Evil Twin attack to provide network services to connected clients.
 import os
 import time
 import tempfile
+import contextlib
 from typing import Optional
 
 from .dependency import Dependency
@@ -451,6 +452,7 @@ class Dnsmasq(Dependency):
     
     def __del__(self):
         """Cleanup on deletion."""
-        import contextlib
+        # contextlib is imported at module top: an import inside __del__
+        # fails during interpreter shutdown ("sys.meta_path is None").
         with contextlib.suppress(Exception):
             self.cleanup()

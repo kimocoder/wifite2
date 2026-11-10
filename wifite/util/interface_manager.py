@@ -12,6 +12,7 @@ import json
 import os
 import re
 import threading
+import contextlib
 from typing import Optional
 from dataclasses import dataclass, field
 
@@ -1501,12 +1502,8 @@ class InterfaceManager:
     
     def __del__(self):
         """Cleanup on deletion."""
-        try:
-            import contextlib
-            with contextlib.suppress(Exception):
-                self.cleanup_all()
-        except ImportError:
-            pass
+        with contextlib.suppress(Exception):
+            self.cleanup_all()
     
     # ========================================================================
     # Interface Detection and Capability Checking (Task 2)

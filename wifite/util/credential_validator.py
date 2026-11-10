@@ -12,6 +12,7 @@ import time
 import hashlib
 import tempfile
 import threading
+import contextlib
 from typing import Optional
 from queue import Queue, Empty
 
@@ -653,7 +654,8 @@ class CredentialValidator:
 
     def __del__(self):
         """Cleanup on deletion — stop threads, remove temp files, clear credentials."""
-        import contextlib
+        # contextlib is imported at module top: an import inside __del__
+        # fails during interpreter shutdown ("sys.meta_path is None").
         with contextlib.suppress(Exception):
             self.clear_credentials()
             self.stop()
