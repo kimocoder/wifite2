@@ -55,13 +55,11 @@ class Wifite:
             Color.pl('{!} {R}re-run with {O}sudo{W}')
             raise SystemExit(1)
 
-        # Auto-update from the GitHub repo on startup: if the remote branch has
-        # new commits, fast-forward this checkout to the latest commit and
-        # restart. Disabled with --no-update; the --update command handles its
-        # own run below, so skip the implicit check in that mode.
+        # Auto-update check on startup: report a newer commit but never apply it.
+        # Only the explicit --update command fast-forwards and re-execs.
         if not Configuration.no_update and not Configuration.update:
             from .util.updater import Updater
-            Updater.check_and_update(verbose=Configuration.verbose)
+            Updater.check_and_update(verbose=Configuration.verbose, apply=False)
 
         from .tools.dependency import Dependency
         Dependency.run_dependency_check()
@@ -119,7 +117,7 @@ class Wifite:
 
         elif Configuration.update:
             from .util.updater import Updater
-            Updater.check_and_update(verbose=Configuration.verbose)
+            Updater.check_and_update(verbose=Configuration.verbose, apply=True)
 
         elif Configuration.update_db:
             DBUpdater.run()

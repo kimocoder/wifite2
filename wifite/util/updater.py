@@ -4,15 +4,15 @@
 """
 Self-update support for wifite2.
 
-On startup wifite can check its own git checkout against the GitHub remote and,
-when the remote branch has new commits, fast-forward the local checkout to the
-latest commit. After a successful update the process re-executes itself so the
-freshly pulled code runs immediately.
+On startup wifite checks its own git checkout against the GitHub remote and
+reports when the remote has new commits. It does not apply them: only the
+explicit ``--update`` command fast-forwards the checkout and re-executes the
+process so the freshly pulled code runs immediately.
 
 The check is intentionally conservative:
   * It only runs inside a git checkout (not for pip/package installs).
-  * It never discards local work: a dirty tree or a diverged branch aborts the
-    update with a warning instead of clobbering changes.
+  * Check-only mode never touches the working tree; a dirty tree or a
+    diverged branch is reported and skipped in apply mode.
   * All git calls use short timeouts so a slow or offline network cannot hang
     startup.
 """
@@ -25,7 +25,7 @@ from .color import Color
 
 
 class Updater(object):
-    """Checks GitHub for a newer commit and fast-forwards the local checkout."""
+    """Checks GitHub for a newer commit; only --update fast-forwards the checkout."""
 
     # Guards against an endless re-exec loop: set before re-launching wifite.
     REEXEC_ENV_FLAG = 'WIFITE_UPDATED'
@@ -74,12 +74,17 @@ class Updater(object):
             return False
 
     @classmethod
-    def check_and_update(cls, verbose=0):
+    def check_and_update(cls, verbose=0, apply=False):
         """
-        Entry point for the startup auto-update check.
+        Entry point for the startup update check.
+
+        With ``apply=False`` the checkout is only inspected: when the remote is
+        ahead the user is told an update is available and how to take it. Only
+        ``--update`` passes ``apply=True``, which fast-forwards and re-execs.
 
         Returns one of:
             'updated'   - checkout was fast-forwarded (a re-exec was attempted)
+            'available' - the remote is ahead; nothing was applied
             'current'   - already on the latest commit
             'skipped'   - nothing was done (not a git checkout, offline, dirty,
                           diverged, git missing, or a previous re-exec)
@@ -91,32 +96,32 @@ class Updater(object):
         root = cls._repo_root()
         if root is None:
             if verbose > 0:
-                Color.pl('{!} {O}Auto-update: not a git checkout, skipping{W}')
+                Color.pl('{!} {O}Update check: not a git checkout, skipping{W}')
             return 'skipped'
 
         if not cls._git_available():
             if verbose > 0:
-                Color.pl('{!} {O}Auto-update: {C}git{O} not found, skipping{W}')
+                Color.pl('{!} {O}Update check: {C}git{O} not found, skipping{W}')
             return 'skipped'
 
         try:
-            return cls._run(root, verbose=verbose)
+            return cls._run(root, verbose=verbose, apply=apply)
         except subprocess.TimeoutExpired:
-            Color.pl('{!} {O}Auto-update: git timed out (offline?), skipping{W}')
+            Color.pl('{!} {O}Update check: git timed out (offline?), skipping{W}')
             return 'skipped'
         except (OSError, subprocess.SubprocessError) as e:
             if verbose > 0:
-                Color.pl('{!} {O}Auto-update: skipped ({W}%s{O}){W}' % str(e))
+                Color.pl('{!} {O}Update check: skipped ({W}%s{O}){W}' % str(e))
             return 'skipped'
 
     @classmethod
-    def _run(cls, root, verbose=0):
+    def _run(cls, root, verbose=0, apply=False):
         # Determine the current branch. A detached HEAD has no upstream to track.
         branch_proc = cls._git(root, 'rev-parse', '--abbrev-ref', 'HEAD')
         branch = branch_proc.stdout.strip()
         if branch_proc.returncode != 0 or not branch or branch == 'HEAD':
             if verbose > 0:
-                Color.pl('{!} {O}Auto-update: detached HEAD, skipping{W}')
+                Color.pl('{!} {O}Update check: detached HEAD, skipping{W}')
             return 'skipped'
 
         # Resolve the upstream ref (e.g. origin/master). Fall back to origin/<branch>.
@@ -127,14 +132,15 @@ class Updater(object):
             upstream = 'origin/%s' % branch
         remote = upstream.split('/', 1)[0]
 
-        Color.pl('{+} {C}Checking for updates{W} on {G}%s{W}...' % upstream)
+        if apply or verbose > 0:
+            Color.pl('{+} {C}Checking for updates{W} on {G}%s{W}...' % upstream)
 
         # Fetch the latest refs from GitHub.
         fetch_proc = cls._git(root, 'fetch', '--quiet', remote,
                               timeout=cls.FETCH_TIMEOUT)
         if fetch_proc.returncode != 0:
             msg = (fetch_proc.stderr or fetch_proc.stdout or '').strip()
-            Color.pl('{!} {O}Auto-update: fetch failed, skipping{W}')
+            Color.pl('{!} {O}Update check: fetch failed, skipping{W}')
             if verbose > 0 and msg:
                 Color.pl('{!} {O}%s{W}' % msg)
             return 'skipped'
@@ -144,24 +150,33 @@ class Updater(object):
 
         if not remote_head:
             if verbose > 0:
-                Color.pl('{!} {O}Auto-update: could not resolve %s, skipping{W}' % upstream)
+                Color.pl('{!} {O}Update check: could not resolve %s, skipping{W}' % upstream)
             return 'skipped'
 
         if local == remote_head:
-            Color.pl('{+} {G}wifite2 is up to date{W} ({D}%s{W})' % local[:7])
+            if apply or verbose > 0:
+                Color.pl('{+} {G}wifite2 is up to date{W} ({D}%s{W})' % local[:7])
             return 'current'
 
         # Is the remote strictly ahead (i.e. a clean fast-forward)? If HEAD is
         # not an ancestor of the remote, the branch has diverged -> don't touch it.
         ancestor = cls._git(root, 'merge-base', '--is-ancestor', 'HEAD', upstream)
         if ancestor.returncode != 0:
-            Color.pl('{!} {O}Auto-update: local branch has diverged from {C}%s{O}; '
+            Color.pl('{!} {O}Update check: local branch has diverged from {C}%s{O}; '
                      'skipping to protect local commits{W}' % upstream)
             return 'skipped'
 
-        # Count and show the shortlog of the new commits being pulled in.
+        # Count the new commits before deciding anything.
         count = cls._git(root, 'rev-list', '--count',
                          'HEAD..%s' % upstream).stdout.strip() or '?'
+
+        if not apply:
+            # Check-only mode: say what is available and how to take it.
+            Color.pl('{!} {C}UPDATE AVAILABLE{W}: use {G}--update{W} '
+                     'to fast-forward ({D}%s{W} -> {C}%s{W}, %s commit(s))'
+                     % (local[:7], remote_head[:7], count))
+            return 'available'
+
         Color.pl('{+} {G}%s{W} new commit(s) available '
                  '({D}%s{W} -> {C}%s{W}):' % (count, local[:7], remote_head[:7]))
 
@@ -177,7 +192,7 @@ class Updater(object):
         dirty = cls._git(root, 'status', '--porcelain',
                          '--untracked-files=no').stdout.strip()
         if dirty:
-            Color.pl('{!} {O}Auto-update: uncommitted local changes present; '
+            Color.pl('{!} {O}Update check: uncommitted local changes present; '
                      'not updating. Commit/stash them or run with {C}--no-update{W}')
             return 'skipped'
 
