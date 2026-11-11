@@ -183,7 +183,8 @@ class InterfaceManager:
         return ['iw', 'dev', interface, 'set', 'type', target]
 
     @staticmethod
-    def _run_checked(command: list[str], description: str = None) -> bool:
+    def _run_checked(command: list[str], description: str = None,
+                     tolerate_busy: bool = False) -> bool:
         try:
             if description:
                 log_debug('InterfaceManager', description)
@@ -193,6 +194,13 @@ class InterfaceManager:
             return False
         if result.returncode != 0:
             detail = (result.stderr or result.stdout or '').strip()
+            if tolerate_busy and ('busy' in detail.lower()
+                                  or result.returncode == 240):
+                # The driver refuses the change while the vif is still busy;
+                # that is not a cleanup failure worth an error line.
+                log_debug('InterfaceManager',
+                          f'Ignoring EBUSY from {command}: {detail}')
+                return True
             log_error('InterfaceManager',
                       f'Command exited {result.returncode}: {command}: {detail}')
             return False
@@ -1202,23 +1210,30 @@ class InterfaceManager:
                 log_info('InterfaceManager',
                          f'Cleanup step: Restoring {state.original_mode} mode on {interface}')
                 command = self._mode_command(interface, state.original_mode)
-                if command is None or not self._run_checked(
+                if command is not None and self._run_checked(
                         command, f'Restore {interface} to {state.original_mode} mode'):
-                    log_error('InterfaceManager',
-                              f'Failed to restore mode on {interface}')
-                    success = False
-                else:
                     observed = self._canonical_mode(self._get_interface_mode(interface))
                     if observed != self._canonical_mode(state.original_mode):
                         log_error('InterfaceManager',
                                   f'Mode readback mismatch on {interface}: {observed}')
                         success = False
+                elif interface.endswith('mon') and self._run_checked(
+                        ['iw', 'dev', interface, 'del'],
+                        f'Delete monitor vif {interface}'):
+                    # Nexmon/airmon expose the monitor vif separately; the
+                    # driver refuses to retype it (EBUSY), so remove it.
+                    log_info('InterfaceManager', f'Removed monitor vif {interface}')
+                else:
+                    log_error('InterfaceManager',
+                              f'Failed to restore mode on {interface}')
+                    success = False
 
             if 'channel' in changed and state.original_channel is not None:
                 log_info('InterfaceManager',
                          f'Cleanup step: Restoring channel {state.original_channel} on {interface}')
                 if not self._run_checked(['iw', 'dev', interface, 'set', 'channel',
-                                          str(state.original_channel)]):
+                                          str(state.original_channel)],
+                                         tolerate_busy=True):
                     log_error('InterfaceManager',
                               f'Failed to restore channel on {interface}')
                     success = False
