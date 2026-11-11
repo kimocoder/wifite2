@@ -13,6 +13,9 @@ def validate(cls):
     """Top-level configuration validation."""
     if getattr(cls, 'target_timeout', 0) < 0:
         raise ValueError('--target-timeout must be zero or a positive number of seconds')
+    channel = getattr(cls, 'target_channel', None)
+    if channel:
+        _validate_channel(channel)
     if cls.use_pmkid_only and cls.wps_only:
         Color.pl('{!} {R}Bad Configuration:{O} --pmkid and --wps-only are not compatible')
         raise WifiteError('Unable to attack networks: --pmkid and --wps-only are not compatible together')
@@ -31,6 +34,29 @@ def validate(cls):
     # Validate wpa-sec configuration
     if cls.wpasec_enabled:
         validate_wpasec_config(cls)
+
+
+_BAND_SUFFIXES = {'a', 'b', 'c'}
+
+
+def _validate_channel(value):
+    """Reject channel specs no band can have.
+
+    Accepts the same forms channel_spec() handles: ``6``, ``1,3-6`` and the
+    band-suffixed ``1a`` / ``36b`` / ``5c``.
+    """
+    tokens = [part.strip() for part in str(value).split(',') if part.strip()]
+    for token in tokens:
+        body = token[:-1] if token[-1:].lower() in _BAND_SUFFIXES else token
+        try:
+            numbers = [int(part) for part in body.split('-', 1)]
+        except ValueError:
+            raise WifiteError(f'channel {token} is not a channel number or range')
+        for number in numbers:
+            if not 1 <= number <= 233:
+                raise WifiteError(f'channel {token} is out of range (1-233)')
+        if len(numbers) == 2 and numbers[1] < numbers[0]:
+            raise WifiteError(f'channel range {token} ends before it starts')
 
 
 def validate_eviltwin_config(cls):

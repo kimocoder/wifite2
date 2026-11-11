@@ -6,6 +6,7 @@ import os
 import re
 
 from ...util.color import Color
+from ...util.errors import WifiteError
 
 
 def parse_settings_args(cls, args):
@@ -36,7 +37,7 @@ def parse_settings_args(cls, args):
     if args.channel:
         chn_arg_re = re.compile(r"^\d+((,\d+)|(-\d+,\d+))*(-\d+)?$")
         if not chn_arg_re.match(args.channel):
-            raise ValueError("Invalid channel! The format must be 1,3-6,9")
+            raise WifiteError('Invalid channel! The format must be 1,3-6,9')
 
         cls.target_channel = args.channel
         Color.pl('{+} {C}option:{W} scanning for targets on channel {G}%s{W}' % args.channel)
