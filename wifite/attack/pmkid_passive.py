@@ -21,6 +21,35 @@ import os
 import time
 import re
 
+
+def count_networks(pcapng_path):
+    """Return the number of distinct BSSIDs in the capture, or None.
+
+    None means "cannot tell" (no tshark, missing or unreadable capture), so
+    callers render ``n/a`` instead of claiming zero networks were in range.
+    """
+    if not pcapng_path or not os.path.exists(pcapng_path):
+        return None
+    try:
+        from ..tools.tshark import Tshark
+        if not Tshark.exists():
+            return None
+        stdout, _ = Process.call([
+            'tshark', '-r', pcapng_path,
+            '-Y', 'wlan.fc.type_subtype==8',
+            '-T', 'fields', '-e', 'wlan.bssid',
+        ])
+    except Exception:
+        return None
+    bssids = {line.strip().lower() for line in (stdout or '').splitlines()
+              if line.strip()}
+    return len(bssids)
+
+
+def _networks_text(value):
+    """Render the network count without pretending unknown means zero."""
+    return 'n/a' if value is None else str(value)
+
 # TUI imports (optional)
 try:
     from ..ui.attack_view import PassivePMKIDAttackView
@@ -191,6 +220,10 @@ class AttackPassivePMKID:
             # Extract all PMKIDs from capture file
             pmkids = HcxPcapngTool.extract_all_pmkids(self.pcapng_file)
 
+            # Networks are counted from the capture itself; len(pmkids) only
+            # says how many hashes came out of it.
+            self.statistics['networks_detected'] = count_networks(self.pcapng_file)
+
             if not pmkids:
                 return
 
@@ -225,7 +258,6 @@ class AttackPassivePMKID:
                         self.tui_view.add_pmkid_captured(essid, bssid)
 
             # Update statistics
-            self.statistics['networks_detected'] = len(pmkids)
             self.statistics['pmkids_captured'] = len(self.captured_pmkids)
             self.statistics['last_extraction'] = time.time()
 
@@ -380,8 +412,8 @@ class AttackPassivePMKID:
 
             # Display statistics
             Color.clear_entire_line()
-            Color.p('\r{+} {C}Networks:{W} {G}%d{W} | {C}PMKIDs:{W} {G}%d{W} | {C}Duration:{W} {G}%s{W} | {C}Size:{W} {G}%.2f MB{W}' % (
-                self.statistics['networks_detected'],
+            Color.p('\r{+} {C}Networks:{W} {G}%s{W} | {C}PMKIDs:{W} {G}%d{W} | {C}Duration:{W} {G}%s{W} | {C}Size:{W} {G}%.2f MB{W}' % (
+                _networks_text(self.statistics['networks_detected']),
                 self.statistics['pmkids_captured'],
                 duration_str,
                 self.statistics['capture_size_mb']
@@ -529,7 +561,7 @@ class AttackPassivePMKID:
         if self.tui_view:
             self.tui_view.add_log('')
             self.tui_view.add_log('[bold green]Passive PMKID Capture Complete[/bold green]')
-            self.tui_view.add_log(f'Networks detected: {self.statistics["networks_detected"]}')
+            self.tui_view.add_log(f'Networks detected: {_networks_text(self.statistics["networks_detected"])}')
             self.tui_view.add_log(f'PMKIDs captured: {self.statistics["pmkids_captured"]}')
             self.tui_view.add_log(f'Capture duration: {self.statistics["duration_seconds"]} seconds')
             self.tui_view.add_log(f'Capture file: {self.pcapng_file} ({self.statistics["capture_size_mb"]:.2f} MB)')
@@ -537,7 +569,7 @@ class AttackPassivePMKID:
         else:
             Color.pl('')
             Color.pl('{+} {G}Passive PMKID Capture Complete{W}')
-            Color.pl('{+} Networks detected: {G}%d{W}' % self.statistics['networks_detected'])
+            Color.pl('{+} Networks detected: {G}%s{W}' % _networks_text(self.statistics['networks_detected']))
             Color.pl('{+} PMKIDs captured: {G}%d{W}' % self.statistics['pmkids_captured'])
             Color.pl('{+} Capture duration: {G}%d seconds{W}' % self.statistics['duration_seconds'])
             Color.pl('{+} Capture file: {C}%s{W} ({G}%.2f MB{W})' % (
