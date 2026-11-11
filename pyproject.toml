@@ -1,6 +1,6 @@
 [project]
 name = "wifite2"
-version = "2.9.9-beta"
+version = "3.0.0"
 description = "Wireless Network Auditor for Linux & Android"
 authors = [
     {name = "kimocoder", email = "christian@aircrack-ng.org"}

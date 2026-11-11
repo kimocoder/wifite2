@@ -13,7 +13,7 @@ def _get_version():
         from importlib.metadata import version
         return version('wifite2')
     except Exception:
-        return '2.9.9-beta'
+        return '3.0.0'
 
 
 class Configuration:

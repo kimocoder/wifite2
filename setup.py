@@ -27,7 +27,7 @@ def _read_requirements():
 
 setup(
     name='wifite2',
-    version='2.9.9-beta',
+    version='3.0.0',
     author='kimocoder',
     author_email='christian@aircrack-ng.org',
     url='https://github.com/kimocoder/wifite2',
