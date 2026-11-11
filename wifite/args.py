@@ -1166,6 +1166,12 @@ against the real AP and captures valid passwords.
                                          'driver compatibility, attack readiness matrix. '
                                          'Use with {C}-v{W} to include monitor mode smoke test.'))
 
+        from .config import Configuration
+        commands.add_argument('--version',
+                              action='version',
+                              version='wifite2 %s' % Configuration.version,
+                              help=Color.s('Show the version and exit'))
+
         commands.add_argument('--update-db',
                               action='store_true',
                               dest='update_db',
