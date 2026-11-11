@@ -268,13 +268,20 @@ class Handshake:
         """Prints analysis of handshake capfile"""
         self.divine_bssid_and_essid()
 
+        tshark_ok = False
         if Tshark.exists():
-            self._print_tshark_analysis()
+            tshark_ok = self._print_tshark_analysis()
 
         if Process.exists('cowpatty'):
             Handshake.print_pairs(self.cowpatty_handshakes(), 'cowpatty')
 
-        Handshake.print_pairs(self.aircrack_handshakes(), 'aircrack')
+        aircrack = self.aircrack_handshakes()
+        Handshake.print_pairs(aircrack, 'aircrack')
+
+        if tshark_ok and not aircrack:
+            Color.pl('{!} {O}wifite trusts tshark + hcxpcapngtool here: '
+                     'a crackable EAPOL pair for this BSSID outranks the '
+                     'aircrack verdict{W}')
 
     def _print_tshark_analysis(self):
         """
@@ -291,27 +298,36 @@ class Handshake:
         bssids, summary = Tshark.eapol_analysis(self.capfile, bssid=self.bssid)
         if bssids:
             Handshake.print_pairs([(bssid, None) for bssid in bssids], 'tshark')
-            return
+            return True
 
         tool_str = '{C}%s{W}: ' % 'tshark'.rjust(8)
 
         if not summary:
             Color.pl('{!} %s.cap file contains {O}no EAPOL frames{W} '
                      '({R}no handshake to crack{W})' % tool_str)
-            return
+            return False
 
         for bssid, msgs in summary.items():
             found = sorted(msgs)
             missing = [m for m in (1, 2, 3, 4) if m not in msgs]
             found_str = ', '.join('M%d' % m for m in found)
-            missing_str = ', '.join('M%d' % m for m in missing)
             crackable = 2 in msgs and (1 in msgs or 3 in msgs)
+            if not missing:
+                # Nothing is missing: calling this a partial and printing an
+                # empty "missing" list reads as a contradiction.
+                Color.pl('{!} %s.cap file has {G}complete 4-way{W} for ({O}%s{W}): '
+                         'found {C}%s{W} — {G}crackable{W}'
+                         % (tool_str, bssid.upper(), found_str))
+                continue
+            missing_str = ', '.join('M%d' % m for m in missing)
             verdict = ('{G}crackable partial{W}'
                        if crackable else
                        '{R}not crackable{W}')
             Color.pl('{!} %s.cap file has {O}partial 4-way{W} for ({O}%s{W}): '
                      'found {C}%s{W}, missing {R}%s{W} — %s'
                      % (tool_str, bssid.upper(), found_str, missing_str, verdict))
+
+        return False
 
     def strip(self, outfile=None):
         # XXX: This method might break aircrack-ng, use at own risk.
