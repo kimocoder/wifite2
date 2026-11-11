@@ -7,13 +7,47 @@ from ..util.color import Color
 from ..tools.macchanger import Macchanger
 
 
+_FALLBACK_VERSION = '3.0.0'
+
+
+def _source_version():
+    """Version declared by a source checkout containing this package.
+
+    Running from a clone puts the repository root on sys.path, where a stale
+    ``wifite2.egg-info`` can shadow the installed distribution's metadata.
+    The checkout's ``pyproject.toml`` is the source of truth in that case.
+    """
+    root = os.path.dirname(os.path.dirname(os.path.dirname(
+        os.path.abspath(__file__))))
+    pyproject = os.path.join(root, 'pyproject.toml')
+    try:
+        with open(pyproject, encoding='utf-8') as handle:
+            text = handle.read()
+    except OSError:
+        return None
+
+    project = re.search(r'^\[project\][^\n]*\n(.*?)(?=^\[|\Z)',
+                        text, re.M | re.S)
+    if not project:
+        return None
+    section = project.group(1)
+    if not re.search(r'^name\s*=\s*["\']wifite2["\']', section, re.M):
+        return None
+    match = re.search(r'^version\s*=\s*["\']([^"\']+)["\']', section, re.M)
+    return match.group(1) if match else None
+
+
 def _get_version():
-    """Get version from importlib.metadata (installed package) or fallback to hardcoded."""
+    """Version from a source checkout, else installed metadata, else fallback."""
+    return _source_version() or _installed_version() or _FALLBACK_VERSION
+
+
+def _installed_version():
     try:
         from importlib.metadata import version
         return version('wifite2')
     except Exception:
-        return '3.0.0'
+        return None
 
 
 class Configuration:
