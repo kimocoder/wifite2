@@ -884,6 +884,16 @@ class Wifite:
                 Color.pl('{+} Session saved. Use {C}--resume{O} to continue later.{W}')
 
         except FileNotFoundError as e:
+            if Configuration.resume_id:
+                # A specific id was requested: "no session files" would be a
+                # lie when other sessions exist, so name the id and list them.
+                Color.pl('{!} {R}Session not found:{W} %s' % Configuration.resume_id)
+                available = session_mgr.list_sessions()
+                if available:
+                    Color.pl('{!} {O}Available sessions{W}:')
+                    for entry in available[:5]:
+                        Color.pl('    {C}%s{W}' % entry['session_id'])
+                sys.exit(1)
             Color.pl('{!} {R}Error:{W} %s' % str(e))
             Color.pl('{!} {O}No session files found to resume{W}')
             Color.pl('{!} {O}Start a new attack session first, then use {C}--resume{O} if interrupted{W}')
@@ -920,6 +930,7 @@ class Wifite:
                     Color.pl('{!} {O}Session not deleted. Use {C}--clean-sessions{O} to remove it later{W}')
             except KeyboardInterrupt:
                 Color.pl('\n{!} {O}Cancelled{W}')
+            sys.exit(1)
         except PermissionError as e:
             Color.pl('{!} {R}Permission error:{W} %s' % str(e))
             Color.pl('{!} {O}Check file permissions and try again{W}')
