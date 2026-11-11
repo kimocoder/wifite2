@@ -6,6 +6,7 @@ import re
 import os
 
 from ..util.color import Color
+from ..util.errors import WifiteError
 
 
 def validate(cls):
@@ -14,10 +15,10 @@ def validate(cls):
         raise ValueError('--target-timeout must be zero or a positive number of seconds')
     if cls.use_pmkid_only and cls.wps_only:
         Color.pl('{!} {R}Bad Configuration:{O} --pmkid and --wps-only are not compatible')
-        raise RuntimeError('Unable to attack networks: --pmkid and --wps-only are not compatible together')
+        raise WifiteError('Unable to attack networks: --pmkid and --wps-only are not compatible together')
     if cls.use_pmkid_only and cls.dont_use_pmkid:
         Color.pl('{!} {R}Bad Configuration:{O} --pmkid and --no-pmkid are not compatible')
-        raise RuntimeError('Unable to attack networks: --pmkid and --no-pmkid are not compatible together')
+        raise WifiteError('Unable to attack networks: --pmkid and --no-pmkid are not compatible together')
 
     # Validate Evil Twin configuration
     if cls.use_eviltwin:

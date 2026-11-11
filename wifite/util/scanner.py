@@ -6,6 +6,7 @@ from time import sleep, time
 from ..config import Configuration
 from ..tools.airodump import Airodump
 from ..util.color import Color
+from ..util.errors import WifiteError
 from ..util.input import interactive_input
 from ..util.output import OutputManager
 
@@ -385,7 +386,7 @@ class Scanner:
                 log_warning('Scanner', 'No targets found in infinite mode; continuing scan cycle')
                 return []
 
-            raise Exception('No targets found.'
+            raise WifiteError('No targets found.'
                             + ' You may need to wait longer,'
                             + ' or you may have issues with your wifi card')
 

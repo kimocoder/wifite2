@@ -8,6 +8,7 @@ except (ValueError, ImportError) as e:
 
 
 from .util.color import Color
+from .util.errors import WifiteError
 from .util.input import interactive_input
 
 import os
@@ -1377,6 +1378,12 @@ def main():
         # Second Ctrl+C or SIGTERM during cleanup will force-exit immediately
         _signal.signal(_signal.SIGINT, force_exit_handler)
         _signal.signal(_signal.SIGTERM, force_exit_handler)
+    except WifiteError as e:
+        exit_code = 1
+        # The user can fix this (bad flags, unmanaged interface, empty scan);
+        # a stack trace would only bury the one useful line.
+        Color.pl('\n{!} {O}%s{W}' % str(e))
+        Color.pl('\n{!} {R}Exiting{W}\n')
     except Exception as e:
         exit_code = 1
         if 'did not find any wireless interfaces' in str(e):

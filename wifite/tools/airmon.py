@@ -13,6 +13,7 @@ from .ip import Ip
 from .iw import Iw
 from ..config import Configuration
 from ..util.color import Color
+from ..util.errors import WifiteError
 from ..util.input import interactive_input
 from ..util.process import Process
 from ..util.logger import log_debug
@@ -207,7 +208,7 @@ class Airmon(Dependency):
                     monitor = Nexmon.start_monitor(iface_name)
                 except Exception as e:
                     Color.pl('{R}failed (%s).{W}' % e)
-                    raise Exception(f'Failed to enable Nexmon monitor mode on {iface_name}: {e}')
+                    raise WifiteError(f'Failed to enable Nexmon monitor mode on {iface_name}: {e}')
                 cls.use_ipiw = True
                 Color.pl('{G}enabled{W}!')
                 return monitor
@@ -263,7 +264,7 @@ class Airmon(Dependency):
         # Verify monitor mode was enabled
         if enabled_interface is None:
             Color.pl('{R}failed to enable monitor mode using ip/iw.{W}')
-            raise Exception('Failed to enable monitor mode')
+            raise WifiteError('Failed to enable monitor mode')
 
         # Verify interface is actually in monitor mode
         if not Iw.is_monitor(enabled_interface):
