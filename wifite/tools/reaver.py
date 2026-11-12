@@ -480,7 +480,9 @@ class Reaver(Attack, Dependency):
 
         if pin is None:
             ''' [+] WPS PIN: '11867722' '''
-            if regex := re.search(r"WPS PIN:\s*'(\d+)'", stdout, re.IGNORECASE):
+            # Reaver supports arbitrary PIN strings, including the empty
+            # string used by the WPS NULL PIN check.
+            if regex := re.search(r"WPS PIN:\s*'(.*?)'", stdout, re.IGNORECASE):
                 pin = regex[1]
 
         # Check for PSK.
