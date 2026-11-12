@@ -227,16 +227,24 @@ class Airmon(Dependency):
                 if con_mode_paths:
                     con_mode_path = con_mode_paths[0]
                     try:
-                        # Ensure interface is down before changing mode
-                        Ip.down(iface_name)
+                        # con_mode recreates wlan0. Keep this transition out
+                        # of InterfaceManager so it doesn't retain the old
+                        # ifindex as the identity of the replacement netdev.
+                        result = Process.run_simple(
+                            ['ip', 'link', 'set', iface_name, 'down'])
+                        if result.returncode != 0:
+                            raise RuntimeError((result.stderr or result.stdout or '').strip())
                         with open(con_mode_path, 'w') as f:
                             f.write('4')
-                        # Bring interface up
-                        Ip.up(iface_name)
+                        time.sleep(0.5)
+                        result = Process.run_simple(
+                            ['ip', 'link', 'set', iface_name, 'up'])
+                        if result.returncode != 0:
+                            raise RuntimeError((result.stderr or result.stdout or '').strip())
                         # Verify it's in monitor mode
                         if Iw.is_monitor(iface_name):
                             Color.pl('{G}enabled (ICNSS2 specific)!{W}')
-                            # TODO: Consider if we need to set cls.use_ipiw or other flags here
+                            cls.use_ipiw = True
                             return iface_name
                         else:
                             Color.pl('{O}failed (ICNSS2 specific, could not verify monitor mode). Trying other methods...{W}')

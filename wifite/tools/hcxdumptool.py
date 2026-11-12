@@ -22,17 +22,13 @@ import signal
 
 
 def _hand_over_monitor_mode(interfaces):
-    """Return monitor-mode interfaces to managed mode for hcxdumptool.
+    """Return Wifite-owned monitor interfaces to managed mode.
 
     hcxdumptool 7+ sets (and restores) monitor mode itself. An interface
     wifite already armed makes hcxdumptool fight over mode and channel,
-    which is what upstream warns against. The decision is made from live
-    ``iw`` output inside the owner, not from wifite's ledger: external
-    tools change the mode out-of-band, so a stale ledger would skip the
-    handover and leave hcxdumptool unable to arm the radio.
-
-    Returns the interfaces that were handed over so they can be re-armed
-    when hcxdumptool exits.
+    which is what upstream warns against. Only hand over interfaces whose
+    monitor mode is tracked by Wifite; an untracked monitor device may be
+    controlled by a driver-specific mode such as qcacld con_mode.
     """
     handed_over = []
     try:
@@ -45,7 +41,17 @@ def _hand_over_monitor_mode(interfaces):
 
     for iface in interfaces:
         try:
-            if manager.hand_over_monitor(iface):
+            # qcacld/ICNSS2 monitor mode is controlled by con_mode. The
+            # managed-mode handoff uses iw/ip and can leave wlan0 down on
+            # this driver, so let hcxdumptool use the existing monitor netdev.
+            from .airmon import Airmon
+            iface_info = Airmon.get_iface_info(iface)
+            if iface_info and iface_info.driver == 'icnss2':
+                continue
+            state = manager.get_interface_state(iface)
+            if state.get('mode') != 'monitor' or not manager.is_managed(iface):
+                continue
+            if manager.set_interface_mode(iface, 'managed'):
                 handed_over.append(iface)
         except Exception:
             continue
@@ -62,7 +68,7 @@ def _return_monitor_mode(interfaces):
         return
     for iface in interfaces:
         try:
-            manager.rearm_monitor(iface)
+            manager.set_interface_mode(iface, 'monitor')
         except Exception:
             pass
 
