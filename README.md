@@ -201,6 +201,17 @@ sudo apt update && sudo apt install wifite
 yay -S wifite2-git
 ```
 
+### Uninstall
+
+To remove Wifite installed through Debian/Kali's `apt` package, system Python's `pip`,
+the repo's `setup.py` install, or this checkout's Poetry/virtualenv environment:
+
+```bash
+./uninstall.sh
+```
+
+The script requests root access for system installs, and removes only the Wifite package and launcher from each install location. It leaves shared dependencies, virtual environments, this source checkout, and user data in place.
+
 ### Verify Installation
 
 After installation, verify all dependencies are available:
