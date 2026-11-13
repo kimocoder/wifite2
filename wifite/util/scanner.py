@@ -744,7 +744,7 @@ class Scanner:
         input_str += ' separated by commas, dashes'
         input_str += ' or {G}all{W}: {C}'
 
-        chosen_targets = []
+        chosen_indexes = []
 
         Color.p(input_str)
         try:
@@ -757,22 +757,57 @@ class Scanner:
         for choice in user_input.split(','):
             choice = choice.strip()
             if choice.lower() == 'all':
-                chosen_targets = self.targets
-                break
-            if '-' in choice:
-                # User selected a range
-                (lower, upper) = [int(x) - 1 for x in choice.split('-')]
-                for i in range(lower, min(len(self.targets), upper + 1)):
-                    chosen_targets.append(self.targets[i])
-            elif choice.isdigit():
-                choice = int(choice)
-                if choice > len(self.targets):
-                    Color.pl('    {!} {O}Invalid target index (%d)... ignoring' % choice)
-                    continue
+                return list(self.targets)
+            chosen_indexes.extend(
+                self._parse_target_indexes(choice, len(self.targets)))
 
-                chosen_targets.append(self.targets[choice - 1])
-
+        chosen_targets = []
+        seen = set()
+        for index in chosen_indexes:
+            if index not in seen:
+                seen.add(index)
+                chosen_targets.append(self.targets[index])
         return chosen_targets
+
+    @staticmethod
+    def _parse_target_indexes(choice: str, count: int) -> list[int]:
+        """Resolve one selection token into zero-based target indexes.
+
+        Accepts single indexes (``7``), ranges (``6-10``) and dash-separated
+        lists (``6-10-11-12``). Invalid input is reported and skipped instead
+        of raising.
+        """
+        if not choice:
+            return []
+
+        if choice.isdigit():
+            number = int(choice)
+            if not 1 <= number <= count:
+                Color.pl('    {!} {O}Invalid target index (%d)... ignoring' % number)
+                return []
+            return [number - 1]
+
+        parts = [part.strip() for part in choice.split('-')]
+        if len(parts) == 2 and all(part.isdigit() for part in parts):
+            lower, upper = int(parts[0]), int(parts[1])
+            if lower > upper:
+                Color.pl('    {!} {O}Target range (%s) ends before it starts... ignoring'
+                         % choice)
+                return []
+            numbers = range(lower, min(count, upper) + 1)
+        elif all(part.isdigit() for part in parts):
+            numbers = [int(part) for part in parts]
+        else:
+            Color.pl('    {!} {O}Invalid target selection (%s)... ignoring' % choice)
+            return []
+
+        indexes = []
+        for number in numbers:
+            if not 1 <= number <= count:
+                Color.pl('    {!} {O}Invalid target index (%d)... ignoring' % number)
+                continue
+            indexes.append(number - 1)
+        return indexes
 
 
 if __name__ == '__main__':
