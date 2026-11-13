@@ -606,6 +606,7 @@ class TestConfigMonitorModeSetup(unittest.TestCase):
         Configuration.interface = 'wlan0'
         with patch('wifite.tools.airmon.Airmon.start',
                    return_value='wlan0mon') as start, \
+                patch('wifite.tools.airmon.Airmon.require_interface'), \
                 patch('wifite.tools.airmon.Airmon.get_iface_info',
                       return_value=None), \
                 patch('wifite.tools.iw.Iw.is_monitor', return_value=False):
@@ -617,6 +618,7 @@ class TestConfigMonitorModeSetup(unittest.TestCase):
         from wifite.config import Configuration
         Configuration.interface = 'wlan0mon'
         with patch('wifite.tools.airmon.Airmon.start') as start, \
+                patch('wifite.tools.airmon.Airmon.require_interface'), \
                 patch('wifite.tools.airmon.Airmon.get_iface_info',
                       return_value=SimpleNamespace(driver='mt76x0u')), \
                 patch('wifite.tools.iw.Iw.is_monitor', return_value=True):
@@ -632,6 +634,7 @@ class TestConfigMonitorModeSetup(unittest.TestCase):
             interface='wlan0', driver='brcmfmac', mask=7, firmware='7.45.265')
         with patch('wifite.tools.airmon.Airmon.start',
                    return_value='wlan0') as start, \
+                patch('wifite.tools.airmon.Airmon.require_interface'), \
                 patch('wifite.tools.airmon.Airmon.get_iface_info',
                       return_value=SimpleNamespace(driver='brcmfmac')), \
                 patch('wifite.tools.nexmon.Nexmon.probe', return_value=caps), \

@@ -127,6 +127,38 @@ class Airmon(Dependency):
         return next((intf_adapter for intf_adapter in Airmon.get_interfaces() if intf_adapter.interface == interface_name), None)
 
     @staticmethod
+    def require_interface(interface):
+        """Fail fast when a user-supplied interface name is not a netdev.
+
+        The radio-state owner refuses to snapshot a device it cannot read, so
+        a wrong ``-i`` name would otherwise surface as a confusing "cannot
+        snapshot" error instead of naming the real problem.
+        """
+        if os.path.isdir(os.path.join('/sys/class/net', interface)):
+            return
+        try:
+            result = Process.run_simple(['ip', 'link', 'show', 'dev', interface])
+            exists = result.returncode == 0
+        except Exception:
+            # Without sysfs or ip there is nothing reliable to check; let the
+            # normal monitor-mode path report the driver error.
+            return
+        if exists:
+            return
+
+        wireless = [iface.interface for iface in Airmon.get_interfaces()]
+        Color.pl('{!} {R}Interface {O}%s{R} does not exist{W}' % interface)
+        if wireless:
+            Color.pl('{!} {O}Available wireless interfaces:{W}')
+            for name in wireless:
+                Color.pl('{!}   - {G}%s{W}' % name)
+            Color.pl('{!} {O}Re-run with {C}-i <interface>{O} using one of these names{W}')
+        else:
+            Color.pl('{!} {O}airmon-ng did not report any wireless interfaces{W}')
+            Color.pl('{!} {O}Make sure your wireless device is connected{W}')
+        raise WifiteError(f'Wireless interface {interface} not found')
+
+    @staticmethod
     def start_monitor(interface):
         """Put interface into monitor mode through the state owner."""
         manager = Configuration.get_interface_manager()

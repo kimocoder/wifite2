@@ -140,6 +140,52 @@ def test_incomplete_snapshot_prevents_mutation(manager, system):
     assert IFACE not in manager.interface_states
 
 
+def test_snapshot_failure_names_unreadable_fields(manager, system):
+    system.mode = 'unknown'
+
+    with patch('wifite.util.interface_manager.os.path.isdir', return_value=True), \
+            patch('wifite.util.interface_manager.log_error') as log_error:
+        assert not manager._save_interface_state(IFACE)
+
+    message = ' '.join(str(call) for call in log_error.call_args_list)
+    assert 'mode' in message
+    assert 'refusing to modify' in message
+
+
+def test_snapshot_reports_missing_interface(manager, system):
+    system.mode = 'unknown'
+
+    with patch('wifite.util.interface_manager.os.path.isdir', return_value=False), \
+            patch('wifite.util.interface_manager.log_error') as log_error:
+        assert not manager._save_interface_state(IFACE)
+
+    assert 'interface not found' in str(log_error.call_args_list)
+
+
+def test_link_up_retries_after_driver_timeout(manager, system):
+    assert manager.set_interface_up(IFACE, False)
+    system.fail_next = lambda command: command[:5] == ['ip', 'link', 'set', IFACE, 'up']
+
+    with patch('wifite.util.interface_manager.time.sleep'):
+        assert manager.set_interface_up(IFACE, True)
+
+    ups = [command for command in system.commands
+           if command[:5] == ['ip', 'link', 'set', IFACE, 'up']]
+    assert len(ups) == 2
+
+
+def test_link_up_failure_logs_recovery_hint(manager, system):
+    assert manager.set_interface_up(IFACE, False)
+
+    with patch.object(InterfaceManager, '_set_link_state', return_value=False), \
+            patch.object(InterfaceManager, '_get_interface_driver', return_value='mt76x0u'), \
+            patch('wifite.util.interface_manager.log_error') as log_error:
+        assert not manager.set_interface_up(IFACE, True)
+
+    message = ' '.join(str(call) for call in log_error.call_args_list)
+    assert 'modprobe -r mt76x0u' in message
+
+
 def test_mode_mutation_executes_once_and_verifies(manager, system):
     assert manager.set_interface_mode(IFACE, 'monitor')
 

@@ -13,6 +13,7 @@ import os
 import re
 import threading
 import contextlib
+import time
 from typing import Optional
 from dataclasses import dataclass, field
 
@@ -214,6 +215,48 @@ class InterfaceManager:
         except (OSError, ValueError):
             return None
 
+    @classmethod
+    def _set_link_state(cls, interface: str, up: bool,
+                        attempts: int = 3, delay: float = 0.5) -> bool:
+        """Bring a link up or down, retrying driver-level timeouts.
+
+        Some USB drivers (notably mt76x0u) answer the first mode-change
+        request with ETIMEDOUT while a queued transfer is still pending.
+        The same command usually succeeds once the transfer drains.
+        """
+        command = ['ip', 'link', 'set', interface, 'up' if up else 'down']
+        returncode = None
+        detail = ''
+        for attempt in range(1, attempts + 1):
+            try:
+                result = Process.run_simple(command)
+            except Exception as e:
+                detail = str(e)
+            else:
+                returncode = result.returncode
+                if returncode == 0:
+                    return True
+                detail = (result.stderr or result.stdout or '').strip()
+            if attempt < attempts:
+                log_debug('InterfaceManager',
+                          f'{" ".join(command)} failed ({detail}); '
+                          f'retrying ({attempt + 1}/{attempts})')
+                time.sleep(delay)
+        log_error('InterfaceManager',
+                  f'Command exited {returncode}: {command}: {detail}')
+        return False
+
+    @classmethod
+    def _log_link_recovery_hint(cls, interface: str) -> None:
+        driver = cls._get_interface_driver(interface)
+        if driver in (None, '', 'unknown'):
+            hint = 'replug the adapter before retrying'
+        else:
+            hint = ('replug the adapter or reload its driver: '
+                    f'modprobe -r {driver} && modprobe {driver}')
+        log_error('InterfaceManager',
+                  f'{interface} could not be brought back up; {hint}')
+
     @staticmethod
     def _get_interface_addresses(interface: str) -> Optional[list[str]]:
         try:
@@ -320,11 +363,27 @@ class InterfaceManager:
                 current_ifindex = self._get_interface_ifindex(interface)
                 current_flags = self._get_interface_flags(interface)
 
-                if (current_mode in (None, '', 'unknown') or current_up is None or
-                        current_mac in (None, '', 'unknown') or current_ips is None or
-                        current_ifindex is None):
-                    log_error('InterfaceManager',
-                              f'Cannot snapshot {interface} completely; refusing to modify it')
+                unreadable = []
+                if current_mode in (None, '', 'unknown'):
+                    unreadable.append('mode')
+                if current_up is None:
+                    unreadable.append('up')
+                if current_mac in (None, '', 'unknown'):
+                    unreadable.append('mac')
+                if current_ips is None:
+                    unreadable.append('addresses')
+                if current_ifindex is None:
+                    unreadable.append('ifindex')
+                if unreadable:
+                    if not os.path.isdir(os.path.join('/sys/class/net', interface)):
+                        log_error('InterfaceManager',
+                                  f'Cannot snapshot {interface}: interface not found')
+                    else:
+                        log_error(
+                            'InterfaceManager',
+                            f'Cannot snapshot {interface} completely '
+                            f'(unreadable: {", ".join(unreadable)}); '
+                            'refusing to modify it')
                     return False
 
                 state = InterfaceState(
@@ -443,13 +502,16 @@ class InterfaceManager:
                 if not self._claim_interface(interface):
                     return False
                 state = self.interface_states[interface]
-                command = ['ip', 'link', 'set', interface, 'up' if up else 'down']
-                if not self._run_checked(command):
+                if not self._set_link_state(interface, up):
+                    if up:
+                        self._log_link_recovery_hint(interface)
                     return False
                 observed = self._is_interface_up(interface)
                 if observed != up:
                     log_error('InterfaceManager',
                               f'{interface} up-state readback is {observed}, expected {up}')
+                    if up:
+                        self._log_link_recovery_hint(interface)
                     return False
                 state.current_up = observed
                 self._record_change(state, 'up', state.original_up, observed)
@@ -486,7 +548,7 @@ class InterfaceManager:
                 if was_up is None:
                     return False
                 if was_up:
-                    if not self._run_checked(['ip', 'link', 'set', interface, 'down']):
+                    if not self._set_link_state(interface, False):
                         return False
                     state.current_up = False
                     state.changed_fields.add('up')
@@ -494,9 +556,10 @@ class InterfaceManager:
                 state.changed_fields.add('mode')
                 if not self._run_checked(command, f'Set {interface} to {desired} mode'):
                     if was_up:
-                        self._run_checked(['ip', 'link', 'set', interface, 'up'])
+                        self._set_link_state(interface, True)
                     return False
-                if was_up and not self._run_checked(['ip', 'link', 'set', interface, 'up']):
+                if was_up and not self._set_link_state(interface, True):
+                    self._log_link_recovery_hint(interface)
                     return False
 
                 observed = self._canonical_mode(self._get_interface_mode(interface))
@@ -548,15 +611,16 @@ class InterfaceManager:
                 was_up = self._is_interface_up(interface)
                 if was_up is None:
                     return False
-                if was_up and not self._run_checked(['ip', 'link', 'set', interface, 'down']):
+                if was_up and not self._set_link_state(interface, False):
                     return False
                 if not self._run_checked(
                         ['iw', 'dev', interface, 'set', 'type', 'managed'],
                         f'Hand {interface} to hcxdumptool in managed mode'):
                     if was_up:
-                        self._run_checked(['ip', 'link', 'set', interface, 'up'])
+                        self._set_link_state(interface, True)
                     return False
-                if was_up and not self._run_checked(['ip', 'link', 'set', interface, 'up']):
+                if was_up and not self._set_link_state(interface, True):
+                    self._log_link_recovery_hint(interface)
                     return False
 
                 observed = self._canonical_mode(self._get_interface_mode(interface))
@@ -590,15 +654,16 @@ class InterfaceManager:
                 was_up = self._is_interface_up(interface)
                 if was_up is None:
                     return False
-                if was_up and not self._run_checked(['ip', 'link', 'set', interface, 'down']):
+                if was_up and not self._set_link_state(interface, False):
                     return False
                 if not self._run_checked(
                         ['iw', 'dev', interface, 'set', 'type', 'monitor'],
                         f'Re-arm {interface} in monitor mode'):
                     if was_up:
-                        self._run_checked(['ip', 'link', 'set', interface, 'up'])
+                        self._set_link_state(interface, True)
                     return False
-                if was_up and not self._run_checked(['ip', 'link', 'set', interface, 'up']):
+                if was_up and not self._set_link_state(interface, True):
+                    self._log_link_recovery_hint(interface)
                     return False
 
                 return self._canonical_mode(self._get_interface_mode(interface)) == 'monitor'
@@ -657,7 +722,7 @@ class InterfaceManager:
                 was_up = self._is_interface_up(interface)
                 if was_up is None:
                     return False
-                if was_up and not self._run_checked(['ip', 'link', 'set', interface, 'down']):
+                if was_up and not self._set_link_state(interface, False):
                     return False
                 if was_up:
                     state.changed_fields.add('up')
@@ -665,9 +730,10 @@ class InterfaceManager:
                 command = ['ip', 'link', 'set', 'dev', interface, 'address', mac]
                 if not self._run_checked(command):
                     if was_up:
-                        self._run_checked(['ip', 'link', 'set', interface, 'up'])
+                        self._set_link_state(interface, True)
                     return False
-                if was_up and not self._run_checked(['ip', 'link', 'set', interface, 'up']):
+                if was_up and not self._set_link_state(interface, True):
+                    self._log_link_recovery_hint(interface)
                     return False
                 observed = self._get_interface_mac(interface)
                 observed_up = self._is_interface_up(interface)
@@ -1185,7 +1251,7 @@ class InterfaceManager:
             if needs_down and live_up:
                 log_info('InterfaceManager',
                          f'Cleanup step: Bringing {interface} down')
-                if not self._run_checked(['ip', 'link', 'set', interface, 'down']):
+                if not self._set_link_state(interface, False):
                     log_error('InterfaceManager',
                               f'Cleanup failed: could not bring {interface} down')
                     return False

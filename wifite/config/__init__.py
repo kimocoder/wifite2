@@ -270,6 +270,7 @@ class Configuration:
             # need a proper monitor lifecycle (e.g. brcmfmac/Nexmon).
             from ..tools.airmon import Airmon
             from ..tools.iw import Iw
+            Airmon.require_interface(cls.interface)
             iface_info = Airmon.get_iface_info(cls.interface)
             if iface_info and iface_info.driver == 'brcmfmac':
                 from ..tools.nexmon import Nexmon
