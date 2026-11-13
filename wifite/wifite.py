@@ -1432,7 +1432,8 @@ def main():
             from .util.logger import log_debug
             log_debug('Wifite', f'Reaver cleanup error: {e}')
 
-        # Try graceful exit with timeout
+        # Wait for graceful cleanup to finish. Radio restoration can take up to
+        # ten seconds on ICNSS2 while the recreated station interface appears.
         try:
             import threading
 
@@ -1442,9 +1443,8 @@ def main():
                 Configuration.exit_gracefully()
 
             exit_thread = threading.Thread(target=graceful_exit)
-            exit_thread.daemon = True
             exit_thread.start()
-            exit_thread.join(timeout=2)  # 2 second timeout
+            exit_thread.join()
         except Exception as e:
             from .util.logger import log_debug
             log_debug('Wifite', f'Exit thread error: {e}')

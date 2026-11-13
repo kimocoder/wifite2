@@ -127,6 +127,29 @@ class Airmon(Dependency):
         return next((intf_adapter for intf_adapter in Airmon.get_interfaces() if intf_adapter.interface == interface_name), None)
 
     @staticmethod
+    def describe_interface(interface_name):
+        """Return the interface name with its detected adapter model, if known."""
+        physical_interface = Airmon.base_interface or interface_name
+        iface_info = Airmon.get_iface_info(physical_interface)
+        chipset = iface_info.chipset.strip() if iface_info and iface_info.chipset else ''
+
+        if not chipset or chipset.lower().startswith('not '):
+            driver = iface_info.driver.strip() if iface_info and iface_info.driver else ''
+            if not driver:
+                try:
+                    from ..util.interface_manager import InterfaceManager
+                    driver = InterfaceManager._get_interface_driver(physical_interface)
+                except Exception:
+                    driver = ''
+            try:
+                from ..util.interface_manager import InterfaceManager
+                chipset = InterfaceManager.DRIVER_CHIPSET_MAP.get(driver, '')
+            except Exception:
+                chipset = ''
+
+        return f'{interface_name} ({chipset})' if chipset else interface_name
+
+    @staticmethod
     def require_interface(interface):
         """Fail fast when a user-supplied interface name is not a netdev.
 
@@ -185,19 +208,51 @@ class Airmon(Dependency):
         # Get driver info for ICNSS2 check
         iface_info = Airmon.get_iface_info(interface)
         if iface_info and iface_info.driver == 'icnss2':
-            Color.p('{+} ICNSS2 driver detected for %s. Running "svc wifi disable"... ' % interface)
-            proc = Process(['svc', 'wifi', 'disable'])
-            stdout, stderr = proc.get_output(timeout=30)
-            if proc.poll() == 0:
-                Color.pl('{G}success!{W}')
-            else:
-                Color.pl('{R}failed.{W}')
-                if stdout: Color.pl('{O}STDOUT: %s{W}' % stdout.strip())
-                if stderr: Color.pl('{R}STDERR: %s{W}' % stderr.strip())
+            Color.p('{+} ICNSS2 driver detected for %s. Restoring station mode... ' % interface)
+            # con_mode=0 recreates the normal managed interface. Restore it
+            # directly; svc is unavailable in some supported environments.
+            con_mode_paths = glob.glob('/sys/module/*/parameters/con_mode')
+            if not con_mode_paths:
+                Color.pl('{R}ICNSS2 con_mode parameter was not found{W}')
+                return None
+            try:
+                with open(con_mode_paths[0], 'w') as handle:
+                    handle.write('0')
+            except OSError as e:
+                Color.pl('{R}failed to restore ICNSS2 station mode: %s{W}' % e)
+                return None
+
+            # con_mode recreates wlan0; give the driver a moment before
+            # bringing the managed interface up.
+            time.sleep(0.5)
+            try:
+                result = Process.run_simple(
+                    ['ip', 'link', 'set', interface, 'up'], timeout=10)
+            except (OSError, subprocess.SubprocessError) as e:
+                Color.pl('{R}could not bring restored interface up: %s{W}' % e)
+                return None
+            if result.returncode != 0:
+                detail = (result.stderr or result.stdout or '').strip()
+                Color.pl('{R}could not bring restored interface up: %s{W}' % detail)
+                return None
+
+            from ..util.interface_manager import InterfaceManager
+            for _ in range(50):
+                if (not Iw.is_monitor(interface)
+                        and InterfaceManager._is_interface_up(interface)):
+                    Color.pl('{G}restored!{W}')
+                    Color.pl('{+}{W} Disabled monitor mode on {G}%s{W}'
+                             % Airmon.describe_interface(interface))
+                    return interface
+                time.sleep(0.2)
+
+            Color.pl('{R}%s did not return to managed mode and up state{W}' % interface)
+            return None
 
         manager = Configuration.get_interface_manager()
         if not manager.set_interface_mode(interface, 'managed'):
             Color.pl('{!} {O}Failed to return %s to managed mode{W}' % interface)
+            return None
 
         return interface
 
@@ -361,28 +416,34 @@ class Airmon(Dependency):
 
     @classmethod
     def stop(cls, interface):
-        Color.p('{!}{W} Disabling {O}monitor{W} mode on {R}%s{W}...\n' % interface)
+        interface_label = cls.describe_interface(interface)
+        Color.p('{!}{W} Disabling {O}monitor{W} mode on {R}%s{W}...\n'
+                % interface_label)
 
         # A Nexmon session owns the monitor interface and must be torn down
         # through the wrapper so the station netdev is restored safely.
         from .nexmon import Nexmon
         if Nexmon.has_session(interface):
             if Nexmon.stop(interface):
-                Color.pl('{+}{W} Disabled Nexmon monitor mode on {G}%s{W}' % interface)
+                Color.pl('{+}{W} Disabled monitor mode on {G}%s{W}' % interface_label)
             else:
-                Color.pl('{!} {O}Could not disable Nexmon monitor mode on {R}%s{W}' % interface)
+                Color.pl('{!} {O}Could not disable Nexmon monitor mode on {R}%s{W}'
+                         % interface_label)
             return interface, interface
 
-        if cls.use_ipiw:
+        iface_info = Airmon.get_iface_info(interface)
+        is_icnss2 = bool(iface_info and iface_info.driver == 'icnss2')
+        if cls.use_ipiw or is_icnss2:
             enabled_interface = disabled_interface = Airmon.stop_monitor(interface)
         else:
             airmon_output = Process(['airmon-ng', 'stop', interface]).stdout()
             disabled_interface, enabled_interface = Airmon._parse_airmon_stop(airmon_output)
 
-        if disabled_interface:
-            Color.pl('{+}{W} Disabled monitor mode on {G}%s{W}' % disabled_interface)
-        else:
-            Color.pl('{!} {O}Could not disable {R}%s{W}' % interface)
+        if disabled_interface and not is_icnss2:
+            Color.pl('{+}{W} Disabled monitor mode on {G}%s{W}'
+                     % cls.describe_interface(disabled_interface))
+        elif not disabled_interface:
+            Color.pl('{!} {O}Could not disable {R}%s{W}' % interface_label)
 
         return disabled_interface, enabled_interface
 
