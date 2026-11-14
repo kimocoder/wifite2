@@ -18,9 +18,12 @@ def make_scanner(count=12):
     return scanner
 
 
-def select(text):
+def select(text, retry=None):
     scanner = make_scanner()
-    with patch('wifite.util.scanner.interactive_input', return_value=text), \
+    answers = [text]
+    if retry is not None:
+        answers.append(retry)
+    with patch('wifite.util.input.interactive_input', side_effect=answers), \
             patch.object(Scanner, 'print_targets'), \
             patch('wifite.util.scanner.Color'):
         return scanner._prompt_user_for_targets_classic()
@@ -31,7 +34,6 @@ def select(text):
     ('6-10', ['t6', 't7', 't8', 't9', 't10']),
     ('6-10-11-12', ['t6', 't10', 't11', 't12']),
     (' 7 , 9 ', ['t7', 't9']),
-    ('0-2', ['t1', 't2']),
     ('1-2,2', ['t1', 't2']),
     ('all', [f't{i}' for i in range(1, 13)]),
 ])
@@ -42,5 +44,5 @@ def test_selection_is_parsed(text, expected):
 @pytest.mark.parametrize('text', [
     '0', '13', '11-6', '3-', '-3', 'abc', '1--2', '6-10-11-12-',
 ])
-def test_invalid_selection_is_ignored_without_raising(text):
-    assert select(text) == []
+def test_invalid_selection_retries_until_a_valid_answer(text):
+    assert select(text, retry='all') == [f't{i}' for i in range(1, 13)]

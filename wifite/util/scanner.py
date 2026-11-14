@@ -7,7 +7,7 @@ from ..config import Configuration
 from ..tools.airodump import Airodump
 from ..util.color import Color
 from ..util.errors import WifiteError
-from ..util.input import interactive_input
+from ..util.input import parse_index_selection, prompt_until_valid
 from ..util.output import OutputManager
 
 # Check for native scanner availability
@@ -157,15 +157,24 @@ class Scanner:
 
         self.print_targets()
         Color.clear_entire_line()
-        Color.p(prompt)
+
+        def parse_start_exit(value):
+            answer = value.strip().lower()
+            if answer in ('s', 'start'):
+                return True
+            if answer in ('e', 'exit'):
+                return False
+            raise ValueError('Enter s to start attacking or e to exit.')
+
         try:
-            answer = interactive_input().lower()
+            should_start = prompt_until_valid(
+                prompt, parse_start_exit)
         except KeyboardInterrupt:
             # If user presses Ctrl+C during input, default to exit
             Color.pl('\n{!} {O}Interrupted during input, exiting...{W}')
             return False  # Exit
 
-        return not answer.startswith('e')
+        return should_start
 
     def update_targets(self):
         """
@@ -744,70 +753,16 @@ class Scanner:
         input_str += ' separated by commas, dashes'
         input_str += ' or {G}all{W}: {C}'
 
-        chosen_indexes = []
-
-        Color.p(input_str)
         try:
-            user_input = interactive_input()
+            selected = prompt_until_valid(
+                input_str,
+                lambda value: parse_index_selection(value, len(self.targets)))
         except KeyboardInterrupt:
             # If user presses Ctrl+C during input, return empty list to exit
             Color.pl('\n{!} {O}Interrupted during target selection, exiting...{W}')
             return []
 
-        for choice in user_input.split(','):
-            choice = choice.strip()
-            if choice.lower() == 'all':
-                return list(self.targets)
-            chosen_indexes.extend(
-                self._parse_target_indexes(choice, len(self.targets)))
-
-        chosen_targets = []
-        seen = set()
-        for index in chosen_indexes:
-            if index not in seen:
-                seen.add(index)
-                chosen_targets.append(self.targets[index])
-        return chosen_targets
-
-    @staticmethod
-    def _parse_target_indexes(choice: str, count: int) -> list[int]:
-        """Resolve one selection token into zero-based target indexes.
-
-        Accepts single indexes (``7``), ranges (``6-10``) and dash-separated
-        lists (``6-10-11-12``). Invalid input is reported and skipped instead
-        of raising.
-        """
-        if not choice:
-            return []
-
-        if choice.isdigit():
-            number = int(choice)
-            if not 1 <= number <= count:
-                Color.pl('    {!} {O}Invalid target index (%d)... ignoring' % number)
-                return []
-            return [number - 1]
-
-        parts = [part.strip() for part in choice.split('-')]
-        if len(parts) == 2 and all(part.isdigit() for part in parts):
-            lower, upper = int(parts[0]), int(parts[1])
-            if lower > upper:
-                Color.pl('    {!} {O}Target range (%s) ends before it starts... ignoring'
-                         % choice)
-                return []
-            numbers = range(lower, min(count, upper) + 1)
-        elif all(part.isdigit() for part in parts):
-            numbers = [int(part) for part in parts]
-        else:
-            Color.pl('    {!} {O}Invalid target selection (%s)... ignoring' % choice)
-            return []
-
-        indexes = []
-        for number in numbers:
-            if not 1 <= number <= count:
-                Color.pl('    {!} {O}Invalid target index (%d)... ignoring' % number)
-                continue
-            indexes.append(number - 1)
-        return indexes
+        return [self.targets[index] for index in selected]
 
 
 if __name__ == '__main__':

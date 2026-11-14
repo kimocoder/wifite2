@@ -6,7 +6,7 @@ import shlex
 import shutil
 import subprocess
 
-from ..util.input import interactive_input
+from ..util.input import parse_yes_no, prompt_until_valid
 
 
 class PackageManager:
@@ -530,15 +530,16 @@ class Dependency:
         label = 'required' if required else 'optional'
         names = ', '.join(d.dependency_name for d in deps)
         Color.pl('')
-        Color.p('{+} Auto-install %s tool(s) (%s) using {C}%s{W}? [Y/n]: ' % (label, names, mgr))
-
         try:
-            answer = interactive_input().strip().lower()
+            should_install = prompt_until_valid(
+                '{+} Auto-install %s tool(s) (%s) using {C}%s{W}? [Y/n]: '
+                % (label, names, mgr),
+                lambda value: parse_yes_no(value, default=True))
         except (KeyboardInterrupt, EOFError):
             Color.pl('')
             return False
 
-        if answer and answer != 'y':
+        if not should_install:
             return False
 
         # Attempt installation

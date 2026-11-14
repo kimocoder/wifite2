@@ -7,7 +7,7 @@ Maintains backward compatibility with the original scrolling text interface
 """
 
 from ..util.color import Color
-from ..util.input import interactive_input
+from ..util.input import parse_index_selection, prompt_until_valid
 
 
 class ClassicScannerOutput:
@@ -98,39 +98,14 @@ class ClassicSelectorOutput:
         if not self.targets:
             return []
         
-        Color.pl('')
-        Color.pl('{+} Select target(s) ({G}1-%d{W}) separated by commas, or {G}all{W}:' % len(self.targets))
-        Color.p('{?} ')
-        
         try:
-            answer = interactive_input().strip().lower()
+            selected = prompt_until_valid(
+                '{?} Select target(s) ({G}1-%d{W}) separated by commas or ranges, '
+                'or {G}all{W}: ' % len(self.targets),
+                lambda value: parse_index_selection(value, len(self.targets)))
         except (KeyboardInterrupt, EOFError):
             return []
-        
-        if answer == 'all':
-            return self.targets
-        
-        # Parse comma-separated numbers
-        selected = []
-        try:
-            for part in answer.split(','):
-                part = part.strip()
-                if '-' in part:
-                    # Range like "1-5"
-                    start, end = part.split('-')
-                    start_idx = int(start) - 1
-                    end_idx = int(end)
-                    selected.extend(self.targets[start_idx:end_idx])
-                else:
-                    # Single number
-                    idx = int(part) - 1
-                    if 0 <= idx < len(self.targets):
-                        selected.append(self.targets[idx])
-        except (ValueError, IndexError):
-            Color.pl('{!} {R}Invalid selection{W}')
-            return []
-        
-        return selected
+        return [self.targets[index] for index in selected]
 
 
 class ClassicAttackOutput:

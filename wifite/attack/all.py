@@ -12,7 +12,7 @@ from .owe import AttackOWE
 from ..config import Configuration
 from ..model.target import WPSState
 from ..util.color import Color
-from ..util.input import interactive_input
+from ..util.input import prompt_until_valid
 from ..util.logger import log_info
 from ..util.wpa3_tools import WPA3ToolChecker
 from ..util.memory import MemoryMonitor, get_infinite_monitor
@@ -364,19 +364,29 @@ class AttackAll:
             options += '{R}e{W})'
             prompt += ' or {R}exit{W} %s? {C}' % options
 
-        Color.p(prompt)
+        # Keep the original wording, but split the long question explicitly.
+        # Some terminal frontends redraw wrapped input prompts by repeating
+        # the first row instead of continuing on the next row.
+        if len(prompt) > 72 and ' or ' in prompt:
+            split_at = prompt.rfind(' or ')
+            prompt = prompt[:split_at] + '\n    ' + prompt[split_at + 1:]
+
         try:
-            answer = interactive_input().lower()
+            def parse_answer(response):
+                answer = response.strip().lower()
+                if answer in ('c', 'continue') and attacks_remaining > 0:
+                    return Answer.Continue
+                if answer in ('s', 'skip') and targets_remaining > 0:
+                    return Answer.Skip
+                if answer in ('i', 'ignore'):
+                    return Answer.Ignore
+                exit_answers = ('r', 'return') if Configuration.infinite_mode else ('e', 'exit')
+                if answer in exit_answers:
+                    return Answer.ExitOrReturn
+                raise ValueError('Choose one of the listed options.')
+
+            return prompt_until_valid(prompt, parse_answer)
         except KeyboardInterrupt:
             # If user presses Ctrl+C during input, default to exit
             Color.pl('\n{!} {O}Interrupted during input, exiting...{W}')
             return Answer.ExitOrReturn
-
-        if answer.startswith('s'):
-            return Answer.Skip
-        elif answer.startswith('e') or answer.startswith('r'):
-            return Answer.ExitOrReturn  # Exit/Return
-        elif answer.startswith('i'):
-            return Answer.Ignore  # Ignore
-        else:
-            return Answer.Continue  # Continue

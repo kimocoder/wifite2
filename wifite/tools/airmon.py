@@ -14,7 +14,7 @@ from .iw import Iw
 from ..config import Configuration
 from ..util.color import Color
 from ..util.errors import WifiteError
-from ..util.input import interactive_input
+from ..util.input import prompt_until_valid
 from ..util.process import Process
 from ..util.logger import log_debug
 
@@ -524,8 +524,15 @@ class Airmon(Dependency):
             choice = 1
         else:
             # Multiple interfaces found
-            Color.p('{+} Select wireless interface ({G}1-%d{W}): ' % len(a.interfaces))
-            choice = interactive_input()
+            def parse_interface_choice(value):
+                value = value.strip()
+                if value.isdigit() and 1 <= int(value) <= len(a.interfaces):
+                    return int(value)
+                raise ValueError('Choose an interface from 1 to %d.' % len(a.interfaces))
+
+            choice = prompt_until_valid(
+                '{+} Select wireless interface ({G}1-%d{W}): ' % len(a.interfaces),
+                parse_interface_choice)
 
         selected = a.get(choice)
 

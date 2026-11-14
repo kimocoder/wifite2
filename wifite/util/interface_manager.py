@@ -18,7 +18,7 @@ from typing import Optional
 from dataclasses import dataclass, field
 
 from ..tools.iw import Iw
-from ..util.input import interactive_input
+from ..util.input import prompt_until_valid
 from ..tools.ip import Ip
 from ..tools.airmon import Airmon
 from ..util.process import Process
@@ -1568,19 +1568,23 @@ class InterfaceManager:
         for idx, caps in enumerate(ap_interfaces, start=1):
             Color.pl('  {G}%d{W}. %s' % (idx, caps))
         
-        Color.p('\n{+} Select interface for AP mode ({G}1-%d{W}): ' % len(ap_interfaces))
+        def parse_interface_choice(value):
+            choice = value.strip()
+            if choice.isdigit() and 1 <= int(choice) <= len(ap_interfaces):
+                return int(choice)
+            raise ValueError('Choose an interface from 1 to %d.' % len(ap_interfaces))
+
         try:
-            choice = int(interactive_input())
-            if 1 <= choice <= len(ap_interfaces):
-                interface = ap_interfaces[choice - 1].interface
-                log_info('InterfaceManager', f'User selected interface: {interface}')
-                return interface
-            else:
-                Color.pl('{!} {R}Invalid selection{W}')
-                return None
-        except (ValueError, KeyboardInterrupt, EOFError):
+            choice = prompt_until_valid(
+                '\n{+} Select interface for AP mode ({G}1-%d{W}): '
+                % len(ap_interfaces), parse_interface_choice)
+        except (KeyboardInterrupt, EOFError):
             Color.pl('{!} {R}Selection cancelled{W}')
             return None
+
+        interface = ap_interfaces[choice - 1].interface
+        log_info('InterfaceManager', f'User selected interface: {interface}')
+        return interface
     
     def __del__(self):
         """Cleanup on deletion."""
