@@ -4,7 +4,7 @@
 import os
 from json import loads
 from ..config import Configuration
-from ..util.input import interactive_input
+from ..util.input import parse_index_selection, prompt_until_valid
 from ..model.handshake import Handshake
 from ..model.pmkid_result import CrackResultPMKID
 from ..model.wpa_result import CrackResultWPA
@@ -120,13 +120,30 @@ class CrackHelper:
 
         # Get wordlist
         if not Configuration.wordlist:
-            Color.p('\n{+} Enter wordlist file or directory to use for cracking: {G}')
-            user_input = interactive_input()
-            Color.p('{W}')
+            def parse_wordlist_path(value):
+                path = value.strip()
+                if not path:
+                    raise ValueError('Enter a wordlist file or directory path.')
+                if not os.path.exists(path):
+                    raise ValueError('Wordlist path not found: %s' % path)
+                if os.path.isfile(path):
+                    if not os.access(path, os.R_OK):
+                        raise ValueError('Wordlist file is not readable: %s' % path)
+                    return path
+                if not os.path.isdir(path):
+                    raise ValueError('Path is not a regular file or directory: %s' % path)
+                try:
+                    files = [os.path.join(path, name) for name in os.listdir(path)]
+                except OSError as error:
+                    raise ValueError('Cannot read directory %s: %s' % (path, error))
+                if not any(os.path.isfile(file) and os.access(file, os.R_OK)
+                           for file in files):
+                    raise ValueError('Directory contains no readable files: %s' % path)
+                return path
 
-            if not os.path.exists(user_input):
-                Color.pl('{!} {R}Wordlist {O}%s{R} not found. Exiting.' % user_input)
-                return
+            user_input = prompt_until_valid(
+                '\n{+} Enter wordlist file or directory to use for cracking: {G}',
+                parse_wordlist_path)
 
             if os.path.isdir(user_input):
                 files = sorted([
@@ -180,21 +197,31 @@ class CrackHelper:
                 Color.pl('{!} {O}Note: PMKID hashes can only be cracked using {C}hashcat{W}')
             if all_sae or has_sae:
                 Color.pl('{!} {O}Note: WPA3-SAE handshakes can only be cracked using {C}hashcat{W}')
+            if 'hashcat' not in available_tools:
+                Color.pl('{!} {O}Hashcat is required for these handshakes but is unavailable{W}')
+                return
             tool_name = 'hashcat'
         else:
-            Color.p('\n{+} Enter the {C}cracking tool{W} to use ({C}%s{W}): {G}' % (
-                '{W}, {C}'.join(available_tools)))
-            tool_name = interactive_input()
-            Color.p('{W}')
+            if not available_tools:
+                Color.pl('{!} {O}No available cracking tools were found{W}')
+                return
 
-            if tool_name not in available_tools:
-                Color.pl('{!} {R}"%s"{O} tool not found, defaulting to {C}aircrack{W}' % tool_name)
-                tool_name = 'aircrack'
+            def parse_tool(value):
+                tool = value.strip().lower()
+                if tool in available_tools:
+                    return tool
+                raise ValueError('Choose one of the listed cracking tools.')
+
+            tool_name = prompt_until_valid(
+                '\n{+} Enter the {C}cracking tool{W} to use ({C}%s{W}): {G}' % (
+                    '{W}, {C}'.join(available_tools)),
+                parse_tool)
 
         try:
             for hs in hs_to_crack:
-                if tool_name != 'hashcat' and hs['type'] in ['PMKID', 'SAE'] and 'hashcat' in missing_tools:
-                    Color.pl('{!} {O}Hashcat is missing, therefore we cannot crack %s{W}' % hs['type'])
+                if tool_name != 'hashcat' and hs['type'] in ['PMKID', 'SAE']:
+                    Color.pl('{!} {O}%s handshakes require hashcat and cannot be cracked with %s{W}'
+                             % (hs['type'], tool_name))
                     continue
                 cls.crack(hs, tool_name)
         except KeyboardInterrupt:
@@ -342,26 +369,11 @@ class CrackHelper:
     def get_user_selection(cls, handshakes):
         cls.print_handshakes(handshakes)
 
-        Color.p(
+        indices = prompt_until_valid(
             '{+} Select handshake(s) to crack ({G}%d{W}-{G}%d{W}, select multiple with '
-            '{C},{W} or {C}-{W} or {C}all{W}): {G}' % (1, len(handshakes)))
-        choices = interactive_input()
-        Color.p('{W}')
-
-        selection = []
-        for choice in choices.split(','):
-            if '-' in choice:
-                first, last = [int(x) for x in choice.split('-')]
-                for index in range(first, last + 1):
-                    selection.append(handshakes[index - 1])
-            elif choice.strip().lower() == 'all':
-                selection = handshakes[:]
-                break
-            elif [c.isdigit() for c in choice]:
-                index = int(choice)
-                selection.append(handshakes[index - 1])
-
-        return selection
+            '{C},{W} or {C}-{W} or {C}all{W}): {G}' % (1, len(handshakes)),
+            lambda value: parse_index_selection(value, len(handshakes)))
+        return [handshakes[index] for index in indices]
 
     @classmethod
     def crack(cls, hs, tool):

@@ -10,6 +10,7 @@ import os
 from ..config import Configuration
 from ..util.color import Color
 from ..util.logger import log_debug, log_info, log_warning, log_error
+from ..util.input import parse_yes_no, prompt_until_valid
 from ..tools.wlancap2wpasec import Wlancap2wpasec
 
 
@@ -250,10 +251,12 @@ class WpaSecUploader:
         
         # Prompt user for input
         try:
-            response = input(Color.s('{?} Upload to wpa-sec? [y/N]: ')).strip().lower()
+            response = prompt_until_valid(
+                '{?} Upload to wpa-sec? [y/N]: ',
+                lambda value: parse_yes_no(value, default=False))
             log_debug('WpaSecUploader', f'User response: "{response}"')
             
-            if response in ['y', 'yes']:
+            if response:
                 log_info('WpaSecUploader', f'User CONFIRMED upload for {target_essid} ({target_bssid})')
                 return True
             else:

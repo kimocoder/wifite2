@@ -9,7 +9,7 @@ except (ValueError, ImportError) as e:
 
 from .util.color import Color
 from .util.errors import WifiteError
-from .util.input import interactive_input
+from .util.input import parse_yes_no, prompt_until_valid
 
 import os
 import sys
@@ -687,17 +687,20 @@ class Wifite:
                             s['completed'], s['captured'], s['failed'], s['remaining']
                         ))
 
-                    Color.p('{+} Select session to resume [{G}1{W}]: ')
+                    def parse_session_index(value):
+                        value = value.strip()
+                        if not value:
+                            return 1
+                        if value.isdigit() and 1 <= int(value) <= len(sessions):
+                            return int(value)
+                        raise ValueError('Choose a session from 1 to %d.' % len(sessions))
+
                     try:
-                        choice = interactive_input().strip()
-                        if not choice:
-                            choice = '1'
-                        idx = int(choice) - 1
-                        if idx < 0 or idx >= len(sessions):
-                            Color.pl('{!} {R}Invalid selection{W}')
-                            return
+                        idx = prompt_until_valid(
+                            '{+} Select session to resume [{G}1{W}]: ',
+                            parse_session_index) - 1
                         session = session_mgr.load_session(sessions[idx]['session_id'])
-                    except (ValueError, KeyboardInterrupt):
+                    except KeyboardInterrupt:
                         Color.pl('\n{!} {O}Cancelled{W}')
                         return
 
@@ -760,9 +763,11 @@ class Wifite:
 
             if summary['remaining'] == 0:
                 Color.pl('{+} {G}All targets in this session have been attacked{W}')
-                Color.p('{+} Delete this session? [{G}Y{W}/n]: ')
                 try:
-                    if interactive_input().strip().lower() != 'n':
+                    delete_session = prompt_until_valid(
+                        '{+} Delete this session? [{G}Y{W}/n]: ',
+                        lambda value: parse_yes_no(value, default=True))
+                    if delete_session:
                         session_mgr.delete_session(session.session_id)
                         Color.pl('{+} Session deleted')
                 except KeyboardInterrupt:
@@ -791,9 +796,11 @@ class Wifite:
                 Color.pl('')
 
             # Confirm resumption
-            Color.p('{+} Resume this session? [{G}Y{W}/n]: ')
             try:
-                if interactive_input().strip().lower() == 'n':
+                resume_session = prompt_until_valid(
+                    '{+} Resume this session? [{G}Y{W}/n]: ',
+                    lambda value: parse_yes_no(value, default=True))
+                if not resume_session:
                     Color.pl('{!} {O}Cancelled{W}')
                     return
             except KeyboardInterrupt:
@@ -898,10 +905,11 @@ class Wifite:
         except ValueError as e:
             Color.pl('{!} {R}Corrupted session file:{W} %s' % str(e))
             Color.pl('')
-            Color.p('{+} Delete corrupted session? [{G}Y{W}/n]: ')
             try:
-                response = interactive_input().strip().lower()
-                if response != 'n':
+                delete_session = prompt_until_valid(
+                    '{+} Delete corrupted session? [{G}Y{W}/n]: ',
+                    lambda value: parse_yes_no(value, default=True))
+                if delete_session:
                     # Try to delete the corrupted session
                     try:
                         # Determine which session to delete
@@ -1403,6 +1411,15 @@ def main():
         Color.pl('\n{!} {R}Exiting{W}\n')
 
     finally:
+        # Keep the restore prompt on the main thread. The graceful cleanup
+        # below runs in a daemon thread with a timeout, so it cannot safely
+        # wait for interactive input itself.
+        try:
+            Configuration.prompt_restore_monitor_mode()
+        except Exception as e:
+            from .util.logger import log_debug
+            log_debug('Wifite', f'Monitor-mode restore prompt error: {e}')
+
         # Use the module-level emergency_exit during final cleanup phase
         _signal.signal(_signal.SIGINT, emergency_exit)
         _signal.signal(_signal.SIGTERM, emergency_exit)
@@ -1432,7 +1449,8 @@ def main():
             from .util.logger import log_debug
             log_debug('Wifite', f'Reaver cleanup error: {e}')
 
-        # Try graceful exit with timeout
+        # Wait for graceful cleanup to finish. Radio restoration can take up to
+        # ten seconds on ICNSS2 while the recreated station interface appears.
         try:
             import threading
 
@@ -1442,9 +1460,8 @@ def main():
                 Configuration.exit_gracefully()
 
             exit_thread = threading.Thread(target=graceful_exit)
-            exit_thread.daemon = True
             exit_thread.start()
-            exit_thread.join(timeout=2)  # 2 second timeout
+            exit_thread.join()
         except Exception as e:
             from .util.logger import log_debug
             log_debug('Wifite', f'Exit thread error: {e}')

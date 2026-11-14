@@ -8,6 +8,8 @@ Provides non-blocking keyboard input for interactive views.
 
 import sys
 import select
+import re
+import shutil
 import termios
 import tty
 from typing import Optional
@@ -29,6 +31,112 @@ def interactive_input():
         Color.pl('\n{!} {O}No interactive input available (stdin closed); '
                  'aborting prompt{W}')
         raise KeyboardInterrupt
+
+
+def _terminal_rows(text, columns):
+    """Count terminal rows occupied by rendered text starting in column zero."""
+    rendered = Color.s(text)
+    rendered = re.sub(r'\033\[[0-?]*[ -/]*[@-~]', '', rendered)
+    return sum(max(1, len(line) // columns + 1) for line in rendered.split('\n'))
+
+
+def _clear_terminal_rows(rows):
+    """Clear *rows* from the current cursor position and return to their top."""
+    sys.stdout.write(f'\033[{rows}A')
+    for row in range(rows):
+        sys.stdout.write('\r\033[2K')
+        if row < rows - 1:
+            sys.stdout.write('\033[1B')
+    if rows > 1:
+        sys.stdout.write(f'\033[{rows - 1}A')
+    sys.stdout.write('\r')
+    sys.stdout.flush()
+
+
+def prompt_until_valid(prompt, parser, invalid_message='Invalid input.'):
+    """Prompt until *parser* accepts the response, with a clean retry row.
+
+    ``parser`` should return the parsed value or raise ``ValueError`` when the
+    response is invalid. Empty input is treated like any other value, so the
+    caller can choose whether it is a valid default or should be retried.
+    """
+    retry = False
+    while True:
+        if retry:
+            if not Color.kalidroid and sys.stdout.isatty():
+                # input() leaves the cursor below the echoed answer. Count
+                # actual wrapped rows as well as explicit newlines so long
+                # prompts don't survive underneath the retry.
+                columns = max(1, shutil.get_terminal_size(fallback=(80, 24)).columns)
+                _clear_terminal_rows(_terminal_rows(prompt + response, columns))
+                Color.pl('{!} {O}%s{W}' % retry_message)
+                import time
+                time.sleep(2)
+                error_rows = _terminal_rows(
+                    '{!} {O}%s{W}' % retry_message, columns)
+                _clear_terminal_rows(error_rows)
+                Color.last_sameline_length = 0
+            else:
+                Color.pl('{!} {O}%s{W}' % retry_message)
+
+        Color.p(prompt)
+        response = interactive_input()
+        try:
+            return parser(response)
+        except ValueError as error:
+            retry_message = str(error) or invalid_message
+            retry = True
+
+
+def parse_index_selection(response, maximum, allow_all=True):
+    """Parse comma-separated 1-based indices and inclusive ranges.
+
+    Returns zero-based indices. Raises ``ValueError`` for blanks, malformed
+    values, reversed ranges, or indices outside ``1..maximum``.
+    """
+    value = response.strip().lower()
+    if allow_all and value == 'all':
+        return list(range(maximum))
+    if not value:
+        raise ValueError(f'Enter a selection from 1 to {maximum}.')
+
+    selected = []
+    for part in value.split(','):
+        part = part.strip()
+        if not part:
+            raise ValueError('Use comma-separated numbers or ranges.')
+        if '-' in part:
+            bounds = part.split('-')
+            if not all(bound.strip().isdigit() for bound in bounds):
+                raise ValueError('Use ranges like 1-3 or dash-separated numbers.')
+            numbers = [int(bound.strip()) for bound in bounds]
+            if len(numbers) == 2:
+                first, last = numbers
+                if first > last:
+                    raise ValueError('Range start must not exceed its end.')
+                numbers = range(first, last + 1)
+        elif part.isdigit():
+            numbers = [int(part)]
+        else:
+            raise ValueError('Use comma-separated numbers or ranges.')
+
+        if any(number < 1 or number > maximum for number in numbers):
+            raise ValueError(f'Choose numbers from 1 to {maximum}.')
+        selected.extend(number - 1 for number in numbers)
+
+    return list(dict.fromkeys(selected))
+
+
+def parse_yes_no(response, default=None):
+    """Parse a yes/no response, optionally using a default for blank input."""
+    value = response.strip().lower()
+    if not value and default is not None:
+        return bool(default)
+    if value in ('y', 'yes'):
+        return True
+    if value in ('n', 'no'):
+        return False
+    raise ValueError('Enter y or n.')
 
 
 class KeyboardInput:

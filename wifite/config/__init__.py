@@ -65,6 +65,7 @@ class Configuration:
     cracked_file = None
     crack_handshake = None
     daemon = None
+    restore_monitor_mode_on_exit = None
     dont_use_pmkid = None
     encryption_filter = None
     existing_commands = None
@@ -474,26 +475,82 @@ class Configuration:
         gc.collect()
 
     @classmethod
+    def prompt_restore_monitor_mode(cls):
+        """Collect the interactive restore choice before threaded cleanup."""
+        cls.restore_monitor_mode_on_exit = None
+        if cls.daemon:
+            cls.restore_monitor_mode_on_exit = True
+            return
+        if cls.interface is None:
+            return
+
+        from ..tools.iw import Iw
+        if not Iw.is_monitor(cls.interface):
+            return
+
+        import sys
+        if not sys.stdin.isatty():
+            return
+
+        from ..util.input import prompt_until_valid
+        from ..tools.airmon import Airmon
+        interface_label = Airmon.describe_interface(cls.interface)
+
+        def parse_restore_choice(value):
+            response = value.strip().lower()
+            if response in ('y', 'yes'):
+                return True
+            if response in ('n', 'no'):
+                return False
+            raise ValueError()
+
+        try:
+            cls.restore_monitor_mode_on_exit = prompt_until_valid(
+                '{?} Restore %s to managed mode? (y/n): ' % interface_label,
+                parse_restore_choice,
+                invalid_message='Please enter y or n.')
+        except KeyboardInterrupt:
+            Color.pl('')
+            cls.restore_monitor_mode_on_exit = False
+
+    @classmethod
     def exit_gracefully(cls):
         """ Deletes temp and exits with the given code """
         code = 0
         cls.delete_temp()
         Macchanger.reset_if_changed()
 
-        # Tear down Nexmon monitor sessions first: their VIF lifecycle is
-        # specialized, but station link changes go through the owner below.
-        nexmon_restored = []
-        try:
-            from ..tools.nexmon import Nexmon
-            from ..util.logger import log_info, log_debug
+        from ..tools.iw import Iw
+        selected_monitor_at_exit = False
+        if cls.interface is not None:
+            try:
+                selected_monitor_at_exit = Iw.is_monitor(cls.interface)
+            except Exception:
+                pass
+        selected_nexmon_interface = None
 
-            nexmon_restored = Nexmon.cleanup_all()
-            if nexmon_restored:
-                log_info('Config', f'Restored {len(nexmon_restored)} Nexmon interface(s)')
-                log_debug('Config', f'Nexmon restored: {nexmon_restored}')
-        except Exception as e:
-            from ..util.logger import log_error
-            log_error('Config', f'Error during Nexmon cleanup: {e}', e)
+        # Tear down Nexmon monitor sessions first unless the user explicitly
+        # chose to leave the selected monitor interface active.
+        nexmon_restored = []
+        if cls.restore_monitor_mode_on_exit is not False:
+            try:
+                from ..tools.nexmon import Nexmon
+                from ..util.logger import log_info, log_debug
+
+                if cls.interface and Nexmon.has_session(cls.interface):
+                    # Nexmon restores through its own lifecycle, but use the
+                    # same adapter and monitor-mode status messages.
+                    from ..tools.airmon import Airmon
+                    selected_nexmon_interface = cls.interface
+                    Airmon.stop(cls.interface)
+
+                nexmon_restored = Nexmon.cleanup_all()
+                if nexmon_restored:
+                    log_info('Config', f'Restored {len(nexmon_restored)} Nexmon interface(s)')
+                    log_debug('Config', f'Nexmon restored: {nexmon_restored}')
+            except Exception as e:
+                from ..util.logger import log_error
+                log_error('Config', f'Error during Nexmon cleanup: {e}', e)
 
         # Single serialized owner cleanup (interfaces + IP forwarding).
         try:
@@ -508,23 +565,47 @@ class Configuration:
             log_error('Config', f'Error during interface cleanup: {e}', e)
 
         from ..tools.airmon import Airmon
-        if cls.interface is not None and Airmon.base_interface is not None:
-            if nexmon_restored:
-                pass
-            elif not cls.daemon:
-                from ..tools.iw import Iw
-                # Only print the hint when a monitor interface actually
-                # remains (the Nexmon monitor may already be torn down).
-                if Iw.is_monitor(cls.interface):
-                    Color.pl('{!} {O}Note:{W} Leaving interface in Monitor Mode!')
+        if (selected_monitor_at_exit
+                and cls.restore_monitor_mode_on_exit is not False
+                and selected_nexmon_interface is None
+                and cls.interface is not None
+                and not Iw.is_monitor(cls.interface)):
+            # The interface owner may finish the restore before Airmon.stop()
+            # can report it. Show the same adapter-aware success messages.
+            interface_label = Airmon.describe_interface(cls.interface)
+            Color.p('{!}{W} Disabling {O}monitor{W} mode on {R}%s{W}...\n'
+                    % interface_label)
+            Color.pl('{+}{W} Disabled monitor mode on {G}%s{W}'
+                     % interface_label)
+        if cls.interface is not None:
+            if Iw.is_monitor(cls.interface):
+                interface_label = Airmon.describe_interface(cls.interface)
+                restore_interface = bool(
+                    cls.daemon or cls.restore_monitor_mode_on_exit is True)
+
+                if restore_interface:
+                    try:
+                        _disabled, enabled = Airmon.stop(cls.interface)
+                        iface_info = Airmon.get_iface_info(cls.interface)
+                        if not (iface_info and iface_info.driver == 'icnss2'):
+                            interface_to_up = (enabled or Airmon.base_interface
+                                                or cls.interface)
+                            Airmon.put_interface_up(interface_to_up)
+                        if Iw.is_monitor(cls.interface):
+                            Color.pl('{!} {O}%s is still in Monitor Mode after restore attempt{W}'
+                                     % interface_label)
+                    except Exception as e:
+                        from ..util.logger import log_error
+                        log_error('Config',
+                                  f'Could not restore {cls.interface} to managed mode: {e}', e)
+                        Color.pl('{!} {R}Could not restore %s to managed mode: %s{W}'
+                                 % (interface_label, e))
+                else:
+                    Color.pl('{!} {O}Note:{W} Leaving %s in Monitor Mode!'
+                             % interface_label)
                     Color.pl('{!} To disable Monitor Mode when finished: '
                              '{C}ip link set %s down && iw dev %s set type managed && ip link set %s up{W}'
                              % (cls.interface, cls.interface, cls.interface))
-            else:
-                # Stop monitor mode
-                Airmon.stop(cls.interface)
-                # Bring original interface back up
-                Airmon.put_interface_up(Airmon.base_interface)
 
         if Airmon.killed_network_manager:
             Color.pl('{!} You can restart NetworkManager when finished ({C}service NetworkManager start{W})')

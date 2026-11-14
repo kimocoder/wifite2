@@ -23,7 +23,7 @@ from ..model.attack import Attack
 from ..model.eviltwin_result import CrackResultEvilTwin
 from ..config import Configuration
 from ..util.color import Color
-from ..util.input import interactive_input
+from ..util.input import parse_yes_no, prompt_until_valid
 from ..util.timer import Timer
 from ..util.logger import log_info, log_error, log_warning, log_debug, mask_sensitive
 from ..util.client_monitor import ClientMonitor, ClientConnection
@@ -1079,10 +1079,11 @@ class EvilTwin(Attack):
                 Color.pl('')
                 
                 try:
-                    Color.p('{+} Stop the running attack and clean up? ({G}y{W}/{R}n{W}): ')
-                    response = interactive_input().strip().lower()
-                    
-                    if response in ['y', 'yes']:
+                    stop_running = prompt_until_valid(
+                        '{+} Stop the running attack and clean up? ({G}y{W}/{R}n{W}): ',
+                        parse_yes_no)
+
+                    if stop_running:
                         orphaned = kill_orphaned_processes()
                         if orphaned:
                             Color.pl('{+} {G}Stopped running attack{W}')
@@ -1126,10 +1127,11 @@ class EvilTwin(Attack):
             
             # Ask user if they want to kill conflicting processes
             try:
-                Color.p('{+} Kill conflicting processes? ({G}y{W}/{R}n{W}): ')
-                response = interactive_input().strip().lower()
-                
-                if response in ['y', 'yes']:
+                kill_conflicts = prompt_until_valid(
+                    '{+} Kill conflicting processes? ({G}y{W}/{R}n{W}): ',
+                    parse_yes_no)
+
+                if kill_conflicts:
                     killed_count = 0
                     for process_name, pid in conflicting:
                         try:
