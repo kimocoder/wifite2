@@ -203,14 +203,23 @@ yay -S wifite2-git
 
 ### Uninstall
 
-To remove Wifite installed through Debian/Kali's `apt` package, system Python's `pip`,
-the repo's `setup.py` install, or this checkout's Poetry/virtualenv environment:
+The uninstaller detects Wifite package-manager and Python installs, app state,
+generated files, temporary directories, and local build/cache artifacts. It
+checks Wifite's normal output locations: the current working directory, this
+checkout, the filesystem root, user home directories, and temporary directories.
+Wifite stores captures in `./hs` by default, cracked results and the OUI database
+in the working directory, session/config data under the user's home, and
+temporary files in a `wifite*` directory. The uninstaller cleans app-owned
+files automatically while keeping this source checkout and shared system
+dependencies. It asks before deleting captures and results; answering no keeps
+them.
 
 ```bash
 ./uninstall.sh
 ```
 
-The script requests root access for system installs, and removes only the Wifite package and launcher from each install location. It leaves shared dependencies, virtual environments, this source checkout, and user data in place.
+The script requests root access only when needed. Captured handshakes and cracked
+results are kept unless you explicitly choose to delete them.
 
 ### Verify Installation
 
