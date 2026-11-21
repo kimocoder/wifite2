@@ -1111,20 +1111,6 @@ class InterfaceManager:
         log_info('InterfaceManager', f'Found {len(ap_interfaces)} AP-capable interfaces')
         return ap_interfaces
     
-    @staticmethod
-    def check_ap_mode_support(interface) -> bool:
-        """
-        Check if an interface supports AP mode.
-        
-        Args:
-            interface: Interface name to check
-            
-        Returns:
-            True if AP mode is supported, False otherwise
-        """
-        caps = InterfaceCapabilities(interface)
-        return caps.supports_ap_mode
-    
     def get_interface_state(self, interface) -> dict:
         """
         Get current state of an interface.

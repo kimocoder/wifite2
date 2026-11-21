@@ -106,7 +106,7 @@ class WpaSecUploader:
         
         # Check if wlancap2wpasec tool exists
         if not Wlancap2wpasec.exists():
-            log_debug('WpaSecUploader', 'Upload check failed: wlancap2wpasec tool not found')
+            log_debug('WpaSecUploader', 'Upload check failed: no wpa-sec uploader available')
             return False
         
         log_info('WpaSecUploader', 'Upload eligibility check passed - ready to upload')
@@ -373,17 +373,16 @@ class WpaSecUploader:
             log_debug('WpaSecUploader', f'Configuration check: Timeout = {Configuration.wpasec_timeout}s')
             
             # Check if tool exists
-            log_debug('WpaSecUploader', 'Checking if wlancap2wpasec tool exists')
+            log_debug('WpaSecUploader', 'Checking wpa-sec uploader availability')
             if not Wlancap2wpasec.exists():
-                Color.pl('{!} {O}wpa-sec upload skipped: wlancap2wpasec not found{W}')
-                Color.pl('{!} {O}Install with: {C}apt install hcxtools{W}')
-                Color.pl('{!} {O}Or visit: {C}https://github.com/ZerBea/hcxtools{W}')
-                log_info('WpaSecUploader', 'Upload skipped: wlancap2wpasec tool not found')
+                Color.pl('{!} {O}wpa-sec upload skipped: no uploader available{W}')
+                Color.pl('{!} {O}Install {C}requests{O} (pip) or {C}hcxtools{W} (apt install hcxtools){W}')
+                log_info('WpaSecUploader', 'Upload skipped: no wpa-sec uploader available')
                 if view:
-                    view.add_log("wpa-sec upload skipped: wlancap2wpasec not found")
+                    view.add_log("wpa-sec upload skipped: no uploader available")
                 return False
             
-            log_debug('WpaSecUploader', 'Configuration check: wlancap2wpasec tool found')
+            log_debug('WpaSecUploader', 'Configuration check: wpa-sec uploader available')
             log_info('WpaSecUploader', 'Configuration validation: PASSED')
             
             # Validate capture file using validate_capture_file()
@@ -420,7 +419,7 @@ class WpaSecUploader:
             # Perform upload - call Wlancap2wpasec.upload() with appropriate parameters
             log_debug('WpaSecUploader', 'Step 4: Initiating upload to wpa-sec')
             Color.pl('\n{+} {C}Uploading capture to wpa-sec.stanev.org...{W}')
-            log_info('WpaSecUploader', f'Calling wlancap2wpasec tool with file: {capfile}')
+            log_info('WpaSecUploader', f'Starting wpa-sec upload for: {capfile}')
             log_debug('WpaSecUploader', f'Upload parameters: url={Configuration.wpasec_url}, timeout={Configuration.wpasec_timeout}s, email={Configuration.wpasec_email}')
             
             if view:

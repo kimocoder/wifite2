@@ -2,6 +2,8 @@
 # -*- coding: utf-8 -*-
 """WPA-SEC upload and TUI argument parsers."""
 
+import os
+
 from ...util.color import Color
 
 
@@ -34,10 +36,14 @@ def parse_wpasec_args(cls, args):
         cls.wpasec_enabled = True
         Color.pl('{+} {C}option:{W} wpa-sec upload functionality {G}enabled{W}')
 
-    if hasattr(args, 'wpasec_api_key') and args.wpasec_api_key:
-        cls.wpasec_api_key = args.wpasec_api_key
+    api_key = getattr(args, 'wpasec_api_key', None)
+    if not api_key and getattr(args, 'wpasec_enabled', False):
+        # Environment fallback keeps the key out of the process table.
+        api_key = os.environ.get('WIFITE_WPASEC_KEY')
+    if api_key:
+        cls.wpasec_api_key = api_key
         # Mask the API key in output for security
-        masked_key = args.wpasec_api_key[:4] + '*' * (len(args.wpasec_api_key) - 4) if len(args.wpasec_api_key) > 4 else '****'
+        masked_key = api_key[:4] + '*' * (len(api_key) - 4) if len(api_key) > 4 else '****'
         Color.pl('{+} {C}option:{W} wpa-sec API key: {G}%s{W}' % masked_key)
         # Enable wpa-sec if API key is provided
         cls.wpasec_enabled = True

@@ -48,10 +48,9 @@ def _hand_over_monitor_mode(interfaces):
             iface_info = Airmon.get_iface_info(iface)
             if iface_info and iface_info.driver == 'icnss2':
                 continue
-            state = manager.get_interface_state(iface)
-            if state.get('mode') != 'monitor' or not manager.is_managed(iface):
-                continue
-            if manager.set_interface_mode(iface, 'managed'):
+            # The owner decides from live iw state, so unmanaged monitor
+            # interfaces are handed over too (they are not snapshotted).
+            if manager.hand_over_monitor(iface):
                 handed_over.append(iface)
         except Exception:
             continue
@@ -68,7 +67,7 @@ def _return_monitor_mode(interfaces):
         return
     for iface in interfaces:
         try:
-            manager.set_interface_mode(iface, 'monitor')
+            manager.rearm_monitor(iface)
         except Exception:
             pass
 

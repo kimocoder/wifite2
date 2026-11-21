@@ -16,35 +16,135 @@ class Wlancap2wpasec(Dependency):
     dependency_name = 'wlancap2wpasec'
     dependency_url = 'apt install hcxtools'
 
+    DEFAULT_URL = 'https://wpa-sec.stanev.org'
+
     @staticmethod
-    def upload(capfile, api_key, url=None, timeout=None, email=None, remove_on_success=False, scope=None):
+    def _requests_module():
+        try:
+            import requests
+        except ImportError:
+            return None
+        return requests
+
+    @classmethod
+    def exists(cls):
+        """Available natively (requests) or through the hcxtools CLI."""
+        if cls._requests_module() is not None:
+            return True
+        return super().exists()
+
+    @staticmethod
+    def upload(capfile, api_key, url=None, timeout=None, email=None,
+               remove_on_success=False, scope=None):
         """
-        Upload capture file to wpa-sec using wlancap2wpasec.
-        
-        Args:
-            capfile (str): Path to capture file (.cap, .pcap, .pcapng, .gz)
-            api_key (str): wpa-sec user API key
-            url (str, optional): Custom wpa-sec URL (default: https://wpa-sec.stanev.org)
-            timeout (int, optional): Connection timeout in seconds (default: 30)
-            email (str, optional): Email address for notifications
-            remove_on_success (bool): Remove file after successful upload (default: False)
-            
-        Returns:
-            tuple: (success: bool, message: str)
-            
-        Example:
-            >>> success, msg = Wlancap2wpasec.upload('handshake.cap', 'myapikey123')
-            >>> if success:
-            ...     print(f"Upload successful: {msg}")
+        Upload a capture to wpa-sec.
+
+        Uses a native HTTP upload so the API key travels in a Cookie header
+        instead of a child process's argv (which other local users can read
+        through ps). Falls back to the hcxtools CLI only when requests is
+        unavailable.
         """
+        if not os.path.exists(capfile):
+            return False, f'Capture file not found: {capfile}'
+
+        try:
+            if os.path.getsize(capfile) == 0:
+                return False, f'Capture file is empty: {capfile}'
+        except OSError as e:
+            return False, f'Cannot access capture file: {str(e)}'
+
+        if not api_key:
+            return False, 'API key is required'
+
+        requests = Wlancap2wpasec._requests_module()
+        if requests is None:
+            return Wlancap2wpasec._upload_with_tool(
+                capfile, api_key, url=url, timeout=timeout, email=email,
+                remove_on_success=remove_on_success, scope=scope)
+
+        return Wlancap2wpasec._upload_native(
+            requests, capfile, api_key, url=url, timeout=timeout, email=email,
+            remove_on_success=remove_on_success, scope=scope)
+
+    @staticmethod
+    def _upload_native(requests, capfile, api_key, url=None, timeout=None,
+                       email=None, remove_on_success=False, scope=None):
+        base_url = url or Wlancap2wpasec.DEFAULT_URL
+        connect_timeout = timeout or 30
+        headers = {
+            'Cookie': f'key={api_key}',
+            'Expect': '',
+            'User-Agent': 'wifite2',
+        }
+        data = {'email': email} if email else None
+
+        if scope:
+            scope.check()
+
+        try:
+            with open(capfile, 'rb') as capture:
+                response = requests.post(
+                    base_url,
+                    files={'file': (os.path.basename(capfile), capture,
+                                    'application/octet-stream')},
+                    data=data,
+                    headers=headers,
+                    timeout=connect_timeout,
+                )
+        except requests.exceptions.Timeout:
+            return False, 'Connection timed out - check network or increase timeout'
+        except requests.exceptions.SSLError:
+            return False, 'SSL/TLS error - check server certificate'
+        except requests.exceptions.ConnectionError as e:
+            message = str(e).lower()
+            if 'name or service not known' in message or 'nodename' in message:
+                return False, 'DNS resolution failed - check network and DNS settings'
+            if 'connection refused' in message:
+                return False, 'Connection refused - server may be down or URL is incorrect'
+            return False, 'Connection error - check network connectivity'
+        except requests.exceptions.RequestException as e:
+            return False, f'Upload failed: {e}'
+        except OSError as e:
+            return False, f'Cannot access capture file: {e}'
+
+        body = (response.text or '').strip()
+        lower = body.lower()
+        if (response.status_code in (401, 403) or
+                'wrong user key' in lower or 'invalid key' in lower):
+            return False, 'Authentication failed - invalid API key'
+        if response.status_code == 404:
+            return False, 'Server endpoint not found (404) - check URL'
+        if response.status_code == 429:
+            return False, 'Rate limit exceeded - wait before retrying'
+        if response.status_code >= 500:
+            return False, f'Server error ({response.status_code}) - try again later'
+        if response.status_code >= 400:
+            detail = body[:100] if body else response.reason
+            return False, f'Upload rejected (HTTP {response.status_code}): {detail}'
+        if not body:
+            return False, 'upload not confirmed by server (empty response)'
+
+        if remove_on_success:
+            try:
+                os.remove(capfile)
+            except OSError as e:
+                return True, (f'Upload completed successfully; could not remove '
+                              f'capture file: {e}')
+
+        return True, 'Upload completed successfully'
+
+    @staticmethod
+    def _upload_with_tool(capfile, api_key, url=None, timeout=None, email=None,
+                          remove_on_success=False, scope=None):
+        """Legacy hcxtools path, used when requests is unavailable."""
         # Check if tool exists
         if not Wlancap2wpasec.exists():
             return False, 'wlancap2wpasec tool not found - install hcxtools package'
-        
+
         # Validate capture file exists
         if not os.path.exists(capfile):
             return False, f'Capture file not found: {capfile}'
-        
+
         # Validate capture file is not empty
         try:
             file_size = os.path.getsize(capfile)
@@ -52,33 +152,33 @@ class Wlancap2wpasec(Dependency):
                 return False, f'Capture file is empty: {capfile}'
         except OSError as e:
             return False, f'Cannot access capture file: {str(e)}'
-        
+
         # Validate API key
         if not api_key or len(api_key) == 0:
             return False, 'API key is required'
-        
+
         # Build command
         command = [
             'wlancap2wpasec',
             '-k', api_key
         ]
-        
+
         # Add optional parameters
         if url:
             command.extend(['-u', url])
-        
+
         if timeout:
             command.extend(['-t', str(timeout)])
-        
+
         if email:
             command.extend(['-e', email])
-        
+
         if remove_on_success:
             command.append('-R')
-        
+
         # Add capture file as last argument
         command.append(capfile)
-        
+
         try:
             if scope:
                 proc = scope.spawn(command, role='wpasec-upload')
@@ -86,7 +186,7 @@ class Wlancap2wpasec(Dependency):
                 proc = Process(command, devnull=False)
             stdout, stderr = proc.get_output(timeout=timeout)
             exit_code = proc.poll()
-            
+
             # Parse output for success/failure
             if exit_code == 0:
                 # Success - parse any useful information from output
@@ -95,21 +195,21 @@ class Wlancap2wpasec(Dependency):
                 # Failure - extract error message
                 error_msg = Wlancap2wpasec._parse_error_message(stdout, stderr, exit_code)
                 return False, error_msg
-        
+
         except OSError as e:
             # File system or process execution error
             if 'No such file or directory' in str(e):
                 return False, 'wlancap2wpasec tool not found - install hcxtools package'
             return False, f'Failed to execute wlancap2wpasec: {str(e)}'
-        
+
         except KeyboardInterrupt:
             # User interrupted
             return False, 'Upload interrupted by user'
-        
+
         except Exception as e:
             # Unexpected error
             return False, f'Upload failed: {str(e)}'
-    
+
     @staticmethod
     def _parse_error_message(stdout, stderr, exit_code):
         """

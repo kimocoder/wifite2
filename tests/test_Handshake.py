@@ -91,5 +91,42 @@ class TestHandshake(unittest.TestCase):
         assert (len(hs.aircrack_handshakes()) > 0), f'Expected len>0 but got len({len(hs.aircrack_handshakes())})'
 
 
+class TestHandshakeCheck(unittest.TestCase):
+    """--check must report bad input cleanly and use a non-zero exit."""
+
+    def test_missing_file_raises_wifite_error(self):
+        from wifite.config import Configuration
+        from wifite.util.errors import WifiteError
+
+        with patch.object(Configuration, 'check_handshake',
+                          '/tmp/wifite-does-not-exist.cap'), \
+                patch.object(Configuration, 'target_bssid', None), \
+                patch.object(Configuration, 'target_essid', None), \
+                patch('wifite.model.handshake.Color.pl'):
+            with self.assertRaises(WifiteError):
+                Handshake.check()
+
+    def test_malformed_file_is_reported_cleanly(self):
+        import os
+        import tempfile
+
+        from wifite.config import Configuration
+        from wifite.util.errors import WifiteError
+
+        fd, path = tempfile.mkstemp(suffix='.cap')
+        os.close(fd)
+        try:
+            with patch.object(Configuration, 'check_handshake', path), \
+                    patch.object(Configuration, 'target_bssid', None), \
+                    patch.object(Configuration, 'target_essid', None), \
+                    patch.object(Handshake, 'divine_bssid_and_essid',
+                                 side_effect=ValueError('not a cap file')), \
+                    patch('wifite.model.handshake.Color.pl'):
+                with self.assertRaises(WifiteError):
+                    Handshake.check()
+        finally:
+            os.remove(path)
+
+
 if __name__ == '__main__':
     unittest.main()

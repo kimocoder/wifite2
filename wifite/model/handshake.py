@@ -3,6 +3,7 @@
 
 from ..util.process import Process
 from ..util.color import Color
+from ..util.errors import WifiteError
 from ..util.logger import log_debug, log_info
 from ..tools.tshark import Tshark
 
@@ -391,14 +392,26 @@ class Handshake:
         else:
             capfiles = [Configuration.check_handshake]
 
+        failures = []
         for capfile in capfiles:
             Color.pl('{+} checking for handshake in .cap file {C}%s{W}' % capfile)
             if not os.path.exists(capfile):
                 Color.pl('{!} {O}.cap file {C}%s{O} not found{W}' % capfile)
-                return
-            hs = Handshake(capfile, bssid=Configuration.target_bssid, essid=Configuration.target_essid)
-            hs.analyze()
+                failures.append(capfile)
+                Color.pl('')
+                continue
+            try:
+                hs = Handshake(capfile, bssid=Configuration.target_bssid,
+                               essid=Configuration.target_essid)
+                hs.analyze()
+            except (ValueError, OSError) as e:
+                Color.pl('{!} {R}Not a valid capture file:{W} %s' % str(e))
+                failures.append(capfile)
             Color.pl('')
+
+        if failures:
+            raise WifiteError(
+                '%d capture file(s) could not be checked' % len(failures))
 
 
 if __name__ == '__main__':

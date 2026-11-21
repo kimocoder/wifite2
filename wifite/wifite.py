@@ -25,7 +25,13 @@ class Wifite:
 
         self.print_banner()
 
-        Configuration.initialize(load_interface=False)
+        try:
+            Configuration.initialize(load_interface=False)
+        except (ValueError, RuntimeError) as e:
+            # Validators signal user-fixable input problems with these.
+            # Convert them here so main() does not mistake an attack-time
+            # ValueError/RuntimeError for a configuration error.
+            raise WifiteError(str(e)) from e
 
         # Initialize TUI logger if debug mode is enabled
         from .util.tui_logger import TUILogger

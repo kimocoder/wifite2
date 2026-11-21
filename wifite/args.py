@@ -7,6 +7,18 @@ import argparse
 import sys
 
 
+def _non_negative_int(value):
+    """argparse type for durations/counts that must not be negative."""
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        raise argparse.ArgumentTypeError(
+            f'invalid integer value: {value!r}') from None
+    if number < 0:
+        raise argparse.ArgumentTypeError('must be zero or a positive integer')
+    return number
+
+
 class Arguments:
     """ Holds arguments used by the Wifite """
 
@@ -557,14 +569,14 @@ against the real AP and captures valid passwords.
                           action='store',
                           dest='eviltwin_deauth_interval',
                           metavar='[seconds]',
-                          type=int,
+                          type=_non_negative_int,
                           help=self._verbose('Seconds between deauth bursts (default: {G}5{W})'))
 
         group.add_argument('--eviltwin-timeout',
                           action='store',
                           dest='eviltwin_timeout',
                           metavar='[seconds]',
-                          type=int,
+                          type=_non_negative_int,
                           help=self._verbose('Give up after N seconds (default: {G}0{W} = run until success/interrupt)'))
 
         group.add_argument('--eviltwin-template',
@@ -809,11 +821,11 @@ against the real AP and captures valid passwords.
                          action='store',
                          dest='wpa3_attack_timeout',
                          metavar='[seconds]',
-                         type=int,
+                         type=_non_negative_int,
                          help=self._verbose('Time to wait before failing WPA3-SAE attack. '
                                             'Applies to SAE handshake capture and downgrade attempts. '
                                             '(default: {G}%d sec{W})' % self.config.wpa_attack_timeout))
-        wpa.add_argument('-wpa3-timeout', help=argparse.SUPPRESS, action='store', dest='wpa3_attack_timeout', type=int)
+        wpa.add_argument('-wpa3-timeout', help=argparse.SUPPRESS, action='store', dest='wpa3_attack_timeout', type=_non_negative_int)
 
         # Dragonblood timing attack (CVE-2019-13377)
         wpa.add_argument('--dragonblood-timing',
@@ -878,19 +890,19 @@ against the real AP and captures valid passwords.
                          action='store',
                          dest='wpa_deauth_timeout',
                          metavar='[seconds]',
-                         type=int,
+                         type=_non_negative_int,
                          help=self._verbose('Time to wait between sending Deauths (default: {G}%d sec{W})'
                                             % self.config.wpa_deauth_timeout))
-        wpa.add_argument('-wpadt', help=argparse.SUPPRESS, action='store', dest='wpa_deauth_timeout', type=int)
+        wpa.add_argument('-wpadt', help=argparse.SUPPRESS, action='store', dest='wpa_deauth_timeout', type=_non_negative_int)
 
         wpa.add_argument('--wpat',
                          action='store',
                          dest='wpa_attack_timeout',
                          metavar='[seconds]',
-                         type=int,
+                         type=_non_negative_int,
                          help=self._verbose('Time to wait before failing WPA attack (default: {G}%d sec{W})'
                                             % self.config.wpa_attack_timeout))
-        wpa.add_argument('-wpat', help=argparse.SUPPRESS, action='store', dest='wpa_attack_timeout', type=int)
+        wpa.add_argument('-wpat', help=argparse.SUPPRESS, action='store', dest='wpa_attack_timeout', type=_non_negative_int)
 
         # Handshake stripping is implemented (see Handshake.strip()), but the public
         # --strip flag remains hidden because stripped captures may break compatibility
@@ -1006,7 +1018,7 @@ against the real AP and captures valid passwords.
                            action='store',
                            dest='pmkid_timeout',
                            metavar='[sec]',
-                           type=int,
+                           type=_non_negative_int,
                            help=Color.s('Time to wait for PMKID capture (default: {G}%d{W} seconds)'
                                         % self.config.pmkid_timeout))
 
@@ -1074,7 +1086,9 @@ against the real AP and captures valid passwords.
                             type=str,
                             help=Color.s('API key for {C}wpa-sec.stanev.org{W}. '
                                         'Register at wpa-sec.stanev.org to obtain your key. '
-                                        'Required for uploading captures.'))
+                                        'Required for uploading captures. '
+                                        'Prefer {C}WIFITE_WPASEC_KEY{W} in the environment '
+                                        'to keep the key out of the process list.'))
 
         wpasec.add_argument('--wpasec-auto',
                             action='store_true',
@@ -1096,7 +1110,7 @@ against the real AP and captures valid passwords.
                             action='store',
                             dest='wpasec_timeout',
                             metavar='[seconds]',
-                            type=int,
+                            type=_non_negative_int,
                             help=self._verbose('Connection timeout for uploads in seconds. '
                                               'Increase if you have a slow connection. '
                                               '(default: {G}30{W} seconds)'))
