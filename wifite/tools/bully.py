@@ -16,6 +16,7 @@ import re
 from threading import Thread
 
 
+from ..util.logger import log_debug
 class Bully(Attack, Dependency):
     dependency_required = False
     dependency_name = 'bully'
@@ -106,6 +107,7 @@ class Bully(Attack, Dependency):
                 if self.attack_view:
                     self.attack_view.add_log("Target found, starting attack...")
             except Exception as e:
+                log_debug('Bully', f'Suppressed non-fatal error: {e}')
                 if self.attack_view:
                     self.attack_view.add_log(f"Failed: Target timeout - {str(e)}")
                 self.pattack('{R}Failed: {O}Target timeout: %s{W}' % str(e), newline=True)
@@ -141,6 +143,7 @@ class Bully(Attack, Dependency):
             except ValueError as e:
                 self.pattack('{R}Failed: {O}Invalid target data: %s{W}' % e, newline=True)
             except Exception as e:
+                log_debug('Bully', f'Suppressed non-fatal error: {e}')
                 self.pattack('{R}Failed: {O}Unexpected error: %s{W}' % e, newline=True)
                 if Configuration.verbose > 0:
                     Color.pexception(e)

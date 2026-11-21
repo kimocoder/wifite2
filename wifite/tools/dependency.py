@@ -9,6 +9,7 @@ from typing import ClassVar
 
 from ..util.input import interactive_input
 
+from ..util.logger import log_debug
 class PackageManager:
     """
     Auto-detects and provides an interface to the system package manager.
@@ -89,6 +90,7 @@ class PackageManager:
         except subprocess.TimeoutExpired:
             return False, 'Installation timed out (300s)'
         except Exception as e:
+            log_debug('Dependency', f'Suppressed non-fatal error: {e}')
             return False, str(e)
 
 class Dependency:

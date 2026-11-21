@@ -13,6 +13,7 @@ from ..util.process import Process
 from ..util.timer import Timer
 
 
+from ..util.logger import log_debug
 class Reaver(Attack, Dependency):
     dependency_required = False
     dependency_name = 'reaver'
@@ -101,6 +102,7 @@ class Reaver(Attack, Dependency):
             self.pattack('{R}Failed:{O} Configuration error: %s' % str(e), newline=True)
         except Exception as e:
             # Unexpected errors
+            log_debug('Reaver', f'Suppressed non-fatal error: {e}')
             self.pattack('{R}Failed:{O} Unexpected error: %s' % str(e), newline=True)
         finally:
             # Always clean up resources, even on exception
@@ -154,6 +156,7 @@ class Reaver(Attack, Dependency):
                 if self.attack_view:
                     self.attack_view.add_log("Target found, starting attack...")
             except Exception as e:
+                log_debug('Reaver', f'Suppressed non-fatal error: {e}')
                 if self.attack_view:
                     self.attack_view.add_log(f"Failed: Target timeout - {str(e)}")
                 self.pattack('{R}Failed: {O}Target timeout: %s{W}' % str(e), newline=True)
@@ -174,6 +177,7 @@ class Reaver(Attack, Dependency):
                 try:
                     self.target = self.wait_for_target(airodump)
                 except Exception as e:
+                    log_debug('Reaver', f'Suppressed non-fatal error: {e}')
                     self.pattack('{R}Failed: {O}Target timeout: %s{W}' % str(e), newline=True)
                     break
 

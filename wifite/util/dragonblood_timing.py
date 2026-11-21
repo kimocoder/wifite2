@@ -373,7 +373,8 @@ class DragonbloodTimingAttack:
                        ('Authentication with' in line and 'timed out' in line):
                         break
 
-                except Exception:
+                except Exception as e:
+                    log_debug('DragonbloodTiming', f'Suppressed non-fatal error: {e}')
                     time.sleep(0.01)
 
         finally:

@@ -36,7 +36,8 @@ def _hand_over_monitor_mode(interfaces):
         if not version or int(version.split('.')[0]) < 7:
             return handed_over
         manager = Configuration.get_interface_manager()
-    except Exception:
+    except Exception as e:
+        log_debug('HcxDumpTool', f'Suppressed non-fatal error: {e}')
         return handed_over
 
     for iface in interfaces:
@@ -52,7 +53,8 @@ def _hand_over_monitor_mode(interfaces):
             # interfaces are handed over too (they are not snapshotted).
             if manager.hand_over_monitor(iface):
                 handed_over.append(iface)
-        except Exception:
+        except Exception as e:
+            log_debug('HcxDumpTool', f'Suppressed non-fatal error: {e}')
             continue
     return handed_over
 
@@ -62,7 +64,8 @@ def _return_monitor_mode(interfaces):
         return
     try:
         manager = Configuration.get_interface_manager()
-    except Exception:
+    except Exception as e:
+        log_debug('HcxDumpTool', f'Suppressed non-fatal error: {e}')
         return
     for iface in interfaces:
         try:
@@ -478,7 +481,8 @@ class HcxDumpTool(Dependency):
         if not text and self.proc:
             try:
                 stdout, stderr = self.proc.get_output(timeout=timeout)
-            except Exception:
+            except Exception as e:
+                log_debug('HcxDumpTool', f'Suppressed non-fatal error: {e}')
                 stdout, stderr = '', ''
             text = '\n'.join(
                 part for part in ((stdout or ''), (stderr or '')) if part)
@@ -544,7 +548,8 @@ class HcxDumpTool(Dependency):
                     'releases; install both from the same hcxtools suite' %
                     (dump_version, cap_version))
             return True, None
-        except Exception:
+        except Exception as e:
+            log_debug('HcxDumpTool', f'Suppressed non-fatal error: {e}')
             return True, None
 
     @staticmethod
@@ -694,7 +699,8 @@ class HcxDumpToolPassive:
             return ''
         try:
             stdout, stderr = self.proc.get_output(timeout=timeout)
-        except Exception:
+        except Exception as e:
+            log_debug('HcxDumpTool', f'Suppressed non-fatal error: {e}')
             return ''
         stdout = (stdout or '').strip()
         stderr = (stderr or '').strip()

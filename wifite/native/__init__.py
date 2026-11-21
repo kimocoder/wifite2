@@ -23,44 +23,53 @@ Requirements:
 - scapy >= 2.7.1rc1 (already a project dependency)
 """
 
+from ..util.logger import log_debug
+
 try:
     from .mac import NativeMac
-except Exception:
+except Exception as e:
+    log_debug('Native', f'Suppressed non-fatal error: {e}')
     NativeMac = None
 
 try:
     from .deauth import ScapyDeauth, ContinuousDeauth as NativeDeauth
-except Exception:
+except Exception as e:
+    log_debug('Native', f'Suppressed non-fatal error: {e}')
     ScapyDeauth = None
     NativeDeauth = None
 
 try:
     from .handshake import ScapyHandshake
-except Exception:
+except Exception as e:
+    log_debug('Native', f'Suppressed non-fatal error: {e}')
     ScapyHandshake = None
 
 try:
     from .wps import ScapyWPS, WPSInfo
-except Exception:
+except Exception as e:
+    log_debug('Native', f'Suppressed non-fatal error: {e}')
     ScapyWPS = None
     WPSInfo = None
 
 try:
     from .interface import NativeInterface, InterfaceInfo
-except Exception:
+except Exception as e:
+    log_debug('Native', f'Suppressed non-fatal error: {e}')
     NativeInterface = None
     InterfaceInfo = None
 
 try:
     from .pmkid import ScapyPMKID, PMKIDResult, PMKIDCapture
-except Exception:
+except Exception as e:
+    log_debug('Native', f'Suppressed non-fatal error: {e}')
     ScapyPMKID = None
     PMKIDResult = None
     PMKIDCapture = None
 
 try:
     from .scanner import ChannelHopper, NativeScanner, AccessPoint, Client
-except Exception:
+except Exception as e:
+    log_debug('Native', f'Suppressed non-fatal error: {e}')
     ChannelHopper = None
     NativeScanner = None
     AccessPoint = None
@@ -68,7 +77,8 @@ except Exception:
 
 try:
     from .beacon import BeaconGenerator, create_fake_ap as create_beacon
-except Exception:
+except Exception as e:
+    log_debug('Native', f'Suppressed non-fatal error: {e}')
     BeaconGenerator = None
     create_beacon = None
 
@@ -120,49 +130,57 @@ def check_native_availability() -> dict:
     try:
         from .mac import NativeMac as _NativeMac
         status['mac'] = _NativeMac is not None
-    except Exception:
+    except Exception as e:
+        log_debug('Native', f'Suppressed non-fatal error: {e}')
         status['mac'] = False
 
     try:
         from .deauth import SCAPY_AVAILABLE
         status['deauth'] = SCAPY_AVAILABLE
-    except Exception:
+    except Exception as e:
+        log_debug('Native', f'Suppressed non-fatal error: {e}')
         status['deauth'] = False
 
     try:
         from .handshake import SCAPY_AVAILABLE
         status['handshake'] = SCAPY_AVAILABLE
-    except Exception:
+    except Exception as e:
+        log_debug('Native', f'Suppressed non-fatal error: {e}')
         status['handshake'] = False
 
     try:
         from .wps import SCAPY_AVAILABLE
         status['wps'] = SCAPY_AVAILABLE
-    except Exception:
+    except Exception as e:
+        log_debug('Native', f'Suppressed non-fatal error: {e}')
         status['wps'] = False
 
     try:
         from .interface import NativeInterface as _NativeInterface
         status['interface'] = _NativeInterface is not None
-    except Exception:
+    except Exception as e:
+        log_debug('Native', f'Suppressed non-fatal error: {e}')
         status['interface'] = False
 
     try:
         from .pmkid import SCAPY_AVAILABLE
         status['pmkid'] = SCAPY_AVAILABLE
-    except Exception:
+    except Exception as e:
+        log_debug('Native', f'Suppressed non-fatal error: {e}')
         status['pmkid'] = False
 
     try:
         from .scanner import SCAPY_AVAILABLE
         status['scanner'] = SCAPY_AVAILABLE
-    except Exception:
+    except Exception as e:
+        log_debug('Native', f'Suppressed non-fatal error: {e}')
         status['scanner'] = False
 
     try:
         from .beacon import SCAPY_AVAILABLE
         status['beacon'] = SCAPY_AVAILABLE
-    except Exception:
+    except Exception as e:
+        log_debug('Native', f'Suppressed non-fatal error: {e}')
         status['beacon'] = False
     
     return status
@@ -196,6 +214,7 @@ def print_native_status():
         import scapy
         scapy_version = scapy.VERSION if hasattr(scapy, 'VERSION') else 'unknown'
         print(f"\nScapy Version: {scapy_version}")
-    except Exception:
+    except Exception as e:
+        log_debug('Native', f'Suppressed non-fatal error: {e}')
         print("\nScapy: Not Installed")
         

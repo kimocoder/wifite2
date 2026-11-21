@@ -42,6 +42,7 @@ except (ImportError, AttributeError):
     SCAPY_AVAILABLE = False
 
 
+from ..util.logger import log_debug
 class ScapyHandshake:
     """
     Native handshake verification using Scapy.
@@ -96,7 +97,8 @@ class ScapyHandshake:
             
             return list(valid_bssids)
             
-        except Exception:
+        except Exception as e:
+            log_debug('NativeHandshake', f'Suppressed non-fatal error: {e}')
             return []
     
     @classmethod

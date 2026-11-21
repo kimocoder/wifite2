@@ -141,6 +141,7 @@ class SystemCheck:
                                            '/proc/net/wireless not found',
                                            details='Wireless extensions may not be loaded'))
         except Exception as e:
+            log_debug('SystemCheck', f'Suppressed non-fatal error: {e}')
             results.append(CheckResult('Kernel', CheckStatus.WARN, f'Could not detect: {e}'))
 
         # Check rfkill
@@ -157,7 +158,8 @@ class SystemCheck:
                 else:
                     results.append(CheckResult('RF Kill', CheckStatus.PASS,
                                                'Wireless is not blocked'))
-            except Exception:
+            except Exception as e:
+                log_debug('SystemCheck', f'Suppressed non-fatal error: {e}')
                 results.append(CheckResult('RF Kill', CheckStatus.WARN,
                                            'Could not check rfkill status'))
         else:
@@ -184,7 +186,8 @@ class SystemCheck:
             else:
                 results.append(CheckResult('Conflicting processes', CheckStatus.PASS,
                                            'None detected'))
-        except Exception:
+        except Exception as e:
+            log_debug('SystemCheck', f'Suppressed non-fatal error: {e}')
             results.append(CheckResult('Conflicting processes', CheckStatus.SKIP,
                                        'Could not check'))
 
@@ -196,6 +199,7 @@ class SystemCheck:
             results.append(CheckResult('Temp directory', CheckStatus.PASS,
                                        f'{tempfile.gettempdir()} writable'))
         except Exception as e:
+            log_debug('SystemCheck', f'Suppressed non-fatal error: {e}')
             results.append(CheckResult('Temp directory', CheckStatus.FAIL,
                                        f'Cannot write to temp: {e}'))
 
@@ -841,7 +845,8 @@ class SystemCheck:
                 try:
                     from ..tools.nexmon import Nexmon
                     caps = Nexmon.probe(iface.name)
-                except Exception:
+                except Exception as e:
+                    log_debug('SystemCheck', f'Suppressed non-fatal error: {e}')
                     caps = None
                 if caps is None:
                     Color.pl('    {O}⚠ Broadcom FullMAC — Nexmon firmware/nexutil not detected{W}')

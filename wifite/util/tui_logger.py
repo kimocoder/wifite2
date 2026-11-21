@@ -11,6 +11,7 @@ import stat
 from datetime import datetime
 
 
+from .logger import log_debug
 class TUILogger:
     """Logger for TUI events and debugging."""
 
@@ -77,6 +78,7 @@ class TUILogger:
                 f.write(log_line)
         except Exception as e:
             # Can't use logger here to avoid recursion
+            log_debug('TUILogger', f'Suppressed non-fatal error: {e}')
             import sys
             print(f"TUI log write error: {e}", file=sys.stderr)
 

@@ -11,6 +11,7 @@ from typing import ClassVar
 from ..config import Configuration
 from ..util.color import Color
 
+from .logger import log_debug
 class DBUpdater:
     """Updates a local database of MAC address prefixes to vendor names from IEEE registries.
     """
@@ -64,6 +65,7 @@ class DBUpdater:
                     written = cls.parse_and_write_csv(csv_content, outfile, key, verbose=verbose)
                     written_total += written
                 except Exception as e:
+                    log_debug('DBUpdater', f'Suppressed non-fatal error: {e}')
                     print(f"Error processing {key}: {e}", file=sys.stderr)
         return written_total
 

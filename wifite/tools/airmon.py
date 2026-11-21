@@ -139,9 +139,10 @@ class Airmon(Dependency):
         try:
             result = Process.run_simple(['ip', 'link', 'show', 'dev', interface])
             exists = result.returncode == 0
-        except Exception:
+        except Exception as e:
             # Without sysfs or ip there is nothing reliable to check; let the
             # normal monitor-mode path report the driver error.
+            log_debug('Airmon', f'Suppressed non-fatal error: {e}')
             return
         if exists:
             return

@@ -32,8 +32,9 @@ class AttackWPS(Attack):
                 self.view = WPSAttackView(OutputManager.get_controller(), target)
                 if pixie_dust:
                     self.view.set_pixie_dust_mode(True)
-            except Exception:
+            except Exception as e:
                 # If TUI initialization fails, continue without it
+                log_debug('AttackWPS', f'Suppressed non-fatal error: {e}')
                 self.view = None
 
     def run(self):

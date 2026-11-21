@@ -7,6 +7,7 @@ from .dependency import Dependency
 from ..util.process import Process
 
 
+from ..util.logger import log_debug
 class Wlancap2wpasec(Dependency):
     """
     Wrapper for wlancap2wpasec tool from hcxtools suite.
@@ -215,6 +216,7 @@ class Wlancap2wpasec(Dependency):
 
         except Exception as e:
             # Unexpected error
+            log_debug('WlanCap2WpaSec', f'Suppressed non-fatal error: {e}')
             return False, f'Upload failed: {str(e)}'
 
     @staticmethod

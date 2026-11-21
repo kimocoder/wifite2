@@ -14,6 +14,7 @@ from rich.live import Live
 from ..util.tui_logger import TUILogger, log_tui_event, log_tui_error, log_tui_debug
 
 
+from ..util.logger import log_debug
 class TUIController:
     """
     Main TUI controller using rich library.
@@ -152,15 +153,17 @@ class TUIController:
         if self.should_update():
             try:
                 self.live.update(renderable, refresh=True)
-            except Exception:
+            except Exception as e:
                 # If update fails, try to recover or fail gracefully
+                log_debug('TUI', f'Suppressed non-fatal error: {e}')
                 try:
                     # Attempt to refresh without update
                     if self.live is not None:
                         self.live.refresh()
-                except Exception:
+                except Exception as e:
                     # Complete failure — stop TUI so the caller can fall back
                     # to classic output instead of hammering a broken Live.
+                    log_debug('TUI', f'Suppressed non-fatal error: {e}')
                     self.is_running = False
 
     def __enter__(self):

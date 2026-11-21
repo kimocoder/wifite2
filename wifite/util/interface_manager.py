@@ -385,6 +385,7 @@ class InterfaceManager:
             try:
                 result = Process.run_simple(command)
             except Exception as e:
+                log_debug('InterfaceManager', f'Suppressed non-fatal error: {e}')
                 detail = str(e)
             else:
                 returncode = result.returncode
@@ -414,6 +415,7 @@ class InterfaceManager:
                     try:
                         result = Process.run_simple(command)
                     except Exception as e:
+                        log_debug('InterfaceManager', f'Suppressed non-fatal error: {e}')
                         detail = str(e)
                     else:
                         returncode = result.returncode
@@ -457,7 +459,8 @@ class InterfaceManager:
                     if local is not None and prefix is not None:
                         addresses.append(f'{local}/{prefix}')
             return addresses
-        except Exception:
+        except Exception as e:
+            log_debug('InterfaceManager', f'Suppressed non-fatal error: {e}')
             return None
 
     @staticmethod

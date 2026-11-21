@@ -10,6 +10,7 @@ from ..tools.macchanger import Macchanger
 _FALLBACK_VERSION = '3.0.0'
 
 
+from ..util.logger import log_debug
 def _source_version():
     """Version declared by a source checkout containing this package.
 
@@ -46,7 +47,8 @@ def _installed_version():
     try:
         from importlib.metadata import version
         return version('wifite2')
-    except Exception:
+    except Exception as e:
+        log_debug('Configuration', f'Suppressed non-fatal error: {e}')
         return None
 
 

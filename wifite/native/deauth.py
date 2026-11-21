@@ -38,13 +38,16 @@ import time
 from threading import Thread, Event
 from typing import Optional, Callable, ClassVar
 
+from ..util.logger import log_debug
+
 try:
     from scapy.all import (
         RadioTap, Dot11, Dot11Deauth, Dot11Disas,
         sendp, conf as scapy_conf
     )
     SCAPY_AVAILABLE = True
-except Exception:
+except Exception as e:
+    log_debug('NativeDeauth', f'Suppressed non-fatal error: {e}')
     SCAPY_AVAILABLE = False
 
 
@@ -171,7 +174,8 @@ class ScapyDeauth:
             scapy_conf.verb = old_verbose
             return True, len(packets)
             
-        except Exception:
+        except Exception as e:
+            log_debug('NativeDeauth', f'Suppressed non-fatal error: {e}')
             return False, 0
     
     @classmethod
@@ -238,7 +242,8 @@ class ScapyDeauth:
             
             return True, packets_sent
             
-        except Exception:
+        except Exception as e:
+            log_debug('NativeDeauth', f'Suppressed non-fatal error: {e}')
             return False, packets_sent
     
     @classmethod
@@ -426,7 +431,8 @@ def deauth(interface: str,
         from ..tools.aireplay import Aireplay
         Aireplay.deauth(bssid, client_mac=client_mac, num_deauths=count, interface=interface)
         return True, count
-    except Exception:
+    except Exception as e:
+        log_debug('NativeDeauth', f'Suppressed non-fatal error: {e}')
         return False, 0
 
 

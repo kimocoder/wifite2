@@ -35,8 +35,9 @@ class AttackWEP(Attack):
             try:
                 from ..ui.attack_view import WEPAttackView
                 self.view = WEPAttackView(OutputManager.get_controller(), target)
-            except Exception:
+            except Exception as e:
                 # If TUI initialization fails, continue without it
+                log_debug('AttackWEP', f'Suppressed non-fatal error: {e}')
                 self.view = None
 
     def run(self):

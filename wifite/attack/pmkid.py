@@ -53,8 +53,9 @@ class AttackPMKID(Attack):
             try:
                 from ..ui.attack_view import PMKIDAttackView
                 self.view = PMKIDAttackView(OutputManager.get_controller(), target)
-            except Exception:
+            except Exception as e:
                 # If TUI initialization fails, continue without it
+                log_debug('AttackPMKID', f'Suppressed non-fatal error: {e}')
                 self.view = None
 
     @staticmethod
@@ -805,7 +806,8 @@ class AttackPMKID(Attack):
                     # prints as soon as it sees the flag.
                     try:
                         self._dumptool_reason = dumptool.get_failure_reason()
-                    except Exception:
+                    except Exception as e:
+                        log_debug('AttackPMKID', f'Suppressed non-fatal error: {e}')
                         self._dumptool_reason = ''
                     self._dumptool_died = True
         except Exception as e:

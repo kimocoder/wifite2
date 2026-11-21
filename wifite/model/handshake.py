@@ -243,7 +243,8 @@ class Handshake:
                     cls._cowpatty_supports_dash_2 = (
                         'frames 1 and 2 or 2 and 3 for key attack'
                         in cowpattycheck.stdout())
-                except Exception:
+                except Exception as e:
+                    log_debug('Handshake', f'Suppressed non-fatal error: {e}')
                     cls._cowpatty_supports_dash_2 = False
         return cls._cowpatty_supports_dash_2
 

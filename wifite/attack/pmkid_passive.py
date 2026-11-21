@@ -22,6 +22,7 @@ import time
 import re
 
 
+from ..util.logger import log_debug
 def count_networks(pcapng_path):
     """Return the number of distinct BSSIDs in the capture, or None.
 
@@ -39,7 +40,8 @@ def count_networks(pcapng_path):
             '-Y', 'wlan.fc.type_subtype==8',
             '-T', 'fields', '-e', 'wlan.bssid',
         ])
-    except Exception:
+    except Exception as e:
+        log_debug('PMKIDPassive', f'Suppressed non-fatal error: {e}')
         return None
     bssids = {line.strip().lower() for line in (stdout or '').splitlines()
               if line.strip()}
@@ -469,7 +471,8 @@ class AttackPassivePMKID:
                             capture_failed = True
                             try:
                                 reason = dumptool.get_failure_reason()
-                            except Exception:
+                            except Exception as e:
+                                log_debug('PMKIDPassive', f'Suppressed non-fatal error: {e}')
                                 reason = ''
                             if self.tui_view:
                                 message = 'hcxdumptool exited unexpectedly'

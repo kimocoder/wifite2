@@ -57,8 +57,9 @@ class AttackWPA3SAE(Attack):
             try:
                 from ..ui.attack_view import WPA3AttackView
                 self.view = WPA3AttackView(OutputManager.get_controller(), target)
-            except Exception:
+            except Exception as e:
                 # If TUI initialization fails, continue without it
+                log_debug('AttackWPA3', f'Suppressed non-fatal error: {e}')
                 self.view = None
 
     def run(self):
@@ -492,7 +493,8 @@ class AttackWPA3SAE(Attack):
         was_monitor = False
         try:
             was_monitor = Iw.is_monitor(interface)
-        except Exception:
+        except Exception as e:
+            log_debug('AttackWPA3', f'Suppressed non-fatal error: {e}')
             was_monitor = True  # assume monitor; restore conservatively
 
         manager = Configuration.get_interface_manager()
@@ -1001,8 +1003,9 @@ class AttackWPA3SAE(Attack):
                             return handshake
                         else:
                             handshake = None
-                except Exception:
+                except Exception as e:
                     # Error checking handshake, continue
+                    log_debug('AttackWPA3', f'Suppressed non-fatal error: {e}')
                     handshake = None
                 
                 # Update status

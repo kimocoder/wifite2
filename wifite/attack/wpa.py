@@ -68,8 +68,9 @@ class AttackWPA(Attack):
             try:
                 from ..ui.attack_view import WPAAttackView
                 self.view = WPAAttackView(OutputManager.get_controller(), target)
-            except Exception:
+            except Exception as e:
                 # If TUI initialization fails, continue without it
+                log_debug('AttackWPA', f'Suppressed non-fatal error: {e}')
                 self.view = None
 
     @contextmanager

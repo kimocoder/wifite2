@@ -189,7 +189,8 @@ class John(Dependency):
                 John._wpapsk_capable = False
             else:
                 John._wpapsk_capable = 'wpapsk' in combined.lower()
-        except Exception:
+        except Exception as e:
+            log_debug('John', f'Suppressed non-fatal error: {e}')
             John._wpapsk_capable = False
 
         return John._wpapsk_capable

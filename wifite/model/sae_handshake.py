@@ -16,6 +16,7 @@ import os
 from typing import Optional, Any
 
 
+from ..util.logger import log_debug
 class SAEHandshake:
     """
     Represents a WPA3-SAE handshake.
@@ -86,7 +87,8 @@ class SAEHandshake:
             # The shared converter filters out other networks' hashes.
             return HcxPcapngTool.convert_to_hashcat(
                 self.capfile, temp_hash, bssid=self.bssid)
-        except Exception:
+        except Exception as e:
+            log_debug('SaeHandshake', f'Suppressed non-fatal error: {e}')
             return False
         finally:
             try:
@@ -146,7 +148,8 @@ class SAEHandshake:
 
             return False
 
-        except Exception:
+        except Exception as e:
+            log_debug('SaeHandshake', f'Suppressed non-fatal error: {e}')
             return False
 
     def extract_sae_data(self) -> Optional[dict[str, Any]]:
@@ -213,7 +216,8 @@ class SAEHandshake:
 
             return None
 
-        except Exception:
+        except Exception as e:
+            log_debug('SaeHandshake', f'Suppressed non-fatal error: {e}')
             return None
 
     def convert_to_hashcat(self, output_file: Optional[str] = None) -> Optional[str]:
