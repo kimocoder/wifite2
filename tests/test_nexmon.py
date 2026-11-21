@@ -595,11 +595,21 @@ class TestLeakedMonitorSweep(NexmonTestBase):
 class TestConfigMonitorModeSetup(unittest.TestCase):
     def setUp(self):
         from wifite.config import Configuration
-        self._saved = Configuration.interface
+        self._saved = (
+            Configuration.interface,
+            Configuration.interface_primary,
+            Configuration.interface_secondary,
+        )
+        Configuration.interface_primary = None
+        Configuration.interface_secondary = None
 
     def tearDown(self):
         from wifite.config import Configuration
-        Configuration.interface = self._saved
+        (
+            Configuration.interface,
+            Configuration.interface_primary,
+            Configuration.interface_secondary,
+        ) = self._saved
 
     def test_interface_flag_still_enables_monitor_mode(self):
         from wifite.config import Configuration
@@ -657,6 +667,23 @@ class TestConfigMonitorModeSetup(unittest.TestCase):
         ask.assert_called_once()
         start.assert_not_called()
         self.assertEqual(Configuration.interface, 'wlan0mon')
+
+    def test_dual_interface_flags_enable_both_interfaces(self):
+        from wifite.config import Configuration
+        Configuration.interface = None
+        Configuration.interface_primary = 'wlan1'
+        Configuration.interface_secondary = 'wlan2'
+        with patch('wifite.tools.airmon.Airmon.start',
+                   side_effect=lambda iface: iface) as start, \
+                patch('wifite.tools.airmon.Airmon.require_interface') as req, \
+                patch('wifite.tools.airmon.Airmon.terminate_conflicting_processes') as kill_procs, \
+                patch('wifite.tools.airmon.Airmon.get_iface_info', return_value=None), \
+                patch('wifite.tools.iw.Iw.is_monitor', return_value=False):
+            Configuration.get_monitor_mode_interface()
+        kill_procs.assert_called_once()
+        self.assertEqual(req.call_count, 2)
+        self.assertEqual([c.args[0] for c in start.call_args_list], ['wlan1', 'wlan2'])
+        self.assertEqual(Configuration.interface, 'wlan1')
 
 
 class TestRadiotapMonitorMode(NexmonTestBase):

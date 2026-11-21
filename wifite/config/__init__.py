@@ -253,6 +253,11 @@ class Configuration:
 
     @classmethod
     def get_monitor_mode_interface(cls):
+        if cls.interface is None and cls.interface_primary:
+            cls.interface = cls.interface_primary
+        elif cls.interface_primary is None and cls.interface and cls.interface_secondary:
+            cls.interface_primary = cls.interface
+
         if cls.interface is None:
             # Interface wasn't defined, select it!
             from ..tools.airmon import Airmon
@@ -271,6 +276,8 @@ class Configuration:
             from ..tools.airmon import Airmon
             from ..tools.iw import Iw
             Airmon.require_interface(cls.interface)
+            if cls.interface_secondary:
+                Airmon.require_interface(cls.interface_secondary)
             Airmon.terminate_conflicting_processes()
             iface_info = Airmon.get_iface_info(cls.interface)
             if iface_info and iface_info.driver == 'brcmfmac':
@@ -283,6 +290,12 @@ class Configuration:
             if not Iw.is_monitor(cls.interface) or \
                     cls.get_interface_manager().is_usb_driver_dead(cls.interface):
                 cls.interface = Airmon.start(cls.interface)
+            if cls.interface_secondary and cls.interface_secondary != cls.interface:
+                primary_base = Airmon.base_interface
+                if not Iw.is_monitor(cls.interface_secondary) or \
+                        cls.get_interface_manager().is_usb_driver_dead(cls.interface_secondary):
+                    cls.interface_secondary = Airmon.start(cls.interface_secondary)
+                Airmon.base_interface = primary_base
             if cls.random_mac or cls.random_mac_vendor:
                 if cls.hcxdumptool_owns_radio():
                     Color.pl('{!} {O}Skipping macchanger: hcxdumptool randomizes the MAC itself{W}')

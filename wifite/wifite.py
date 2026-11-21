@@ -208,7 +208,20 @@ class Wifite:
             
             # Get interface assignment based on attack type
             assignment = None
-            if attack_type == 'evil_twin':
+            if Configuration.interface_primary and Configuration.interface_secondary:
+                from .model.interface_info import InterfaceAssignment
+                roles = {
+                    'evil_twin': ('Rogue AP', 'Deauth'),
+                    'wps': ('WPS Attack', 'Monitoring'),
+                }.get(attack_type, ('Handshake Capture', 'Deauth'))
+                assignment = InterfaceAssignment(
+                    attack_type=attack_type,
+                    primary=Configuration.interface_primary,
+                    secondary=Configuration.interface_secondary,
+                    primary_role=roles[0],
+                    secondary_role=roles[1]
+                )
+            elif attack_type == 'evil_twin':
                 assignment = InterfaceAssignmentStrategy.assign_for_evil_twin(self.available_interfaces)
             elif attack_type == 'wpa':
                 assignment = InterfaceAssignmentStrategy.assign_for_wpa(self.available_interfaces)
