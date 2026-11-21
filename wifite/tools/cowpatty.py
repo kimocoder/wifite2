@@ -112,8 +112,9 @@ class CowpattyCracker:
             return
 
         # Cracked: The PSK is "password"
-        if 'The PSK is "' in line:
-            self._result_key = line.split('"', 1)[1][:-1]
+        match = re.search(r'The PSK is "([^"]*)"', line)
+        if match:
+            self._result_key = match.group(1)
 
     @staticmethod
     def _fmt_duration(seconds):
