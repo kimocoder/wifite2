@@ -1182,7 +1182,8 @@ against the real AP and captures valid passwords.
         commands.add_argument('--crack',
                               action='store_true',
                               dest='crack_handshake',
-                              help=Color.s('Show commands to crack a captured handshake'))
+                              help=Color.s('Interactively crack captured handshakes from the {C}hs/{W} directory '
+                                            '(PMKID/WPA3-SAE require {C}hashcat{W}).'))
 
         commands.add_argument('--print-crack-cmd',
                               action='store_true',
