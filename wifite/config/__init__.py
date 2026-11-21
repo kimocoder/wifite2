@@ -66,6 +66,9 @@ class Configuration:
     clients_only = None
     cracked_file = None
     crack_handshake = None
+    crack_all = None
+    crack_index = None
+    crack_tool = None
     daemon = None
     dont_use_pmkid = None
     encryption_filter = None
@@ -341,8 +344,14 @@ class Configuration:
             cls.show_ignored = True
         if args.check_handshake:
             cls.check_handshake = args.check_handshake
-        if args.crack_handshake:
+        if args.crack_handshake or args.crack_all or args.crack_index:
             cls.crack_handshake = True
+        if args.crack_all:
+            cls.crack_all = True
+        if args.crack_index:
+            cls.crack_index = args.crack_index
+        if args.crack_tool:
+            cls.crack_tool = args.crack_tool
         if hasattr(args, 'show_cracking_command') and args.show_cracking_command:
             cls.show_cracking_command = True
         if args.update_db:

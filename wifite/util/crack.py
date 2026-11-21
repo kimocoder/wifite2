@@ -18,6 +18,7 @@ from ..tools.aircrack import Aircrack
 from ..tools.cowpatty import Cowpatty
 from ..tools.hashcat import Hashcat, HcxPcapngTool
 from ..tools.john import John
+from ..tools.tshark import Tshark
 from ..util.color import Color
 from ..util.process import Process
 from ..util.sae_crack import SAECracker
@@ -123,10 +124,20 @@ class CrackHelper:
     )
 
     @staticmethod
-    def _skip_reason(hs_type, missing_tool_names):
+    def _skip_reason(hs, missing_tool_deps):
         """Return why a handshake cannot be cracked, or None."""
-        if hs_type in ('PMKID', 'SAE') and 'hashcat' in missing_tool_names:
-            return f'Hashcat is missing, therefore we cannot crack {hs_type}'
+        hs_type = hs['type']
+        if hs_type not in ('PMKID', 'SAE'):
+            return None
+
+        required = ['hashcat']
+        if hs_type == 'SAE' and hs['filename'].lower().endswith('.cap'):
+            required.append('hcxpcapngtool')
+        missing = missing_tool_deps.get('hashcat', [])
+        absent = [dep for dep in required if dep in missing]
+        if absent:
+            return (f"{hs_type} cracking requires {', '.join(required)}; "
+                    f"missing: {', '.join(absent)}")
         return None
 
     @classmethod
@@ -166,7 +177,22 @@ class CrackHelper:
             Color.pl('{!} {O}No handshakes found{W}')
             return
 
-        hs_to_crack = cls.get_user_selection(handshakes)
+        if Configuration.crack_index:
+            hs_to_crack, invalid = cls.parse_selection(
+                Configuration.crack_index, handshakes)
+            if invalid is not None:
+                Color.pl('{!} {R}Invalid --crack-index selection: {O}%s{W}'
+                         % invalid)
+                return
+            if not hs_to_crack:
+                Color.pl('{!} {O}No handshakes selected{W}')
+                return
+        elif Configuration.crack_all:
+            hs_to_crack = handshakes[:]
+        else:
+            hs_to_crack = cls.get_user_selection(handshakes)
+            if not hs_to_crack:
+                return
         all_pmkid = all(hs['type'] == 'PMKID' for hs in hs_to_crack)
         has_sae = any(hs['type'] == 'SAE' for hs in hs_to_crack)
 
@@ -181,7 +207,10 @@ class CrackHelper:
             else:
                 available_tools.append(tool)
 
-        missing_tool_names = {tool for tool, _ in missing_tools}
+        missing_tool_deps = {
+            tool: [d if isinstance(d, str) else d.dependency_name for d in deps]
+            for tool, deps in missing_tools
+        }
         if missing_tools:
             Color.pl('\n{!} {O}Unavailable tools (install to enable):{W}')
             for tool, deps in missing_tools:
@@ -191,15 +220,23 @@ class CrackHelper:
                 Color.pl('     {R}* {R}%s {W}({O}%s{W})' % (tool, dep_list))
 
         if all_pmkid or has_sae:
+            if Configuration.crack_tool and Configuration.crack_tool != 'hashcat':
+                Color.pl('{!} {O}PMKID/SAE require hashcat; '
+                         'ignoring --crack-tool %s{W}' % Configuration.crack_tool)
             if all_pmkid:
                 Color.pl('{!} {O}Note: PMKID hashes can only be cracked using {C}hashcat{W}')
             if has_sae:
                 Color.pl('{!} {O}Note: WPA3-SAE handshakes can only be cracked using {C}hashcat{W}')
             tool_name = 'hashcat'
+        elif Configuration.crack_tool:
+            tool_name = Configuration.crack_tool
+            if tool_name not in available_tools:
+                Color.pl('{!} {R}Tool "%s" is not available{W}' % tool_name)
+                return
         else:
             Color.p('\n{+} Enter the {C}cracking tool{W} to use ({C}%s{W}): {G}' % (
                 '{W}, {C}'.join(available_tools)))
-            tool_name = interactive_input()
+            tool_name = interactive_input().strip()
             Color.p('{W}')
 
             if tool_name not in available_tools:
@@ -208,7 +245,7 @@ class CrackHelper:
 
         try:
             for hs in hs_to_crack:
-                reason = cls._skip_reason(hs['type'], missing_tool_names)
+                reason = cls._skip_reason(hs, missing_tool_deps)
                 if reason:
                     Color.pl('{!} {O}%s{W}' % reason)
                     continue
@@ -217,26 +254,34 @@ class CrackHelper:
             Color.pl('\n{!} {O}Interrupted{W}')
 
     @classmethod
-    def is_cracked(cls, file):
+    def cracked_filenames(cls):
+        """Load the basenames of captures already recorded in cracked.json."""
         if not os.path.exists(Configuration.cracked_file):
-            return False
+            return set()
         try:
             with open(Configuration.cracked_file) as f:
                 results = loads(f.read())
         except (OSError, ValueError, TypeError) as e:
             log_debug('CrackHelper',
                       f'Could not read {Configuration.cracked_file}: {e}')
-            return False
+            return set()
         if not isinstance(results, list):
-            return False
+            return set()
+
+        names = set()
         for result in results:
             if not isinstance(result, dict):
                 continue
             for key, value in result.items():
-                if ('file' in key and isinstance(value, str)
-                        and os.path.basename(value) == file):
-                    return True
-        return False
+                if 'file' in key and isinstance(value, str) and value:
+                    names.add(os.path.basename(value))
+        return names
+
+    @classmethod
+    def is_cracked(cls, file, cracked_names=None):
+        if cracked_names is None:
+            cracked_names = cls.cracked_filenames()
+        return file in cracked_names
 
     @classmethod
     def _parse_capture(cls, hs_file, full_path):
@@ -251,13 +296,12 @@ class CrackHelper:
                 return None
         elif lowered.endswith('.22000'):
             # Hashcat mode 22000 covers both PMKID and SAE hashes.
-            hs_type = 'PMKID'
             if hs_file.startswith('sae_handshake_'):
-                prefix = 'sae_handshake_'
+                hs_type, prefix = 'SAE', 'sae_handshake_'
             elif hs_file.startswith('pmkid_'):
-                prefix = 'pmkid_'
+                hs_type, prefix = 'PMKID', 'pmkid_'
             else:
-                prefix = ''
+                hs_type, prefix = 'PMKID', ''
             stem = hs_file[:-6]
         else:
             return None
@@ -292,7 +336,9 @@ class CrackHelper:
     def get_handshakes(cls):
         handshakes = []
 
-        skipped_pmkid_files = skipped_cracked_files = 0
+        skipped_hash_files = skipped_cracked_files = skipped_invalid_files = 0
+        cracked_names = cls.cracked_filenames()
+        has_validator = Tshark.exists() or HcxPcapngTool.exists()
 
         hs_dir = Configuration.wpa_handshake_dir
         if not os.path.exists(hs_dir) or not os.path.isdir(hs_dir):
@@ -311,34 +357,50 @@ class CrackHelper:
                     Color.pl('{!} {O}Skipping unrecognized capture: %s{W}' % hs_file)
                 continue
 
-            if handshake['type'] == 'PMKID' and not Process.exists('hashcat'):
-                skipped_pmkid_files += 1
-                continue
+            if handshake['type'] in ('PMKID', 'SAE'):
+                needs_conversion = (handshake['type'] == 'SAE'
+                                    and hs_file.lower().endswith('.cap'))
+                if (not Process.exists('hashcat')
+                        or (needs_conversion
+                            and not Process.exists('hcxpcapngtool'))):
+                    skipped_hash_files += 1
+                    continue
 
-            if cls.is_cracked(hs_file):
+            if cls.is_cracked(hs_file, cracked_names):
                 skipped_cracked_files += 1
                 continue
 
             if handshake['type'] == '4-WAY':
                 # Prefer the ESSID from the capture when it can be recovered.
                 handshakenew = Handshake(full_path)
+                valid = True
                 try:
                     handshakenew.divine_bssid_and_essid()
-                except ValueError:
-                    pass
-                else:
                     if handshakenew.essid:
                         handshake['essid'] = handshakenew.essid
-            elif handshake['type'] == 'PMKID':
-                # Decode hex-encoded ESSID from passive PMKID capture
+                    if has_validator:
+                        valid = handshakenew.has_handshake()
+                except Exception as e:
+                    log_debug('CrackHelper',
+                              f'Could not validate {hs_file}: {e}')
+                    valid = False
+                if not valid:
+                    skipped_invalid_files += 1
+                    continue
+            elif handshake['type'] == 'PMKID' or hs_file.lower().endswith('.22000'):
+                # Decode hex-encoded ESSID from passive PMKID/SAE captures
                 # with strict validation to prevent false positives.
                 handshake['essid'] = decode_hex_essid_if_needed(handshake['essid'])
 
             handshakes.append(handshake)
 
-        if skipped_pmkid_files > 0:
+        if skipped_hash_files > 0:
             Color.pl(
-                '{!} {O}Skipping %d {R}*.22000{O} files because {R}hashcat{O} is missing.{W}\n' % skipped_pmkid_files)
+                '{!} {O}Skipping %d PMKID/SAE capture(s) because '
+                '{R}hashcat/hcxtools{O} is missing.{W}\n' % skipped_hash_files)
+        if skipped_invalid_files > 0:
+            Color.pl('{!} {O}Skipping %d capture(s) with no crackable handshake.{W}\n'
+                     % skipped_invalid_files)
         if skipped_cracked_files > 0:
             Color.pl('{!} {O}Skipping %d already cracked files.{W}\n' % skipped_cracked_files)
 
@@ -368,6 +430,44 @@ class CrackHelper:
             Color.p('  {W}%s{W}\n' % handshake['date'])
 
     @classmethod
+    def parse_selection(cls, choices, handshakes):
+        """Parse 1,3-5 / all into a list; returns (selection, invalid_choice)."""
+        if not choices:
+            return [], None
+        if choices.strip().lower() == 'all':
+            return list(handshakes), None
+
+        total = len(handshakes)
+        selection = []
+        seen = set()
+        for choice in choices.split(','):
+            choice = choice.strip()
+            if not choice:
+                continue
+            if '-' in choice:
+                bounds = [part.strip() for part in choice.split('-')]
+                if len(bounds) != 2 or not all(p.isdigit() for p in bounds):
+                    return [], choice
+                first, last = (int(part) for part in bounds)
+                if not (1 <= first <= total and 1 <= last <= total) or first > last:
+                    return [], choice
+                range_items = handshakes[first - 1:last]
+            else:
+                if not choice.isdigit():
+                    return [], choice
+                index = int(choice)
+                if not 1 <= index <= total:
+                    return [], choice
+                range_items = [handshakes[index - 1]]
+
+            for handshake in range_items:
+                filename = handshake['filename']
+                if filename not in seen:
+                    seen.add(filename)
+                    selection.append(handshake)
+        return selection, None
+
+    @classmethod
     def get_user_selection(cls, handshakes):
         cls.print_handshakes(handshakes)
         total = len(handshakes)
@@ -384,42 +484,8 @@ class CrackHelper:
             if not choices:
                 Color.pl('{!} {O}Please enter a selection, or "all".{W}')
                 continue
-            if choices.lower() == 'all':
-                return handshakes[:]
 
-            selection = []
-            seen = set()
-            invalid = None
-            for choice in choices.split(','):
-                choice = choice.strip()
-                if not choice:
-                    continue
-                if '-' in choice:
-                    bounds = [part.strip() for part in choice.split('-')]
-                    if len(bounds) != 2 or not all(p.isdigit() for p in bounds):
-                        invalid = choice
-                        break
-                    first, last = (int(part) for part in bounds)
-                    if not (1 <= first <= total and 1 <= last <= total) or first > last:
-                        invalid = choice
-                        break
-                    range_items = handshakes[first - 1:last]
-                else:
-                    if not choice.isdigit():
-                        invalid = choice
-                        break
-                    index = int(choice)
-                    if not 1 <= index <= total:
-                        invalid = choice
-                        break
-                    range_items = [handshakes[index - 1]]
-
-                for handshake in range_items:
-                    filename = handshake['filename']
-                    if filename not in seen:
-                        seen.add(filename)
-                        selection.append(handshake)
-
+            selection, invalid = cls.parse_selection(choices, handshakes)
             if invalid is not None:
                 Color.pl('{!} {R}Invalid selection: {O}%s{W} (choose 1-%d)'
                          % (invalid, total))
@@ -439,7 +505,12 @@ class CrackHelper:
         elif hs['type'] == '4-WAY':
             crack_result = cls.crack_4way(hs, tool)
         elif hs['type'] == 'SAE':
-            crack_result = cls.crack_sae(hs, tool)
+            if hs['filename'].lower().endswith('.22000'):
+                # Already a mode-22000 hash; no pcap conversion needed.
+                crack_result = cls.crack_pmkid(
+                    hs, tool, result_cls=CrackResultSAE)
+            else:
+                crack_result = cls.crack_sae(hs, tool)
         else:
             raise ValueError(f'Cannot crack handshake: Type is not PMKID, 4-WAY, or SAE. Handshake={hs}')
 
@@ -489,9 +560,10 @@ class CrackHelper:
         return None
 
     @classmethod
-    def crack_pmkid(cls, hs, tool):
+    def crack_pmkid(cls, hs, tool, result_cls=CrackResultPMKID):
         if tool != 'hashcat':
-            Color.pl('{!} {O}Note: PMKID hashes can only be cracked using {C}hashcat{W}')
+            Color.pl('{+} {C}Note:{W} PMKID/SAE hashes are cracked with '
+                     '{C}hashcat{W}')
 
         # show_command is True when verbose or when --print-crack-cmd is set
         show_cmd = Configuration.show_cracking_command or Configuration.verbose > 0
@@ -503,7 +575,8 @@ class CrackHelper:
             Color.pl('{+} Trying wordlist: {C}%s{W}' % wordlist_name)
             key2 = Hashcat.crack_pmkid(hs['filename'], verbose=show_cmd, wordlist=wordlist)
             if key2 is not None:
-                return CrackResultPMKID(hs['bssid'], hs['essid'], hs['filename'], key2)
+                return result_cls(hs['bssid'], hs['essid'],
+                                  hs['filename'], key2)
 
         return None
 

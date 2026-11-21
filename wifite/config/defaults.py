@@ -161,6 +161,9 @@ def initialize_defaults(cls):
     cls.show_ignored = False
     cls.check_handshake = None
     cls.crack_handshake = False
+    cls.crack_all = False
+    cls.crack_index = None
+    cls.crack_tool = None
     cls.update_db = False
     cls.db_filename = 'ieee-oui.txt'
 

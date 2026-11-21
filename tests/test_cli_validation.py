@@ -117,6 +117,16 @@ class TestConfigErrorsAreClean(unittest.TestCase):
     def test_conflicting_eviltwin_and_pmkid(self):
         self._assert_clean_failure('--syscheck', '--eviltwin', '--pmkid')
 
+    def test_crack_selection_flags_are_mutually_exclusive(self):
+        code, output = run('--syscheck', '--crack-all', '--crack-index', '1')
+        self.assertEqual(code, 2, output)
+        self.assertIn('not allowed with argument', output)
+
+    def test_invalid_crack_tool_is_rejected(self):
+        code, output = run('--syscheck', '--crack-tool', 'bogus')
+        self.assertEqual(code, 2, output)
+        self.assertIn('invalid choice', output)
+
     def test_wpa3_only_with_wpa_filter_warns(self):
         code, output = run('--syscheck', '--wpa3-only', '--wpa')
         self.assertEqual(code, 0, output)

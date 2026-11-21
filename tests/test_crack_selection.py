@@ -67,5 +67,31 @@ class TestHandshakeSelection(unittest.TestCase):
         prompt.assert_not_called()
 
 
+class TestParseSelection(unittest.TestCase):
+
+    def test_valid_spec(self):
+        selection, invalid = CrackHelper.parse_selection('1,2', HSS)
+        self.assertIsNone(invalid)
+        self.assertEqual([h['essid'] for h in selection], ['A', 'B'])
+
+    def test_all_spec(self):
+        selection, invalid = CrackHelper.parse_selection('ALL', HSS)
+        self.assertIsNone(invalid)
+        self.assertEqual(len(selection), 2)
+
+    def test_invalid_spec_reports_choice(self):
+        for spec, expected in (('foo', 'foo'), ('0', '0'),
+                               ('3', '3'), ('1-999', '1-999'),
+                               ('2-1', '2-1')):
+            selection, invalid = CrackHelper.parse_selection(spec, HSS)
+            self.assertEqual(selection, [])
+            self.assertEqual(invalid, expected)
+
+    def test_empty_spec(self):
+        selection, invalid = CrackHelper.parse_selection('', HSS)
+        self.assertEqual(selection, [])
+        self.assertIsNone(invalid)
+
+
 if __name__ == '__main__':
     unittest.main()

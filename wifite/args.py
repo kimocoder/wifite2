@@ -1185,6 +1185,25 @@ against the real AP and captures valid passwords.
                               help=Color.s('Interactively crack captured handshakes from the {C}hs/{W} directory '
                                             '(PMKID/WPA3-SAE require {C}hashcat{W}).'))
 
+        crack_selection = commands.add_mutually_exclusive_group()
+        crack_selection.add_argument('--crack-all',
+                                     action='store_true',
+                                     dest='crack_all',
+                                     help=Color.s('Crack every captured handshake without prompting.'))
+        crack_selection.add_argument('--crack-index',
+                                     action='store',
+                                     dest='crack_index',
+                                     metavar='[selection]',
+                                     help=Color.s('Non-interactive handshake selection for {C}--crack{W} '
+                                                  '(e.g. {C}1,3-5{W} or {C}all{W}).'))
+
+        commands.add_argument('--crack-tool',
+                              action='store',
+                              dest='crack_tool',
+                              metavar='[tool]',
+                              choices=('aircrack', 'hashcat', 'john', 'cowpatty'),
+                              help=Color.s('Cracking tool for non-interactive {C}--crack{W} runs.'))
+
         commands.add_argument('--print-crack-cmd',
                               action='store_true',
                               dest='show_cracking_command',
