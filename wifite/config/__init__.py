@@ -280,7 +280,8 @@ class Configuration:
                     # lifecycle; already-monitor gets radiotap verification.
                     cls.interface = Airmon.start(cls.interface)
                     return
-            if not Iw.is_monitor(cls.interface):
+            if not Iw.is_monitor(cls.interface) or \
+                    cls.get_interface_manager().is_usb_driver_dead(cls.interface):
                 cls.interface = Airmon.start(cls.interface)
             if cls.random_mac or cls.random_mac_vendor:
                 if cls.hcxdumptool_owns_radio():

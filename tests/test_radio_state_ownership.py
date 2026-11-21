@@ -225,6 +225,35 @@ def test_link_up_timeout_recovers_by_reloading_driver_and_reapplying_mode(manage
         assert system.up is True
 
 
+def test_silent_usb_offline_on_link_up_triggers_driver_recovery(manager, system):
+    """rt2800usb returns 0 on link-up with 0 USB URBs when DEVICE_STATE_PRESENT is cleared."""
+    urb_reads = iter([100, 100, 200, 250])
+    original_run = system.run
+
+    def run_with_reload(command, timeout=5):
+        command = list(command)
+        if command == ['modprobe', 'rt2800usb']:
+            system.commands.append(command)
+            system.mode = 'managed'
+            system.up = False
+            system.ifindex = 55
+            return subprocess.CompletedProcess(command, 0, '', '')
+        return original_run(command, timeout=timeout)
+
+    with patch('wifite.util.interface_manager.Process.run_simple',
+               side_effect=run_with_reload), \
+            patch.object(InterfaceManager, '_get_usb_urbnum',
+                         side_effect=lambda _iface: next(urb_reads, None)), \
+            patch.object(InterfaceManager, '_get_interface_driver',
+                         return_value='rt2800usb'), \
+            patch('wifite.util.interface_manager.os.path.exists', return_value=False), \
+            patch('wifite.util.interface_manager.time.sleep'):
+        assert manager.set_interface_mode(IFACE, 'monitor')
+        assert system.mode == 'monitor'
+        assert system.up is True
+        assert manager.interface_states[IFACE].original_ifindex == 55
+
+
 def test_mode_mutation_executes_once_and_verifies(manager, system):
     assert manager.set_interface_mode(IFACE, 'monitor')
 

@@ -327,6 +327,42 @@ class InterfaceManager:
 
         return True
 
+    @staticmethod
+    def _get_usb_urbnum(interface: str) -> Optional[int]:
+        """Return the parent USB device's urbnum counter, or None for non-USB netdevs."""
+        try:
+            device_link = f'/sys/class/net/{interface}/device'
+            if not os.path.exists(device_link):
+                return None
+            device_dir = os.path.realpath(device_link)
+            urbnum_path = os.path.join(os.path.dirname(device_dir), 'urbnum')
+            if not os.path.exists(urbnum_path):
+                return None
+            with open(urbnum_path) as handle:
+                return int(handle.read().strip())
+        except (OSError, ValueError):
+            return None
+
+    @classmethod
+    def is_usb_driver_dead(cls, interface: str) -> bool:
+        """True when a USB wireless interface has zero RX/TX packets since probe.
+
+        Drivers such as rt2800usb clear DEVICE_STATE_PRESENT after vendor
+        request timeouts (-110) and then silently return 0 for all mac80211
+        operations without submitting any URBs. If a previous interrupted run
+        left such an interface in monitor mode, both packet counters remain 0.
+        """
+        if cls._get_usb_urbnum(interface) is None:
+            return False
+        try:
+            with open(f'/sys/class/net/{interface}/statistics/rx_packets') as rx_fh, \
+                    open(f'/sys/class/net/{interface}/statistics/tx_packets') as tx_fh:
+                rx = int(rx_fh.read().strip())
+                tx = int(tx_fh.read().strip())
+            return rx == 0 and tx == 0
+        except (OSError, ValueError):
+            return False
+
     def _set_link_state(self, interface: str, up: bool,
                         attempts: int = 3, delay: float = 0.5,
                         target_mode: Optional[str] = None,
@@ -335,14 +371,17 @@ class InterfaceManager:
 
         Some USB drivers (notably mt76x0u) answer the first mode-change
         request with ETIMEDOUT while a queued transfer is still pending.
-        The same command usually succeeds once the transfer drains; if all
-        attempts still time out on link-up, reset the device/driver once
-        and retry.
+        Others (notably rt2800usb after vendor-request timeouts clear
+        DEVICE_STATE_PRESENT) silently return 0 on link-up without
+        submitting any USB URBs. If link-up times out or submits zero
+        URBs, reset the device/driver once and retry.
         """
         command = ['ip', 'link', 'set', interface, 'up' if up else 'down']
         returncode = None
         detail = ''
+        usb_offline = False
         for attempt in range(1, attempts + 1):
+            urbnum_before = self._get_usb_urbnum(interface) if up else None
             try:
                 result = Process.run_simple(command)
             except Exception as e:
@@ -350,6 +389,14 @@ class InterfaceManager:
             else:
                 returncode = result.returncode
                 if returncode == 0:
+                    urbnum_after = (self._get_usb_urbnum(interface)
+                                    if urbnum_before is not None else None)
+                    if urbnum_after is not None and urbnum_after == urbnum_before:
+                        usb_offline = True
+                        detail = 'USB driver submitted 0 URBs on link-up (device state offline)'
+                        log_warning('InterfaceManager',
+                                    f'{interface}: {detail}')
+                        break
                     return True
                 detail = (result.stderr or result.stdout or '').strip()
             if attempt < attempts:
@@ -358,11 +405,12 @@ class InterfaceManager:
                           f'retrying ({attempt + 1}/{attempts})')
                 time.sleep(delay)
 
-        if up and 'timed out' in detail.lower():
+        if up and (usb_offline or 'timed out' in detail.lower()):
             if self._recover_timed_out_link(interface,
                                             target_mode=target_mode,
                                             target_mac=target_mac):
                 for attempt in range(1, attempts + 1):
+                    urbnum_before = self._get_usb_urbnum(interface)
                     try:
                         result = Process.run_simple(command)
                     except Exception as e:
@@ -370,6 +418,11 @@ class InterfaceManager:
                     else:
                         returncode = result.returncode
                         if returncode == 0:
+                            urbnum_after = (self._get_usb_urbnum(interface)
+                                            if urbnum_before is not None else None)
+                            if urbnum_after is not None and urbnum_after == urbnum_before:
+                                detail = 'USB driver still submitted 0 URBs after reset'
+                                break
                             return True
                         detail = (result.stderr or result.stdout or '').strip()
                     if attempt < attempts:
@@ -672,7 +725,7 @@ class InterfaceManager:
                 current = self._canonical_mode(self._get_interface_mode(interface))
                 if current is None:
                     return False
-                if current == desired:
+                if current == desired and not self.is_usb_driver_dead(interface):
                     return True
                 if not self._claim_interface(interface):
                     return False
