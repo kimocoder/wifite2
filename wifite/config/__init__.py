@@ -258,10 +258,19 @@ class Configuration:
         elif cls.interface_primary is None and cls.interface and cls.interface_secondary:
             cls.interface_primary = cls.interface
 
+        # Snapshot interfaces before the scan tunes them. Recording state on
+        # first mutation (after airodump changed channels) restores the
+        # scanner's channel instead of the user's original one.
+        manager = cls.get_interface_manager()
+        for iface in {cls.interface, cls.interface_primary, cls.interface_secondary}:
+            if iface:
+                manager.claim_interface(iface)
+
         if cls.interface is None:
             # Interface wasn't defined, select it!
             from ..tools.airmon import Airmon
             cls.interface = Airmon.ask()
+            manager.claim_interface(cls.interface)
             if cls.random_mac or cls.random_mac_vendor:
                 if cls.hcxdumptool_owns_radio():
                     Color.pl('{!} {O}Skipping macchanger: hcxdumptool randomizes the MAC itself{W}')

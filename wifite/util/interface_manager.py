@@ -1429,9 +1429,11 @@ class InterfaceManager:
                     live_mac.upper() != state.original_mac.upper()):
                 changed.add('mac')
             if (state.original_channel is not None and
-                    live_channel is not None and
                     live_channel != state.original_channel and
                     original_mode != 'managed'):
+                # live_channel is None while the link is down. Treat that as
+                # changed so the channel is restored after the link comes
+                # back up instead of silently keeping the attack channel.
                 changed.add('channel')
             if set(live_ips) != set(state.original_ips):
                 changed.add('addresses')
@@ -1490,22 +1492,6 @@ class InterfaceManager:
                               f'Failed to restore mode on {interface}')
                     success = False
 
-            if 'channel' in changed and state.original_channel is not None:
-                log_info('InterfaceManager',
-                         f'Cleanup step: Restoring channel {state.original_channel} on {interface}')
-                if not self._run_checked(['iw', 'dev', interface, 'set', 'channel',
-                                          str(state.original_channel)],
-                                         tolerate_busy=True):
-                    log_error('InterfaceManager',
-                              f'Failed to restore channel on {interface}')
-                    success = False
-                else:
-                    observed = self._get_interface_channel(interface)
-                    if observed != state.original_channel:
-                        log_error('InterfaceManager',
-                                  f'Channel readback mismatch on {interface}: {observed}')
-                        success = False
-
             if 'addresses' in changed:
                 log_info('InterfaceManager',
                          f'Cleanup step: Restoring addresses {state.original_ips} on {interface}')
@@ -1550,6 +1536,29 @@ class InterfaceManager:
                         log_error('InterfaceManager',
                                   f'Cleanup failed: could not leave {interface} down')
                         success = False
+
+            # Restore the channel only after the link is back up: `iw dev
+            # set channel` fails and the readback returns None on a down
+            # interface, which used to leave every cleanup PARTIAL.
+            if 'channel' in changed and state.original_channel is not None:
+                if not self._is_interface_up(interface):
+                    log_info('InterfaceManager',
+                             f'Skipping channel restore on {interface}: interface is down')
+                else:
+                    log_info('InterfaceManager',
+                             f'Cleanup step: Restoring channel {state.original_channel} on {interface}')
+                    if not self._run_checked(['iw', 'dev', interface, 'set', 'channel',
+                                              str(state.original_channel)],
+                                             tolerate_busy=True):
+                        log_error('InterfaceManager',
+                                  f'Failed to restore channel on {interface}')
+                        success = False
+                    else:
+                        observed = self._get_interface_channel(interface)
+                        if observed != state.original_channel:
+                            log_error('InterfaceManager',
+                                      f'Channel readback mismatch on {interface}: {observed}')
+                            success = False
 
             # Monitor mode leaves IFF_PROMISC/IFF_ALLMULTI set; switching back
             # to managed does not clear them, so restore them explicitly.
@@ -1615,7 +1624,7 @@ class InterfaceManager:
                           f'{state.original_mac}')
                 return False
 
-        if 'channel' in changed:
+        if 'channel' in changed and state.original_up:
             observed = self._get_interface_channel(interface)
             if observed != state.original_channel:
                 log_error('InterfaceManager',

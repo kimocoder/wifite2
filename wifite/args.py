@@ -863,8 +863,8 @@ against the real AP and captures valid passwords.
         wpa.add_argument('--new-hs',
                          action='store_true',
                          dest='ignore_old_handshakes',
-                         help=Color.s('Captures new handshakes, ignores existing handshakes in {C}%s{W} '
-                                      '(default: {G}off{W})' % self.config.wpa_handshake_dir))
+                         help=Color.s('Captures new handshakes and PMKID hashes, ignores existing captures '
+                                      'in {C}%s{W} (default: {G}off{W})' % self.config.wpa_handshake_dir))
 
         wpa.add_argument('--dict',
                          action='store',
@@ -992,7 +992,8 @@ against the real AP and captures valid passwords.
                            action='store_true',
                            dest='use_pmkid_only',
                            help=Color.s('{O}Only{W} use {C}PMKID capture{W}, avoids other WPS & '
-                                        'WPA attacks (default: {G}off{W})'))
+                                        'WPA attacks. Existing hashes are reused unless '
+                                        '{C}--new-hs{W} is given (default: {G}off{W})'))
         pmkid.add_argument('--no-pmkid',
                            action='store_true',
                            dest='dont_use_pmkid',

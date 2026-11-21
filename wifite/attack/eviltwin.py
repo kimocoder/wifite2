@@ -74,6 +74,10 @@ class EvilTwin(Attack):
         
         # Interface assignment for dual interface support
         self.interface_assignment = None
+
+        # MAC address of the AP interface before hostapd was started. hostapd
+        # may rewrite the interface MAC; restore it during cleanup.
+        self._original_ap_mac = None
         
         # Resolve interface assignments with precedence:
         #   1. Explicit constructor args (highest)
@@ -394,6 +398,20 @@ class EvilTwin(Attack):
             if Nexmon.has_session(interface):
                 Nexmon.stop(interface)
 
+            # Snapshot the interface before any mutation, while it is still
+            # up. Airmon.set_interface_mode() would otherwise snapshot it
+            # after put_interface_down(), recording the wrong up-state and
+            # losing the pre-hostapd MAC.
+            manager = Configuration.get_interface_manager()
+            if not manager.claim_interface(interface):
+                log_error('EvilTwin',
+                          f'Could not snapshot AP interface {interface} before configuring')
+                return False
+            from ..tools.ip import Ip
+            self._original_ap_mac = Ip.get_mac(interface)
+            log_debug('EvilTwin',
+                      f'AP interface {interface} original MAC: {self._original_ap_mac}')
+
             # Bring interface down
             log_debug('EvilTwin', f'Bringing down interface {interface}')
             Airmon.put_interface_down(interface)
@@ -413,6 +431,22 @@ class EvilTwin(Attack):
             log_error('EvilTwin', f'Failed to configure AP interface {interface}: {e}', e)
             return False
     
+    def _restore_ap_interface_mac(self):
+        """Restore the AP interface MAC recorded before hostapd started."""
+        if not self._original_ap_mac or not self.interface_ap:
+            return
+        try:
+            manager = Configuration.get_interface_manager()
+            if manager.set_interface_mac(self.interface_ap, self._original_ap_mac):
+                log_info('EvilTwin',
+                         f'Restored AP interface MAC {self._original_ap_mac} '
+                         f'on {self.interface_ap}')
+            else:
+                log_warning('EvilTwin',
+                            f'Could not restore AP interface MAC on {self.interface_ap}')
+        except Exception as e:
+            log_warning('EvilTwin', f'Failed to restore AP interface MAC: {e}')
+
     def _configure_deauth_interface(self, interface: str) -> bool:
         """
         Configure interface for deauth operation (monitor mode).
@@ -425,7 +459,16 @@ class EvilTwin(Attack):
         """
         try:
             from ..tools.airmon import Airmon
-            
+
+            # Snapshot before changing mode so the interface is restored even
+            # when it was already in monitor mode (Airmon.start would skip
+            # set_interface_mode and therefore skip the snapshot).
+            manager = Configuration.get_interface_manager()
+            if not manager.claim_interface(interface):
+                log_error('EvilTwin',
+                          f'Could not snapshot deauth interface {interface} before configuring')
+                return False
+
             # Put interface in monitor mode
             log_debug('EvilTwin', f'Putting {interface} in monitor mode')
             monitor_interface = Airmon.start(interface)
@@ -556,7 +599,11 @@ class EvilTwin(Attack):
                 log_error('EvilTwin', 'Failed to start captive portal')
                 return False
 
-            log_info('EvilTwin', f'Captive portal started on port {portal_port}')
+            actual_port = self.portal_server.port
+            if actual_port != portal_port:
+                Color.pl('{!} {O}Captive portal requested port %d but is on %d; '
+                         'some clients only auto-detect port 80{W}' % (portal_port, actual_port))
+            log_info('EvilTwin', f'Captive portal started on port {actual_port}')
             if self.scope:
                 self.scope.register_health('portal', self.portal_server.is_running)
 
@@ -1237,7 +1284,11 @@ class EvilTwin(Attack):
                 self.error_message = 'Failed to start captive portal'
                 return False
 
-            log_info('EvilTwin', f'Captive portal started on port {portal_port}')
+            actual_port = self.portal_server.port
+            if actual_port != portal_port:
+                Color.pl('{!} {O}Captive portal requested port %d but is on %d; '
+                         'some clients only auto-detect port 80{W}' % (portal_port, actual_port))
+            log_info('EvilTwin', f'Captive portal started on port {actual_port}')
             if self.scope:
                 self.scope.register_health('portal', self.portal_server.is_running)
 
@@ -1704,6 +1755,10 @@ class EvilTwin(Attack):
                 self.hostapd = None
             if self.hostapd_process:
                 self.hostapd_process = None
+
+            # hostapd may rewrite the AP interface MAC; put it back before
+            # the global interface cleanup runs.
+            self._restore_ap_interface_mac()
 
             # Restore the dual-mode deauth interface from monitor back to
             # managed mode (it was switched to monitor in

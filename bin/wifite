@@ -1,4 +1,11 @@
 #!/usr/bin/env python
 
+import os
+import sys
+
+# Run the source tree this launcher belongs to, even when another copy of
+# wifite is installed in site-packages.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from wifite import wifite
 wifite.main()

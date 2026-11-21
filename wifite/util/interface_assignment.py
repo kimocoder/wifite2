@@ -283,7 +283,26 @@ class InterfaceAssignmentStrategy:
                     deauth_interface = InterfaceAssignmentStrategy._select_best_monitor_interface(
                         deauth_candidates
                     )
-                    
+
+                    # Deauth range depends on TX power; capture does not.
+                    # Swap roles when the capture radio is meaningfully
+                    # stronger so deauth uses the higher-power radio.
+                    if (capture_interface.tx_power is not None and
+                            deauth_interface.tx_power is not None and
+                            capture_interface.supports_monitor_mode and
+                            capture_interface.tx_power >= deauth_interface.tx_power + 6):
+                        log_info('InterfaceAssignment',
+                                 f'Swapping roles: {capture_interface.name} '
+                                 f'({capture_interface.tx_power} dBm) is a stronger deauth '
+                                 f'radio than {deauth_interface.name} '
+                                 f'({deauth_interface.tx_power} dBm)')
+                        Color.pl('{+} {C}Swapping dual roles for TX power:{W} '
+                                 'deauth on {G}%s{W} (%d dBm), capture on {G}%s{W}'
+                                 % (capture_interface.name, capture_interface.tx_power,
+                                    deauth_interface.name))
+                        capture_interface, deauth_interface = (
+                            deauth_interface, capture_interface)
+
                     # Validate the assignment
                     is_valid, error_msg = InterfaceAssignmentStrategy.validate_dual_interface_setup(
                         capture_interface, deauth_interface

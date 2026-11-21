@@ -709,6 +709,7 @@ class AttackWPA(Attack):
             
             # Verify both interfaces are on the target channel
             self._verify_channel_sync()
+            self._warn_low_deauth_power()
             
             # Route to appropriate capture method based on configuration
             if use_hcxdump_mode:
@@ -745,6 +746,40 @@ class AttackWPA(Attack):
                     Airmon.stop(self.deauth_interface)
             
             return None
+
+    def _warn_low_deauth_power(self):
+        """Warn when the deauth radio is too weak for its role."""
+        from ..util.interface_manager import InterfaceManager
+
+        deauth_tx = InterfaceManager._get_interface_tx_power(self.deauth_interface)
+        capture_tx = InterfaceManager._get_interface_tx_power(self.capture_interface)
+        if deauth_tx is None:
+            return
+
+        log_info('AttackWPA',
+                 f'Deauth interface {self.deauth_interface} TX power: {deauth_tx} dBm '
+                 f'(capture {self.capture_interface}: {capture_tx} dBm)')
+        if deauth_tx >= 10:
+            return
+
+        Color.pl('\n{!} {O}Deauth interface {C}%s{O} transmits at only {R}%d dBm{O}; '
+                 'clients may not receive deauth frames{W}'
+                 % (self.deauth_interface, deauth_tx))
+        if capture_tx is not None and capture_tx > deauth_tx + 3:
+            Color.pl('{!} {O}%s has %d dBm - consider swapping roles: '
+                     '{C}--interface-primary %s --interface-secondary %s{W}'
+                     % (self.capture_interface, capture_tx,
+                        self.deauth_interface, self.capture_interface))
+
+    def _report_handshake_timeout(self):
+        """Explain why a handshake capture attempt produced nothing."""
+        clients = len(getattr(self, 'clients', []) or [])
+        if clients:
+            Color.pl('{!} {O}%d client(s) were seen but none produced a 4-way '
+                     'handshake; clients may be idle or not re-associating.{W}'
+                     % clients)
+        else:
+            Color.pl('{!} {O}No clients were seen, so there was nothing to deauth.{W}')
 
     def _capture_handshake_dual_airodump(self):
         """
@@ -925,6 +960,7 @@ class AttackWPA(Attack):
         if handshake is None:
             Color.pl('\n{!} {O}WPA handshake capture {R}FAILED:{O} Timed out after %d seconds' % (
                 Configuration.wpa_attack_timeout))
+            self._report_handshake_timeout()
         else:
             # Save copy of handshake
             self.save_handshake(handshake)
@@ -1370,6 +1406,7 @@ class AttackWPA(Attack):
         if handshake is None:
             Color.pl('\n{!} {O}WPA handshake capture {R}FAILED:{O} Timed out after %d seconds' % (
                 Configuration.wpa_attack_timeout))
+            self._report_handshake_timeout()
         else:
             # Save copy of handshake
             self.save_handshake(handshake)
@@ -1568,6 +1605,7 @@ class AttackWPA(Attack):
         if handshake is None:
             Color.pl('\n{!} {O}WPA handshake capture {R}FAILED:{O} Timed out after %d seconds' % (
                 Configuration.wpa_attack_timeout))
+            self._report_handshake_timeout()
         else:
             # Save copy of handshake
             self.save_handshake(handshake)
@@ -1752,6 +1790,7 @@ class AttackWPA(Attack):
             # No handshake, attack failed.
             Color.pl('\n{!} {O}WPA handshake capture {R}FAILED:{O} Timed out after %d seconds' % (
                 Configuration.wpa_attack_timeout))
+            self._report_handshake_timeout()
         else:
             # Save copy of handshake to ./hs/
             self.save_handshake(handshake)

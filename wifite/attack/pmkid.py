@@ -190,7 +190,9 @@ class AttackPMKID(Attack):
                 if self.view:
                     self.view.add_log(f"Found existing PMKID: {os.path.basename(pmkid_file)}")
                 Color.pattack('PMKID', self.target, 'CAPTURE',
-                              'Using {C}existing{W} PMKID hash: {C}%s{W}' % os.path.basename(pmkid_file))
+                              'Using {C}existing{W} PMKID hash: {C}%s{W} '
+                              '(use {C}--new-hs{W} to force a fresh capture)'
+                              % os.path.basename(pmkid_file))
             elif Configuration.verbose > 1:
                 if self.view:
                     self.view.add_log("No existing PMKID found, will capture new one")
