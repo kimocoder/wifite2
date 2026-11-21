@@ -33,6 +33,13 @@ class Wlancap2wpasec(Dependency):
             return True
         return super().exists()
 
+    @classmethod
+    def get_version(cls):
+        """Report the native uploader when only `requests` is available."""
+        if cls._requests_module() is not None and not Process.exists(cls.dependency_name):
+            return 'native'
+        return super().get_version()
+
     @staticmethod
     def upload(capfile, api_key, url=None, timeout=None, email=None,
                remove_on_success=False, scope=None):

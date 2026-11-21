@@ -12,7 +12,7 @@ from ..util.output import OutputManager
 
 # Check for native scanner availability
 try:
-    from ..native.scanner import NativeScanner, AccessPoint as NativeAP, is_available as native_scanner_available
+    from ..native.scanner import NativeScanner, is_available as native_scanner_available
     NATIVE_SCANNER_AVAILABLE = native_scanner_available()
 except (ImportError, Exception):
     NATIVE_SCANNER_AVAILABLE = False

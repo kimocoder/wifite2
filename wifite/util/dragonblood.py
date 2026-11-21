@@ -18,8 +18,9 @@ References:
 - https://papers.mathyvanhoef.com/dragonblood.pdf
 """
 
-from ..util.color import Color
+from typing import ClassVar
 
+from ..util.color import Color
 
 class DragonbloodDetector:
     """
@@ -32,7 +33,7 @@ class DragonbloodDetector:
     """
     
     # Weak SAE groups vulnerable to timing attacks
-    WEAK_SAE_GROUPS = {
+    WEAK_SAE_GROUPS: ClassVar[dict[int, str]] = {
         22: "1024-bit MODP (Weak - timing attack vulnerable)",
         23: "2048-bit MODP (Weak - timing attack vulnerable)", 
         24: "2048-bit MODP (Weak - timing attack vulnerable)",
@@ -41,14 +42,14 @@ class DragonbloodDetector:
     }
     
     # Recommended secure groups
-    SECURE_SAE_GROUPS = {
+    SECURE_SAE_GROUPS: ClassVar[dict[int, str]] = {
         19: "256-bit Random ECP (Secure - recommended)",
         20: "384-bit Random ECP (Secure - recommended)",
         21: "521-bit Random ECP (Secure - recommended)"
     }
     
     # Known vulnerable implementations (pre-patch)
-    VULNERABLE_PATTERNS = {
+    VULNERABLE_PATTERNS: ClassVar[dict[str, dict[str, list[str]]]] = {
         'hostapd': {
             'versions': ['< 2.9'],
             'vulnerabilities': ['CVE-2019-13377', 'CVE-2019-13456']
@@ -354,7 +355,6 @@ class DragonbloodDetector:
                         risk_color, risk.upper()))
         else:
             Color.pl('\n{+} {G}No vulnerable networks detected{W}')
-
 
 if __name__ == '__main__':
     # Test the detector

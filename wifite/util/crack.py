@@ -3,6 +3,7 @@
 
 import os
 from json import loads
+from typing import ClassVar
 from ..config import Configuration
 from ..util.input import interactive_input
 from ..model.handshake import Handshake
@@ -17,7 +18,6 @@ from ..tools.john import John
 from ..util.color import Color
 from ..util.process import Process
 from ..util.sae_crack import SAECracker
-
 
 def print_cracking_command(tool_name, command_parts):
     """
@@ -34,7 +34,6 @@ def print_cracking_command(tool_name, command_parts):
     from ..util.color import Color
     cmd_str = ' '.join(shlex.quote(str(p)) for p in command_parts)
     Color.pl('{+} {C}[crack-cmd]{W} {G}%s{W}: {W}%s' % (tool_name, cmd_str))
-
 
 def decode_hex_essid_if_needed(essid):
     """
@@ -96,18 +95,17 @@ def decode_hex_essid_if_needed(essid):
             Color.pl('{!} {O}Hex ESSID decode failed for %s: %s{W}' % (essid, str(e)))
         return essid
 
-
 class CrackHelper:
     """Manages handshake retrieval, selection, and running the cracking commands."""
 
-    TYPES = {
+    TYPES: ClassVar[dict[str, str]] = {
         '4-WAY': '4-Way Handshake',
         'PMKID': 'PMKID Hash',
         'SAE': 'WPA3-SAE Handshake'
     }
 
     # Tools for cracking & their dependencies. (RaduNico's code btw!)
-    possible_tools = [
+    possible_tools: ClassVar[list[tuple[str, list[type]]]] = [
         ('aircrack', [Aircrack]),
         ('hashcat', [Hashcat, HcxPcapngTool]),
         ('john', [John, HcxPcapngTool]),
@@ -267,8 +265,7 @@ class CrackHelper:
                         Color.pl('{!} {O}Skipping malformed filename: %s{W}' % hs_file)
                     continue
                 
-                # Extract parts: name is first, bssid and date are last two
-                name = parts[0]
+                # Extract parts: bssid and date are last two
                 date = parts[-1]
                 bssid = parts[-2]
                 # Everything in between is the ESSID (may contain underscores)
@@ -473,7 +470,6 @@ class CrackHelper:
                 return CrackResultSAE(hs['bssid'], hs['essid'], hs['filename'], key)
 
         return None
-
 
 if __name__ == '__main__':
     CrackHelper.run()

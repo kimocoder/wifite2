@@ -162,13 +162,17 @@ class ClassicAttackOutput:
                 - metrics: Dict of attack-specific metrics
         """
         status = progress_data.get('status', '')
-        progress = progress_data.get('progress', 0)
         metrics = progress_data.get('metrics', {})
         
         # Print status
         if status:
             Color.pl('{.} %s' % status)
         
+        # Print progress when the attack reports it
+        if progress_data.get('progress') is not None:
+            Color.pl('{.} Progress: {C}%d%%{W}' % int(
+                float(progress_data['progress']) * 100))
+
         # Print metrics
         for key, value in metrics.items():
             Color.pl('{.} %s: {C}%s{W}' % (key, value))

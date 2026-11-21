@@ -13,7 +13,7 @@ from ..model.target import WPSState
 from ..util.process import Process
 import re
 import select
-
+from typing import ClassVar
 
 class Tshark(Dependency):
     """Wrapper for Tshark program with Scapy fallback."""
@@ -21,7 +21,7 @@ class Tshark(Dependency):
     dependency_required = False
     dependency_name = 'tshark'
     dependency_url = 'apt install tshark'
-    dependency_packages = {
+    dependency_packages: ClassVar[dict[str, str]] = {
         'apt': 'tshark', 'pacman': 'wireshark-cli',
         'dnf': 'wireshark-cli', 'brew': 'wireshark',
     }
@@ -223,7 +223,7 @@ class Tshark(Dependency):
             'tshark',
             '-r', capfile,
             '-n',
-            '-Y', '"wlan.fc.type_subtype == 0x08 || wlan.fc.type_subtype == 0x05"',
+            '-Y', 'wlan.fc.type_subtype == 0x08 || wlan.fc.type_subtype == 0x05',
         ]
 
         tshark = Process(command, devnull=False)
@@ -235,6 +235,7 @@ class Tshark(Dependency):
                 continue
 
             (src, dst, essid) = match.groups()
+            essid = essid.strip().strip('"')
 
             if dst.lower() == 'ff:ff:ff:ff:ff:ff':
                 continue
@@ -358,7 +359,6 @@ class Tshark(Dependency):
             return True
         return cls._can_use_native()
 
-
 class TsharkMonitor:
     """
     Wrapper for tshark in monitoring mode for attack detection.
@@ -449,7 +449,6 @@ class TsharkMonitor:
         if self.proc:
             self.proc.interrupt()
             self.proc = None
-
 
 if __name__ == '__main__':
     test_file = './tests/files/contains_wps_network.cap'

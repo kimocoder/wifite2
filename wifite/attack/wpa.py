@@ -137,7 +137,6 @@ class AttackWPA(Attack):
         Tries to bring the interface back to a working state.
         """
         from ..tools.airmon import Airmon
-        from ..util.logger import log_info
         
         log_info('AttackWPA', 'Attempting interface recovery')
         Color.pl('{!} {O}Attempting interface recovery...{W}')
@@ -156,8 +155,8 @@ class AttackWPA(Attack):
             try:
                 Airmon.stop(iface)
                 time.sleep(1)
-            except Exception:
-                pass
+            except Exception as e:
+                log_debug('AttackWPA', f'Failed to stop {iface}: {e}')
             
             # Get base interface name (remove 'mon' suffix if present)
             base_iface = iface.replace('mon', '') if iface.endswith('mon') else iface
@@ -194,13 +193,11 @@ class AttackWPA(Attack):
         Returns:
             Result of operation, or None if all retries failed
         """
-        from ..util.logger import log_info
         
         if max_retries is None:
             max_retries = self.MAX_RETRY_ATTEMPTS
         
         self._retry_count = 0
-        last_exception = None
         
         while self._retry_count < max_retries:
             try:
@@ -216,7 +213,6 @@ class AttackWPA(Attack):
                     return result
                     
             except (OSError, subprocess.CalledProcessError, MemoryError) as e:
-                last_exception = e
                 self._retry_count += 1
                 
                 if self._retry_count < max_retries:
@@ -630,7 +626,6 @@ class AttackWPA(Attack):
             if target_uses_ft and not Configuration.use_hcxdump:
                 Color.pl('{+} {C}WPA-FT (802.11r) target: using hcxdumptool capture{W}')
                 Color.pl('{!} {O}Cracking FT hashes requires hashcat 8.0.0+{W}')
-            from ..util.logger import log_info, log_warning, log_debug
             log_debug('AttackWPA', 'Checking hcxdumptool availability for --hcxdump mode')
             
             # Check if hcxdumptool is available
@@ -656,7 +651,6 @@ class AttackWPA(Attack):
                         self.view.add_log('Using hcxdumptool mode for capture')
         
         try:
-            from ..util.logger import log_info, log_debug, log_error
             
             # Extract interfaces from assignment
             self.capture_interface = self.interface_assignment.primary
@@ -877,7 +871,6 @@ class AttackWPA(Attack):
                 copy(cap_file, temp_file)
                 
                 # Check cap file for handshake
-                from ..util.logger import log_debug, log_info
                 bssid = airodump_target.bssid
                 essid = airodump_target.essid if airodump_target.essid_known else None
                 log_debug('AttackWPA', f'Checking for handshake in capture file (BSSID: {bssid})')
@@ -976,7 +969,6 @@ class AttackWPA(Attack):
         immediate readback gets a short settle window before it is treated as
         a persistent mismatch (which is a failure, not a success).
         """
-        from ..util.logger import log_info
         from ..config import Configuration
 
         target_channel = self.target.channel
@@ -1157,12 +1149,10 @@ class AttackWPA(Attack):
             try:
                 for client in clients:
                     if Configuration.verbose > 1:
-                        from ..util.logger import log_debug
                         client_name = '*broadcast*' if client is None else client
                         log_debug('AttackWPA', f'Sending deauth to {client_name} from {interface}')
                     self._deauth_once(bssid, client, interface=interface)
             except Exception as e:
-                from ..util.logger import log_debug
                 log_debug('AttackWPA', f'Deauth error on {interface}: {e}')
         
         # Display status
@@ -1235,7 +1225,7 @@ class AttackWPA(Attack):
                         band=getattr(self.target, 'band', None),
                         scope=self.scope) as hcxdump:
             if self.scope:
-                self.scope.register_health('hcxdumptool', hcxdump.is_running)
+                self.scope.register_health('hcxdumptool', hcxdump.is_running, required=False)
 
             Color.clear_entire_line()
             Color.pattack('WPA', self.target, 'Handshake capture', 
@@ -1280,7 +1270,6 @@ class AttackWPA(Attack):
                 
                 # Check if hcxdumptool is still running
                 if not hcxdump.is_running():
-                    from ..util.logger import log_error, log_info
                     
                     # Ask the wrapper: it reads the supervisor log for scoped
                     # runs and translates hcxdumptool's own stop lines.
@@ -1288,8 +1277,8 @@ class AttackWPA(Attack):
                     try:
                         reason = _hcxdumptool_stop_hint(
                             hcxdump.get_failure_reason(), hcxdump.exitoneapol)
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        log_debug('AttackWPA', f'Could not read hcxdumptool stop reason: {e}')
                     
                     log_error('AttackWPA', f'hcxdumptool process died unexpectedly during capture. Reason: {reason if reason else "no reason reported"}')
                     log_info('AttackWPA', 'Falling back to airodump-ng capture method')
@@ -1333,7 +1322,6 @@ class AttackWPA(Attack):
                     'handshake_check_%s.22000' % self.target.bssid.replace(':', ''))
                 
                 # Filter by target BSSID when converting
-                from ..util.logger import log_debug
                 log_debug('AttackWPA', f'Checking for handshake in capture file (BSSID: {self.target.bssid})')
                 
                 if HcxPcapngTool.convert_to_hashcat(
@@ -1345,7 +1333,6 @@ class AttackWPA(Attack):
                     # Check if the hash file contains a valid handshake
                     if os.path.exists(temp_hash_file) and os.path.getsize(temp_hash_file) > 0:
                         # We got a handshake!
-                        from ..util.logger import log_info
                         log_info('AttackWPA', f'Handshake captured successfully for {self.target.bssid} [DUAL-HCX]')
                         
                         Color.clear_entire_line()
@@ -1424,7 +1411,6 @@ class AttackWPA(Attack):
             Handshake object if captured, None otherwise
         """
         from ..tools.hcxdumptool import HcxDumpTool
-        from ..util.logger import log_info
         
         handshake = None
         
@@ -1457,7 +1443,7 @@ class AttackWPA(Attack):
                         exitoneapol=6,
                         scope=self.scope) as hcxdump:
             if self.scope:
-                self.scope.register_health('hcxdumptool', hcxdump.is_running)
+                self.scope.register_health('hcxdumptool', hcxdump.is_running, required=False)
 
             Color.clear_entire_line()
             Color.pattack('WPA', self.target, 'Handshake capture', 
@@ -1521,8 +1507,8 @@ class AttackWPA(Attack):
                     try:
                         reason = _hcxdumptool_stop_hint(
                             hcxdump.get_failure_reason(), hcxdump.exitoneapol)
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        log_debug('AttackWPA', f'Could not read hcxdumptool stop reason: {e}')
                     
                     log_error('AttackWPA', f'hcxdumptool process died unexpectedly during capture. Reason: {reason if reason else "no reason reported"}')
                     Color.pl('\n{!} {R}hcxdumptool process died unexpectedly{W}')
@@ -1625,7 +1611,6 @@ class AttackWPA(Attack):
                 Color.pl('{+} {C}WPA-FT (802.11r) target: using hcxdumptool capture{W}')
                 Color.pl('{!} {O}Cracking FT hashes requires hashcat 8.0.0+{W}')
             from ..tools.hcxdumptool import HcxDumpTool
-            from ..util.logger import log_info, log_warning, log_debug
             
             log_debug('AttackWPA', 'Checking hcxdumptool availability for single interface mode')
             

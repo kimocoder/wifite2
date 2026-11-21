@@ -22,6 +22,12 @@ def validate(cls):
     if cls.use_pmkid_only and cls.dont_use_pmkid:
         Color.pl('{!} {R}Bad Configuration:{O} --pmkid and --no-pmkid are not compatible')
         raise WifiteError('Unable to attack networks: --pmkid and --no-pmkid are not compatible together')
+    if cls.use_eviltwin and cls.use_pmkid_only:
+        Color.pl('{!} {R}Bad Configuration:{O} --eviltwin and --pmkid are not compatible')
+        raise WifiteError('Unable to attack networks: --eviltwin and --pmkid are not compatible')
+    if cls.wpa3_only and getattr(cls, 'wpa_filter', False):
+        Color.pl('{!} {O}Note:{W} --wpa3-only limits attacks to WPA3, but '
+                 '--wpa also includes WPA/WPA2 targets{W}')
 
     # Validate Evil Twin configuration
     if cls.use_eviltwin:
@@ -51,7 +57,7 @@ def _validate_channel(value):
         try:
             numbers = [int(part) for part in body.split('-', 1)]
         except ValueError:
-            raise WifiteError(f'channel {token} is not a channel number or range')
+            raise WifiteError(f'channel {token} is not a channel number or range') from None
         for number in numbers:
             if not 1 <= number <= 233:
                 raise WifiteError(f'channel {token} is out of range (1-233)')
@@ -160,7 +166,7 @@ def validate_attack_monitor_config(cls):
                 Color.pl('{+} Created log directory: {G}%s{W}' % log_dir)
             except OSError as e:
                 Color.pl('{!} {R}Error: Cannot create log directory {O}%s{W}: %s' % (log_dir, str(e)))
-                raise ValueError('Invalid log file path')
+                raise ValueError('Invalid log file path') from e
 
     if cls.verbose > 0:
         Color.pl('{+} {G}Attack monitoring configuration validated{W}')
@@ -203,7 +209,8 @@ def validate_wpasec_config(cls):
     else:
         # API key is required if wpa-sec is enabled
         Color.pl('{!} {R}Error: wpa-sec upload enabled but no API key provided{W}')
-        Color.pl('{!} {O}Use {C}--wpasec-key{O} to specify your wpa-sec.stanev.org API key{W}')
+        Color.pl('{!} {O}Set {C}WIFITE_WPASEC_KEY{O} or use '
+                 '{C}--wpasec-key-file{O} to specify your wpa-sec.stanev.org API key{W}')
         raise RuntimeError('wpa-sec API key required')
 
     # Validate URL format if custom URL provided

@@ -7,11 +7,11 @@ Handles uploading captured handshakes to wpa-sec.stanev.org for online cracking.
 """
 
 import os
+from typing import ClassVar
 from ..config import Configuration
 from ..util.color import Color
 from ..util.logger import log_debug, log_info, log_warning, log_error
 from ..tools.wlancap2wpasec import Wlancap2wpasec
-
 
 class WpaSecUploader:
     """
@@ -22,7 +22,7 @@ class WpaSecUploader:
     """
     
     # Supported capture file formats (wpa-sec only accepts pcap/pcapng)
-    SUPPORTED_FORMATS = ['.cap', '.pcap', '.pcapng', '.gz']
+    SUPPORTED_FORMATS: ClassVar[list[str]] = ['.cap', '.pcap', '.pcapng', '.gz']
     
     @staticmethod
     def _validate_api_key(api_key):
@@ -332,7 +332,8 @@ class WpaSecUploader:
             
             if not Configuration.wpasec_api_key:
                 Color.pl('{!} {O}wpa-sec upload skipped: No API key configured{W}')
-                Color.pl('{!} {O}Use {C}--wpasec-key <your_api_key>{O} to set your API key{W}')
+                Color.pl('{!} {O}Set {C}WIFITE_WPASEC_KEY{O} or use '
+                         '{C}--wpasec-key-file <path>{O} to set your API key{W}')
                 Color.pl('{!} {O}Get your API key from: {C}https://wpa-sec.stanev.org{W}')
                 log_info('WpaSecUploader', 'Upload skipped: no API key configured')
                 if view:
@@ -602,7 +603,8 @@ class WpaSecUploader:
         elif 'key' in error_lower or 'auth' in error_lower or 'unauthorized' in error_lower:
             Color.pl('{!} {O}Troubleshooting: Authentication failed{W}')
             Color.pl('{!} {O}Verify your API key at: {C}https://wpa-sec.stanev.org{W}')
-            Color.pl('{!} {O}Update with: {C}--wpasec-key <your_api_key>{W}')
+            Color.pl('{!} {O}Update with: {C}--wpasec-key-file <path>{W} '
+                     'or {C}WIFITE_WPASEC_KEY{W}')
             log_debug('WpaSecUploader', 'Error category: Authentication/API key issue')
         elif 'invalid' in error_lower or 'format' in error_lower:
             Color.pl('{!} {O}Troubleshooting: Invalid capture file format{W}')
@@ -623,7 +625,6 @@ class WpaSecUploader:
             log_debug('WpaSecUploader', 'Error category: Rate limiting')
         else:
             log_debug('WpaSecUploader', 'Error category: Unknown/unclassified error')
-
 
 if __name__ == '__main__':
     # Test module

@@ -11,6 +11,7 @@ and comprehensive logging capabilities.
 
 from ..config import Configuration
 from ..util.color import Color
+from ..util.logger import log_debug
 from ..tools.tshark import TsharkMonitor
 from ..util.process import Process
 import heapq
@@ -640,8 +641,8 @@ class AttackMonitor:
         if self.log_file_handle and not self.log_file_handle.closed:
             try:
                 self.log_file_handle.close()
-            except Exception:
-                pass
+            except Exception as e:
+                log_debug('AttackMonitor', f'Failed to close log file: {e}')
 
     def display_final_statistics(self):
         """

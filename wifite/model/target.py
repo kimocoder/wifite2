@@ -7,7 +7,7 @@ import re
 import time as _time
 
 class WPSState:
-    NONE, UNLOCKED, LOCKED, UNKNOWN = list(range(4))
+    NONE, UNLOCKED, LOCKED, UNKNOWN = range(4)
 
 
 class ArchivedTarget:

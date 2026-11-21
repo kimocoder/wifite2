@@ -25,12 +25,15 @@ def parse_wpasec_args(cls, args):
     Side Effects:
         - Sets class variables for wpa-sec configuration
         - Displays configuration messages to user via Color.pl()
-        - Automatically enables wpasec_enabled if API key is provided
 
     Example:
         >>> Configuration.parse_wpasec_args(parsed_args)
         {+} option: wpa-sec API key: abc1****
         {+} option: wpa-sec automatic upload enabled (no prompts)
+
+    The key is stored but uploads stay disabled unless --wpasec is also
+    given; this avoids enabling network uploads as a side effect of passing
+    a credential.
     """
     if hasattr(args, 'wpasec_enabled') and args.wpasec_enabled:
         cls.wpasec_enabled = True
@@ -45,8 +48,6 @@ def parse_wpasec_args(cls, args):
         # Mask the API key in output for security
         masked_key = api_key[:4] + '*' * (len(api_key) - 4) if len(api_key) > 4 else '****'
         Color.pl('{+} {C}option:{W} wpa-sec API key: {G}%s{W}' % masked_key)
-        # Enable wpa-sec if API key is provided
-        cls.wpasec_enabled = True
 
     if hasattr(args, 'wpasec_auto_upload') and args.wpasec_auto_upload:
         cls.wpasec_auto_upload = True

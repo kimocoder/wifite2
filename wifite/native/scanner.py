@@ -35,9 +35,8 @@ from dataclasses import dataclass, field
 
 try:
     from scapy.all import (
-        RadioTap, Dot11, Dot11Beacon, Dot11ProbeResp, Dot11ProbeReq,
-        Dot11Elt, Dot11AssoReq, Dot11AssoResp, Dot11Auth,
-        sniff, conf as scapy_conf
+        RadioTap, Dot11, Dot11Elt,
+        sniff
     )
     SCAPY_AVAILABLE = True
 except ImportError:
@@ -596,8 +595,7 @@ class NativeScanner:
             
             # Group cipher (4 bytes)
             if offset + 4 <= len(data):
-                group_cipher = data[offset:offset + 4]
-                offset += 4
+                offset += 4  # Group cipher
             
             # Pairwise cipher count
             if offset + 2 <= len(data):

@@ -118,8 +118,8 @@ def check_native_availability() -> dict:
     status = {}
     
     try:
-        from .mac import NativeMac
-        status['mac'] = True
+        from .mac import NativeMac as _NativeMac
+        status['mac'] = _NativeMac is not None
     except Exception:
         status['mac'] = False
 
@@ -142,8 +142,8 @@ def check_native_availability() -> dict:
         status['wps'] = False
 
     try:
-        from .interface import NativeInterface
-        status['interface'] = True
+        from .interface import NativeInterface as _NativeInterface
+        status['interface'] = _NativeInterface is not None
     except Exception:
         status['interface'] = False
 

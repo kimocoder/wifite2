@@ -6,7 +6,7 @@ Reusable UI components for wifite2 TUI.
 Provides common visual elements used across different views.
 """
 
-from typing import Optional
+from typing import Optional, ClassVar
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
@@ -49,7 +49,7 @@ class EncryptionBadge:
     """Color-coded encryption type badge."""
 
     # Encryption type colors
-    COLORS = {
+    COLORS: ClassVar[dict[str, str]] = {
         "WEP": "red",
         "WPA": "yellow",
         "WPA2": "yellow",

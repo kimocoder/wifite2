@@ -149,7 +149,7 @@ class AttackOWE(Attack):
                           output_file_prefix='owe_downgrade') as airodump:
 
                 try:
-                    airodump_target = self.wait_for_target(airodump)
+                    self.wait_for_target(airodump)
                 except Exception as e:
                     Color.pl('{!} {R}Target not found: %s{W}' % str(e))
                     return False

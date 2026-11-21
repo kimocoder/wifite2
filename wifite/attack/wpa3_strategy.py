@@ -9,7 +9,7 @@ for WPA3-SAE networks based on target capabilities, including transition
 mode detection, PMF status, and Dragonblood vulnerability indicators.
 """
 
-from typing import Any, Optional
+from typing import Any, Optional, ClassVar
 from wifite.util.wpa3 import WPA3Detector
 
 
@@ -38,7 +38,7 @@ class WPA3AttackStrategy:
     PASSIVE = 'passive'
 
     # Strategy descriptions for user display
-    STRATEGY_DESCRIPTIONS = {
+    STRATEGY_DESCRIPTIONS: ClassVar[dict[str, str]] = {
         DOWNGRADE: 'Transition Mode Downgrade Attack',
         DRAGONBLOOD: 'Dragonblood Vulnerability Exploitation',
         SAE_CAPTURE: 'Standard SAE Handshake Capture',
@@ -46,7 +46,7 @@ class WPA3AttackStrategy:
     }
 
     # Strategy explanations for user display
-    STRATEGY_EXPLANATIONS = {
+    STRATEGY_EXPLANATIONS: ClassVar[dict[str, str]] = {
         DOWNGRADE: 'Network supports both WPA2 and WPA3. Forcing WPA2 connection for traditional handshake capture.',
         DRAGONBLOOD: 'Network appears vulnerable to Dragonblood attacks. Attempting timing-based exploitation.',
         SAE_CAPTURE: 'Capturing WPA3-SAE handshake for offline dictionary attack.',

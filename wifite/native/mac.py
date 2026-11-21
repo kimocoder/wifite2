@@ -29,7 +29,7 @@ import secrets
 import fcntl
 import socket
 import struct
-from typing import Optional
+from typing import Optional, ClassVar
 
 
 class NativeMac:
@@ -46,10 +46,10 @@ class NativeMac:
     IFF_UP = 0x1            # Interface is up
     
     # Cache for original MACs (to support reset)
-    _original_macs = {}
+    _original_macs: ClassVar[dict] = {}
     
     # Common vendor OUI prefixes (for realistic random MACs)
-    VENDOR_OUIS = [
+    VENDOR_OUIS: ClassVar[list[str]] = [
         '00:0C:29',  # VMware
         '00:50:56',  # VMware
         '00:1A:11',  # Google

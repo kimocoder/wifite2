@@ -28,7 +28,7 @@ from typing import Optional
 try:
     from scapy.all import (
         RadioTap, Dot11, Dot11Beacon, Dot11Elt, Dot11ProbeResp,
-        sendp, sniff, conf as scapy_conf
+        sendp, sniff
     )
     SCAPY_AVAILABLE = True
 except ImportError:

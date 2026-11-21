@@ -5,9 +5,9 @@ import os
 import shlex
 import shutil
 import subprocess
+from typing import ClassVar
 
 from ..util.input import interactive_input
-
 
 class PackageManager:
     """
@@ -18,7 +18,7 @@ class PackageManager:
     _detected = None
 
     # Map of package manager name -> (check_cmd, install_cmd_template, update_cmd)
-    MANAGERS = {
+    MANAGERS: ClassVar[dict[str, tuple[str, str, str]]] = {
         'apt':     ('apt',     'apt install -y {pkg}',     'apt update'),
         'pacman':  ('pacman',  'pacman -S --noconfirm {pkg}', 'pacman -Sy'),
         'dnf':     ('dnf',     'dnf install -y {pkg}',     'dnf check-update'),
@@ -30,7 +30,7 @@ class PackageManager:
     }
 
     # Priority order for detection
-    PRIORITY = ['apt', 'pacman', 'dnf', 'yum', 'apk', 'zypper', 'emerge', 'brew']
+    PRIORITY: ClassVar[list[str]] = ['apt', 'pacman', 'dnf', 'yum', 'apk', 'zypper', 'emerge', 'brew']
 
     @classmethod
     def detect(cls):
@@ -91,7 +91,6 @@ class PackageManager:
         except Exception as e:
             return False, str(e)
 
-
 class Dependency:
     """
     Base class for all external tool wrappers.
@@ -112,7 +111,7 @@ class Dependency:
     
     # Native alternatives map: dependency_name -> (description, check_function)
     # The check function returns True if the native alternative is available
-    NATIVE_ALTERNATIVES = {
+    NATIVE_ALTERNATIVES: ClassVar[dict[str, tuple[str, str]]] = {
         'macchanger': ('Native MAC manipulation via sysfs/ioctl', '_check_native_mac'),
         'tshark': ('Native packet analysis via Scapy', '_check_native_scapy'),
         'hcxdumptool': ('Native PMKID capture via Scapy (basic)', '_check_native_pmkid'),
@@ -122,8 +121,8 @@ class Dependency:
     def _check_native_mac(cls) -> bool:
         """Check if native MAC manipulation is available."""
         try:
-            from ..native.mac import NativeMac
-            return True
+            from ..native.mac import NativeMac as _NativeMac
+            return _NativeMac is not None
         except ImportError:
             return False
     
@@ -153,10 +152,10 @@ class Dependency:
     dependency_category = None   # Optional: category label
     dependency_min_version = None  # Optional: minimum required version
 
-    required_attr_names = ['dependency_name', 'dependency_url', 'dependency_required']
+    required_attr_names: ClassVar[list[str]] = ['dependency_name', 'dependency_url', 'dependency_required']
     
     # Known minimum versions for critical functionality
-    MINIMUM_VERSIONS = {
+    MINIMUM_VERSIONS: ClassVar[dict[str, str]] = {
         # Wifite drives the hcxdumptool -w / -c <channel><band> syntax, which
         # was introduced in 7.0.0; older releases silently fail to capture.
         'hcxdumptool': '7.0.0',
@@ -179,7 +178,7 @@ class Dependency:
     CATEGORY_WPASEC = 'wpasec'       # wlancap2wpasec
     CATEGORY_NEXMON = 'nexmon'       # nexutil (patched Broadcom firmware)
 
-    CATEGORY_LABELS = {
+    CATEGORY_LABELS: ClassVar[dict[str, str]] = {
         CATEGORY_CORE:     'Core (required)',
         CATEGORY_WPS:      'WPS Attacks',
         CATEGORY_CRACK:    'Cracking & Handshakes',
@@ -296,7 +295,7 @@ class Dependency:
         n1.extend([0] * (max_len - len(n1)))
         n2.extend([0] * (max_len - len(n2)))
         
-        for a, b in zip(n1, n2):
+        for a, b in zip(n1, n2, strict=True):
             if a < b:
                 return -1
             elif a > b:

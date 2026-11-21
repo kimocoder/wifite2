@@ -76,8 +76,9 @@ class CrackResult:
     def display(cls, result_type):
         """ Show targets from results file """
         name = cls.cracked_file
+        what = 'cracked' if result_type == 'cracked' else 'ignored'
         if not os.path.exists(name):
-            Color.pl('{!} {O}file {C}%s{O} not found{W}' % name)
+            Color.pl('{!} {O}No %s results recorded yet{W}' % what)
             return
 
         targets = cls.load_all()
@@ -89,7 +90,7 @@ class CrackResult:
             targets = [item for item in targets if item.get('type') == 'IGN']
 
         if len(targets) == 0:
-            Color.pl('{!} {R}no results found in {O}%s{W}' % name)
+            Color.pl('{!} {O}No %s results recorded yet{W}' % what)
             return
 
         Color.pl('\n{+} Displaying {G}%d{W} %s target(s) from {C}%s{W}\n' % (

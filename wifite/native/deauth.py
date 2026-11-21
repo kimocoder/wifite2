@@ -36,7 +36,7 @@ Reason Codes:
 
 import time
 from threading import Thread, Event
-from typing import Optional, Callable
+from typing import Optional, Callable, ClassVar
 
 try:
     from scapy.all import (
@@ -68,7 +68,7 @@ class ScapyDeauth:
     REASON_CLASS3_FROM_NONASSOC = 7
     
     # Default reason codes to cycle through (mimics aireplay behavior)
-    DEFAULT_REASONS = [REASON_LEAVING, REASON_CLASS3_FROM_NONASSOC, REASON_UNSPECIFIED]
+    DEFAULT_REASONS: ClassVar[list[int]] = [REASON_LEAVING, REASON_CLASS3_FROM_NONASSOC, REASON_UNSPECIFIED]
     
     # Broadcast address
     BROADCAST = 'FF:FF:FF:FF:FF:FF'
@@ -322,7 +322,6 @@ class ContinuousDeauth(Thread):
             return
         
         self.start_time = time.time()
-        target = self.client_mac or ScapyDeauth.BROADCAST
         
         while not self._stop_event.is_set():
             # Check if paused

@@ -58,7 +58,7 @@ class Handshake:
                 )
                 self.bssid = chosen_bssid
                 self.essid = chosen_essid
-        elif not self.essid and self.bssid and len(pairs) > 1:
+        elif not self.essid and self.bssid and len(pairs) > 0:
             # BSSID is already set (e.g. from attack context or filename); try to match it.
             matched = next(
                 ((bssid, essid) for (bssid, essid) in pairs if bssid.lower() == self.bssid.lower()),
@@ -389,6 +389,7 @@ class Handshake:
                 capfiles = []
             if not capfiles:
                 Color.pl('{!} {R}no .cap files found in {O}"./hs"{W}\n')
+                raise WifiteError('No .cap files found in "./hs"')
         else:
             capfiles = [Configuration.check_handshake]
 

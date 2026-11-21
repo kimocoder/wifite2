@@ -32,7 +32,7 @@ import re
 import socket
 import struct
 import fcntl
-from typing import Optional
+from typing import Optional, ClassVar
 from dataclasses import dataclass
 
 
@@ -80,7 +80,7 @@ class NativeInterface:
     IW_MODE_MONITOR = 6
     IW_MODE_MESH = 7
     
-    MODE_NAMES = {
+    MODE_NAMES: ClassVar[dict[int, str]] = {
         IW_MODE_AUTO: 'auto',
         IW_MODE_ADHOC: 'ad-hoc',
         IW_MODE_MANAGED: 'managed',
@@ -92,14 +92,14 @@ class NativeInterface:
     }
     
     # Channel to frequency mapping (2.4 GHz)
-    CHANNEL_FREQ_24 = {
+    CHANNEL_FREQ_24: ClassVar[dict[int, int]] = {
         1: 2412, 2: 2417, 3: 2422, 4: 2427, 5: 2432,
         6: 2437, 7: 2442, 8: 2447, 9: 2452, 10: 2457,
         11: 2462, 12: 2467, 13: 2472, 14: 2484
     }
     
     # 5 GHz channels (partial list)
-    CHANNEL_FREQ_5 = {
+    CHANNEL_FREQ_5: ClassVar[dict[int, int]] = {
         36: 5180, 40: 5200, 44: 5220, 48: 5240,
         52: 5260, 56: 5280, 60: 5300, 64: 5320,
         100: 5500, 104: 5520, 108: 5540, 112: 5560,
@@ -109,7 +109,7 @@ class NativeInterface:
     }
 
     # 6 GHz channels: channel 1 is 5955 MHz, 20 MHz spacing up to 233.
-    CHANNEL_FREQ_6 = {ch: 5950 + (5 * ch) for ch in range(1, 234)}
+    CHANNEL_FREQ_6: ClassVar[dict[int, int]] = {ch: 5950 + (5 * ch) for ch in range(1, 234)}
     
     @classmethod
     def list_interfaces(cls, wireless_only: bool = False) -> list[str]:

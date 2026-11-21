@@ -906,5 +906,5 @@ class PortalServer:
         try:
             self._template_cache.clear()
             self._static_cache.clear()
-        except Exception:
-            pass
+        except Exception as e:
+            log_debug('PortalServer', f'Failed to clear caches: {e}')

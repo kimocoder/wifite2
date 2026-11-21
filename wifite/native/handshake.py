@@ -90,7 +90,7 @@ class ScapyHandshake:
             
             # Find BSSIDs with complete handshakes
             valid_bssids = set()
-            for (target, client), messages in handshakes.items():
+            for (target, _client), messages in handshakes.items():
                 if cls._is_complete_handshake(messages):
                     valid_bssids.add(target)
             

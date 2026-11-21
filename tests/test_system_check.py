@@ -435,5 +435,44 @@ class TestRunSystemCheck(unittest.TestCase):
         mock_render.assert_called_once()
 
 
+class TestNativeWpasecReporting(unittest.TestCase):
+    """The wpa-sec row reflects the native uploader, not only hcxtools."""
+
+    def test_get_version_reports_native_without_binary(self):
+        from wifite.tools.wlancap2wpasec import Wlancap2wpasec
+
+        with patch.object(Wlancap2wpasec, '_requests_module', return_value=object()), \
+                patch('wifite.tools.wlancap2wpasec.Process.exists',
+                      return_value=False):
+            self.assertEqual(Wlancap2wpasec.get_version(), 'native')
+
+    def test_check_tools_marks_native_wpasec_as_found(self):
+        import shutil
+
+        from wifite.tools.wlancap2wpasec import Wlancap2wpasec
+
+        real_which = shutil.which
+
+        def fake_which(name):
+            if name == 'wlancap2wpasec':
+                return None
+            return real_which(name)
+
+        checker = SystemCheck()
+        with patch('wifite.util.system_check.shutil.which',
+                   side_effect=fake_which), \
+                patch.object(SystemCheck, '_get_tool_version',
+                             return_value=None), \
+                patch.object(Wlancap2wpasec, 'exists', return_value=True), \
+                patch.object(Wlancap2wpasec, 'get_version',
+                             return_value='native'):
+            rows = checker.check_tools()
+
+        row = next(r for r in rows if r.name == 'wlancap2wpasec')
+        self.assertTrue(row.found)
+        self.assertEqual(row.path, 'native (requests)')
+        self.assertEqual(row.version, 'native')
+
+
 if __name__ == '__main__':
     unittest.main()

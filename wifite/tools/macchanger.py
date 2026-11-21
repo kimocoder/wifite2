@@ -10,6 +10,7 @@ Uses native Python implementation when possible, falls back to macchanger binary
 from .dependency import Dependency
 from ..tools.ip import Ip
 from ..util.color import Color
+from ..util.logger import log_debug
 
 
 class Macchanger(Dependency):
@@ -28,8 +29,8 @@ class Macchanger(Dependency):
         """Check if native MAC manipulation is available."""
         if cls._use_native is None:
             try:
-                from ..native.mac import NativeMac
-                cls._use_native = True
+                from ..native.mac import NativeMac as _NativeMac
+                cls._use_native = _NativeMac is not None
             except ImportError:
                 cls._use_native = False
         return cls._use_native
@@ -103,9 +104,9 @@ class Macchanger(Dependency):
                     cls.is_changed = False
                     return
                     
-            except Exception:
+            except Exception as e:
                 # Fall back to macchanger binary
-                pass
+                log_debug('Macchanger', f'Native MAC change failed: {e}')
         
         # Fallback: use macchanger binary
         # -p to reset to permanent MAC address

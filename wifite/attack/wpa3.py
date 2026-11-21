@@ -869,7 +869,6 @@ class AttackWPA3SAE(Attack):
             # still produce a warning.
             no_clients_warn_after = max(5, timeout_value // 2)
             deauth_timer = Timer(Configuration.wpa_deauth_timeout)
-            sae_detected = False
             deauth_attempts = 0
             max_deauth_attempts = 10
             no_clients_warning_shown = False
@@ -915,9 +914,9 @@ class AttackWPA3SAE(Attack):
                         airodump_target = self.wait_for_target(airodump, timeout=1)
                         if airodump_target:
                             self.clients = airodump_target.clients
-                    except Exception:
+                    except Exception as e:
                         # Target temporarily lost, continue
-                        pass
+                        log_debug('AttackWPA3', f'Client tracking failed: {e}')
                 
                 # Check if we have clients
                 if airodump is not None and len(self.clients) == 0:
@@ -968,7 +967,6 @@ class AttackWPA3SAE(Attack):
                     if deauth_success:
                         deauth_attempts += 1
                         deauth_timer = Timer(Configuration.wpa_deauth_timeout)
-                        sae_detected = True
                     
                     # Check if we've exceeded max deauth attempts
                     if deauth_attempts >= max_deauth_attempts:

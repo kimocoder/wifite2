@@ -13,10 +13,10 @@ import threading
 import subprocess
 import weakref
 from subprocess import Popen, PIPE, DEVNULL
+from typing import ClassVar
 from ..util.color import Color
 from ..config import Configuration
-from ..util.logger import log_debug, log_info, log_warning, log_error
-
+from ..util.logger import log_debug, log_info, log_warning
 
 class ProcessManager:
     """Track processes and clean up only explicitly selected ownership scopes."""
@@ -92,7 +92,6 @@ class ProcessManager:
             except Exception as e:
                 log_debug('ProcessManager', f'Shutdown cleanup failed: {e}')
 
-
 class Process:
     """ Represents a running/ran process with enhanced cleanup """
 
@@ -102,7 +101,7 @@ class Process:
         return DEVNULL
 
     # Cache of resolved full tool paths to avoid repeated shutil.which() calls
-    _tool_path_cache: dict = {}
+    _tool_path_cache: ClassVar[dict] = {}
 
     @staticmethod
     def _resolve_tool(name: str) -> str:
@@ -628,7 +627,6 @@ class Process:
             log_debug('Process', f'Error checking FD limit: {str(e)}')
             pass
         return False
-
 
 if __name__ == '__main__':
     Configuration.initialize(False)

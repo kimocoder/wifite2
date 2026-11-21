@@ -241,7 +241,7 @@ class Airmon(Dependency):
                     monitor = Nexmon.start_monitor(iface_name)
                 except Exception as e:
                     Color.pl('{R}failed (%s).{W}' % e)
-                    raise WifiteError(f'Failed to enable Nexmon monitor mode on {iface_name}: {e}')
+                    raise WifiteError(f'Failed to enable Nexmon monitor mode on {iface_name}: {e}') from e
                 cls.use_ipiw = True
                 Color.pl('{G}enabled{W}!')
                 return monitor
@@ -334,7 +334,7 @@ class Airmon(Dependency):
         enabled_for_re = re.compile(r'.*\(mac80211 monitor mode (?:(?:vif )?enabled|already enabled) for (?:\[\w+])?(\w+).*on (?:\[\w+])?\d+\)?.*')
         lines = airmon_output.split('\n')
 
-        for index, line in enumerate(lines):
+        for line in lines:
             if 'mac80211 monitor mode' not in line:
                 continue
 
@@ -483,10 +483,6 @@ class Airmon(Dependency):
 
         # Checking for systemd, otherwise assume openrc
 
-        if os.path.exists('/usr/lib/systemd/systemd'):
-            init_system = 'systemd'
-        else:
-            init_system = 'openrc'
         # TODO: add support for other unorthodox init systems (maybe?)
 
         # Conflicting process IDs and names

@@ -110,14 +110,22 @@ class TestEnvApiKey(unittest.TestCase):
         self.assertIsNone(Configuration.wpasec_api_key)
         self.assertFalse(Configuration.wpasec_enabled)
 
-    def test_command_line_key_wins(self):
-        cli_key = 'b' * 32
-        args = SimpleNamespace(wpasec_enabled=True, wpasec_api_key=cli_key)
+    def test_key_file_alone_does_not_enable_uploads(self):
+        args = SimpleNamespace(wpasec_enabled=False, wpasec_api_key=KEY)
+        with patch('wifite.config.parsers.wpasec.Color.pl'):
+            parse_wpasec_args(Configuration, args)
+
+        self.assertEqual(Configuration.wpasec_api_key, KEY)
+        self.assertFalse(Configuration.wpasec_enabled)
+
+    def test_key_file_value_wins_over_environment(self):
+        file_key = 'b' * 32
+        args = SimpleNamespace(wpasec_enabled=True, wpasec_api_key=file_key)
         with patch.dict(os.environ, {'WIFITE_WPASEC_KEY': KEY}), \
                 patch('wifite.config.parsers.wpasec.Color.pl'):
             parse_wpasec_args(Configuration, args)
 
-        self.assertEqual(Configuration.wpasec_api_key, cli_key)
+        self.assertEqual(Configuration.wpasec_api_key, file_key)
 
 
 if __name__ == '__main__':

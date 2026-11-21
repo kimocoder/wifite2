@@ -5,6 +5,7 @@ from .dependency import Dependency
 from ..config import Configuration
 from ..util.color import Color
 from ..util.process import Process
+from ..util.logger import log_debug
 
 import re
 import time
@@ -83,8 +84,8 @@ class CowpattyCracker:
                 line = (raw.decode('utf-8', errors='replace')
                         if isinstance(raw, bytes) else raw).rstrip('\r\n')
                 self._parse_line(line)
-        except Exception:
-            pass
+        except Exception as e:
+            log_debug('Cowpatty', f'Failed to read process output: {e}')
 
     def _parse_line(self, line):
         """Parse a single cowpatty stdout line."""

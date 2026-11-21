@@ -23,12 +23,14 @@ import subprocess
 import shutil
 from typing import Optional
 from dataclasses import dataclass, field
+
+from .logger import log_debug
 from enum import Enum
 
 
 class CheckStatus(Enum):
     """Status for individual check results."""
-    PASS = 'PASS'
+    PASS = 'PASS'  # noqa: S105  # enum member, not a credential
     WARN = 'WARN'
     FAIL = 'FAIL'
     SKIP = 'SKIP'
@@ -171,8 +173,8 @@ class SystemCheck:
                     if result.returncode == 0:
                         pids = result.stdout.strip().split('\n')
                         conflicts.append(f'{proc_name} (PID: {", ".join(pids)})')
-                except Exception:
-                    pass
+                except Exception as e:
+                    log_debug('SystemCheck', f'Could not check process {proc_name}: {e}')
 
             if conflicts:
                 results.append(CheckResult('Conflicting processes', CheckStatus.WARN,
@@ -243,7 +245,7 @@ class SystemCheck:
         ]
 
         results = []
-        for name, required, category, min_ver, url in tools_spec:
+        for name, required, category, min_ver, _url in tools_spec:
             result = ToolCheckResult(
                 name=name,
                 found=False,
@@ -251,6 +253,17 @@ class SystemCheck:
                 category=category,
                 min_version=min_ver,
             )
+
+            # wpa-sec uploads prefer the native requests-based uploader, so
+            # the hcxtools CLI is not required for this row to be available.
+            if name == 'wlancap2wpasec' and shutil.which(name) is None:
+                from ..tools.wlancap2wpasec import Wlancap2wpasec
+                if Wlancap2wpasec.exists():
+                    result.found = True
+                    result.path = 'native (requests)'
+                    result.version = Wlancap2wpasec.get_version()
+                    results.append(result)
+                    continue
 
             # Check if binary exists
             path = shutil.which(name)
@@ -298,8 +311,8 @@ class SystemCheck:
                 match = re.search(r'(\d+\.\d+)', content)
                 if match:
                     return match.group(1)
-            except Exception:
-                pass
+            except Exception as e:
+                log_debug('SystemCheck', f'Could not read {name} version: {e}')
 
         if name == 'john':
             try:
@@ -315,8 +328,8 @@ class SystemCheck:
                 )
                 if match:
                     return match.group(1)
-            except Exception:
-                pass
+            except Exception as e:
+                log_debug('SystemCheck', f'Could not read john version: {e}')
             return None
 
         for flag in ['--version', '-v', '-V', 'version']:
@@ -355,8 +368,8 @@ class SystemCheck:
             try:
                 from ..tools.iw import Iw
                 wireless_ifaces = Iw.get_interfaces()
-            except Exception:
-                pass
+            except Exception as e:
+                log_debug('SystemCheck', f'Could not enumerate interfaces with iw: {e}')
 
         for iface in wireless_ifaces:
             result = InterfaceCheckResult(name=iface)
@@ -367,8 +380,8 @@ class SystemCheck:
                                      capture_output=True, text=True, timeout=5)
                 if m := re.search(r'wiphy\s+(\d+)', out.stdout):
                     result.phy = f'phy{m.group(1)}'
-            except Exception:
-                pass
+            except Exception as e:
+                log_debug('SystemCheck', f'Could not read PHY for {iface}: {e}')
 
             # Driver (sysfs)
             try:
@@ -386,8 +399,8 @@ class SystemCheck:
                     result.chipset = info.chipset
                 elif result.driver in InterfaceManager.DRIVER_CHIPSET_MAP:
                     result.chipset = InterfaceManager.DRIVER_CHIPSET_MAP[result.driver]
-            except Exception:
-                pass
+            except Exception as e:
+                log_debug('SystemCheck', f'Could not determine chipset for {iface}: {e}')
 
             # MAC address
             try:
@@ -408,8 +421,8 @@ class SystemCheck:
                     result.mode = 'AP'
                 elif m := re.search(r'type\s+(\w+)', out.stdout):
                     result.mode = m.group(1).lower()
-            except Exception:
-                pass
+            except Exception as e:
+                log_debug('SystemCheck', f'Could not determine mode for {iface}: {e}')
 
             # Interface up/down. Reuse InterfaceManager's helper: it checks
             # the netdev IFF_UP flag, whereas operstate reports carrier state
@@ -418,8 +431,8 @@ class SystemCheck:
             try:
                 from .interface_manager import InterfaceManager
                 result.is_up = InterfaceManager._is_interface_up(iface)
-            except Exception:
-                pass
+            except Exception as e:
+                log_debug('SystemCheck', f'Could not read link state for {iface}: {e}')
 
             # Supported modes and bands from iw phy info
             if result.phy != 'unknown':
@@ -491,8 +504,8 @@ class SystemCheck:
                 result.supports_monitor = bool(caps and caps.native_monitor_ready)
                 result.supports_injection = bool(caps and caps.injection)
 
-        except Exception:
-            pass
+        except Exception as e:
+            log_debug('SystemCheck', f'Interface capability probe failed: {e}')
 
     def _smoke_test_monitor(self, iface: str) -> bool:
         """
@@ -543,8 +556,8 @@ class SystemCheck:
                                capture_output=True, timeout=3)
                 subprocess.run(['ip', 'link', 'set', iface, 'up'],
                                capture_output=True, timeout=3)
-            except Exception:
-                pass
+            except Exception as e:
+                log_debug('SystemCheck', f'Could not restore {iface}: {e}')
             return False
 
     # ================================================================

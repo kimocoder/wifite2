@@ -13,6 +13,8 @@ import subprocess
 import time
 import threading
 
+from ..util.logger import log_debug
+
 
 class JohnCracker:
     """
@@ -73,7 +75,6 @@ class JohnCracker:
         except Exception as e:
             # Reader thread is best-effort (progress display only); log so a
             # crash here doesn't silently stop progress updates without a trace.
-            from ..util.logger import log_debug
             log_debug('John', 'Progress reader thread stopped: %s' % e)
 
     def _parse_progress(self, line):
@@ -140,8 +141,8 @@ class JohnCracker:
                 parts = line.split(':')
                 if len(parts) >= 2 and parts[1]:
                     return parts[1]
-        except Exception:
-            pass
+        except Exception as e:
+            log_debug('John', f'Failed to parse john output: {e}')
         return None
 
     def interrupt(self):
@@ -200,7 +201,6 @@ class John(Dependency):
         Falls back to 'wpapsk' when --list=formats is unsupported (non-jumbo).
         The caller should check is_wpapsk_capable() before invoking this.
         """
-        from ..util.logger import log_debug
         try:
             result = subprocess.run(
                 ['john', '--list=formats'],
@@ -224,8 +224,8 @@ class John(Dependency):
                     log_debug('John', f'john OpenCL device probe failed: {error}')
             if 'wpapsk-cuda' in combined:
                 return 'wpapsk-cuda'
-        except Exception:
-            pass
+        except Exception as e:
+            log_debug('John', f'OpenCL probe failed: {e}')
         return 'wpapsk'
 
     @staticmethod

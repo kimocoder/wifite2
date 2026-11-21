@@ -3,10 +3,18 @@
 """Dual interface-specific argument parser."""
 
 from ...util.color import Color
+from ...util.errors import WifiteError
 
 
 def parse_dual_interface_args(cls, args):
     """Parses dual interface-specific arguments"""
+    if getattr(args, 'dual_interface', False) and \
+            getattr(args, 'no_dual_interface', False):
+        Color.pl('{!} {R}Bad Configuration:{O} --dual-interface and '
+                 '--no-dual-interface are not compatible')
+        raise WifiteError('Unable to select interface mode: '
+                          '--dual-interface and --no-dual-interface are not compatible')
+
     # Check if dual interface mode is explicitly enabled
     if hasattr(args, 'dual_interface') and args.dual_interface:
         cls.dual_interface_enabled = True

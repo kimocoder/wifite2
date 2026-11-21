@@ -639,11 +639,8 @@ class CredentialValidator:
     def clear_cache(self):
         """Clear the validation cache, overwriting cached passwords first."""
         with self.cache_lock:
-            # Overwrite password data in cache keys before clearing
-            for (ssid, password) in list(self.validation_cache.keys()):
-                # Can't mutate tuple strings, but replacing the dict entry
-                # ensures the key tuple becomes unreferenced for GC
-                pass
+            # Drop every cached key so the password-bearing tuples become
+            # unreferenced and can be reclaimed by the garbage collector.
             self.validation_cache.clear()
         log_info('CredentialValidator', 'Validation cache cleared')
 

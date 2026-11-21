@@ -683,18 +683,20 @@ Wifite integrates with [wpa-sec.stanev.org](https://wpa-sec.stanev.org), a free 
 #### Quick Start
 
 ```bash
-# Enable wpa-sec uploads with your API key
-sudo wifite --wpasec --wpasec-key YOUR_API_KEY
-
-# Automatic upload mode (no prompts)
-sudo wifite --wpasec --wpasec-key YOUR_API_KEY --wpasec-auto
+# Recommended: keep the key out of the process list
+WIFITE_WPASEC_KEY=YOUR_API_KEY sudo -E wifite --wpasec --wpasec-auto
 
 # Upload with email notifications
-sudo wifite --wpasec --wpasec-key YOUR_API_KEY --wpasec-email your@email.com
+WIFITE_WPASEC_KEY=YOUR_API_KEY sudo -E wifite --wpasec --wpasec-email your@email.com
 
 # Remove capture files after successful upload
-sudo wifite --wpasec --wpasec-key YOUR_API_KEY --wpasec-auto --wpasec-remove
+WIFITE_WPASEC_KEY=YOUR_API_KEY sudo -E wifite --wpasec --wpasec-auto --wpasec-remove
+
+# Or read the key from a file (first line)
+sudo wifite --wpasec --wpasec-key-file /path/to/wpasec.key
 ```
+
+`WIFITE_WPASEC_KEY` is read when `--wpasec` is enabled and no key file is given. `sudo -E` preserves the variable; alternatively export it in root's shell before running wifite. Keep the key file root-only (`chmod 600`).
 
 #### Getting Your API Key
 
@@ -707,7 +709,7 @@ sudo wifite --wpasec --wpasec-key YOUR_API_KEY --wpasec-auto --wpasec-remove
 
 **Interactive Mode (Default)**
 ```bash
-sudo wifite --wpasec --wpasec-key YOUR_API_KEY
+sudo wifite --wpasec --wpasec-key-file /path/to/wpasec.key
 ```
 * Prompts you after each successful capture
 * Choose which handshakes to upload
@@ -715,7 +717,7 @@ sudo wifite --wpasec --wpasec-key YOUR_API_KEY
 
 **Automatic Mode**
 ```bash
-sudo wifite --wpasec --wpasec-key YOUR_API_KEY --wpasec-auto
+sudo wifite --wpasec --wpasec-key-file /path/to/wpasec.key --wpasec-auto
 ```
 * Uploads all captures automatically
 * No prompts or interruptions
@@ -726,7 +728,7 @@ sudo wifite --wpasec --wpasec-key YOUR_API_KEY --wpasec-auto
 | Option | Description | Example |
 |--------|-------------|---------|
 | `--wpasec` | Enable wpa-sec upload functionality | `--wpasec` |
-| `--wpasec-key [key]` | Your wpa-sec.stanev.org API key | `--wpasec-key abc123...` |
+| `--wpasec-key-file [path]` | File containing your wpa-sec.stanev.org API key (first line) | `--wpasec-key-file /path/to/wpasec.key` |
 | `--wpasec-auto` | Automatically upload without prompting | `--wpasec-auto` |
 | `--wpasec-url [url]` | Custom wpa-sec server URL | `--wpasec-url https://custom.server` |
 | `--wpasec-timeout [sec]` | Connection timeout in seconds (default: 30) | `--wpasec-timeout 60` |
@@ -748,36 +750,36 @@ Wifite can upload all types of WPA/WPA2/WPA3 captures to wpa-sec:
 
 **Basic WPA attack with upload:**
 ```bash
-sudo wifite --wpa --wpasec --wpasec-key YOUR_API_KEY
+sudo wifite --wpa --wpasec --wpasec-key-file /path/to/wpasec.key
 ```
 
 **PMKID attack with automatic upload:**
 ```bash
-sudo wifite --pmkid --wpasec --wpasec-key YOUR_API_KEY --wpasec-auto
+sudo wifite --pmkid --wpasec --wpasec-key-file /path/to/wpasec.key --wpasec-auto
 ```
 
 **WPA3 attack with email notifications:**
 ```bash
-sudo wifite --wpa3-only --wpasec --wpasec-key YOUR_API_KEY --wpasec-email you@example.com
+sudo wifite --wpa3-only --wpasec --wpasec-key-file /path/to/wpasec.key --wpasec-email you@example.com
 ```
 
 **Target specific network and upload:**
 ```bash
-sudo wifite -b AA:BB:CC:DD:EE:FF --wpasec --wpasec-key YOUR_API_KEY
+sudo wifite -b AA:BB:CC:DD:EE:FF --wpasec --wpasec-key-file /path/to/wpasec.key
 ```
 
 **Dual interface mode with automatic upload:**
 ```bash
-sudo wifite --dual-interface --wpasec --wpasec-key YOUR_API_KEY --wpasec-auto
+sudo wifite --dual-interface --wpasec --wpasec-key-file /path/to/wpasec.key --wpasec-auto
 ```
 
 #### Tool Requirements
 
-WPA-SEC integration requires the `wlancap2wpasec` tool from the hcxtools suite:
+WPA-SEC uploads use wifite's native HTTP uploader when the Python `requests` package is installed. No extra system tool is needed in that case. The `wlancap2wpasec` tool from hcxtools is only a fallback:
 
 ```bash
-# Kali Linux / Debian / Ubuntu
-sudo apt update && sudo apt install hcxtools
+# Optional fallback (only used when requests is unavailable)
+sudo apt install hcxtools
 
 # Arch Linux
 sudo pacman -S hcxtools
@@ -786,7 +788,7 @@ sudo pacman -S hcxtools
 wlancap2wpasec --version
 ```
 
-**Note:** wlancap2wpasec is optional - wifite will work normally without it, but wpa-sec upload features will be unavailable.
+**Note:** if neither `requests` nor `wlancap2wpasec` is present, wpa-sec uploads are unavailable; the rest of wifite works normally. `--syscheck` reports the wpa-sec row as `native (requests)` when the Python uploader is available.
 
 #### Troubleshooting
 

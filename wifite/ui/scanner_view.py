@@ -209,7 +209,7 @@ class ScannerView:
             sorted_targets = sorted(self.targets, key=lambda t: t.power, reverse=True)
             visible_targets = sorted_targets[:max_visible]
             
-            for idx, target in enumerate(visible_targets, 1):
+            for target in visible_targets:
                 # Get original index for display
                 original_idx = self.targets.index(target) + 1
                 

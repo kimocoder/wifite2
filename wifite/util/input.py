@@ -28,7 +28,7 @@ def interactive_input():
     except EOFError:
         Color.pl('\n{!} {O}No interactive input available (stdin closed); '
                  'aborting prompt{W}')
-        raise KeyboardInterrupt
+        raise KeyboardInterrupt from None
 
 
 class KeyboardInput:

@@ -8,7 +8,7 @@ Implements intelligent interface assignment logic for different attack types,
 selecting the best interfaces based on capabilities and preferences.
 """
 
-from typing import Optional
+from typing import Optional, ClassVar
 
 from ..model.interface_info import InterfaceInfo, InterfaceAssignment
 from ..util.logger import log_info, log_debug, log_warning, log_error
@@ -24,21 +24,21 @@ class InterfaceAssignmentStrategy:
     """
     
     # Known good drivers for AP mode (in preference order)
-    PREFERRED_AP_DRIVERS = [
+    PREFERRED_AP_DRIVERS: ClassVar[list[str]] = [
         'ath9k', 'ath9k_htc', 'ath10k',
         'rt2800usb', 'rt2800pci',
         'rtl8812au', 'rtl8814au', 'rtl8821au'
     ]
     
     # Known good drivers for monitor/injection (in preference order)
-    PREFERRED_MONITOR_DRIVERS = [
+    PREFERRED_MONITOR_DRIVERS: ClassVar[list[str]] = [
         'ath9k', 'ath9k_htc', 'ath10k',
         'rt2800usb', 'rt2800pci',
         'carl9170', 'rtl8812au', 'rtl8814au'
     ]
     
     # Problematic driver combinations (primary_driver, secondary_driver)
-    PROBLEMATIC_COMBINATIONS = [
+    PROBLEMATIC_COMBINATIONS: ClassVar[list[tuple[str, str]]] = [
         # Add known problematic combinations here
         # Example: ('iwlwifi', 'brcmfmac')
     ]
@@ -192,7 +192,7 @@ class InterfaceAssignmentStrategy:
             raise InterfaceAssignmentError(
                 f'Assignment failed: {e}',
                 attack_type='evil_twin'
-            )
+            ) from e
 
     @staticmethod
     def assign_for_wpa(interfaces: list[InterfaceInfo]) -> Optional[InterfaceAssignment]:
@@ -366,7 +366,7 @@ class InterfaceAssignmentStrategy:
             raise InterfaceAssignmentError(
                 f'Assignment failed: {e}',
                 attack_type='wpa'
-            )
+            ) from e
     
     @staticmethod
     def assign_for_wps(interfaces: list[InterfaceInfo]) -> Optional[InterfaceAssignment]:

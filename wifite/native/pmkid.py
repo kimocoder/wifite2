@@ -38,8 +38,8 @@ from dataclasses import dataclass
 try:
     from scapy.all import (
         RadioTap, Dot11, Dot11Beacon, Dot11ProbeResp, Dot11Auth,
-        Dot11AssoReq, Dot11AssoResp, Dot11Elt, EAPOL, Raw,
-        sniff, sendp, conf as scapy_conf
+        Dot11Elt, EAPOL, Raw,
+        sniff, sendp
     )
     SCAPY_AVAILABLE = True
 except ImportError:
@@ -261,7 +261,7 @@ class ScapyPMKID:
             auth_interval = 2  # seconds between auth attempts
             auth_count = timeout // auth_interval
             
-            for i in range(auth_count):
+            for _ in range(auth_count):
                 if captured_pmkid[0]:
                     break
                 
@@ -388,9 +388,9 @@ class ScapyPMKID:
         Returns:
             PMKID as hex string, or None if not found
         """
+        if not pkt.haslayer(EAPOL):
+            return None
         try:
-            eapol = pkt[EAPOL]
-            
             # Get raw packet data after EAPOL header
             if pkt.haslayer(Raw):
                 raw = bytes(pkt[Raw])

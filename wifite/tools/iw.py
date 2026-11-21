@@ -1,20 +1,20 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from .dependency import Dependency
+from typing import ClassVar
 
+from .dependency import Dependency
 
 def _check_iface(name):
     """Validate interface name before passing to subprocess (SEC-010)."""
     from ..config.validators import validate_interface_name
     validate_interface_name(name)
 
-
 class Iw(Dependency):
     dependency_required = True
     dependency_name = 'iw'
     dependency_url = 'apt install iw'
-    dependency_packages = {
+    dependency_packages: ClassVar[dict[str, str]] = {
         'apt': 'iw', 'pacman': 'iw', 'dnf': 'iw',
         'apk': 'iw', 'brew': 'iw',
     }

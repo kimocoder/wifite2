@@ -4,7 +4,21 @@
 from .util.color import Color
 
 import argparse
+import os
 import sys
+
+
+def _wpasec_key_from_file(path):
+    """argparse type: read the wpa-sec API key from the first line of a file."""
+    try:
+        with open(os.path.expanduser(path), encoding='utf-8') as key_file:
+            key = key_file.readline().strip()
+    except OSError as e:
+        raise argparse.ArgumentTypeError(
+            f'cannot read wpa-sec key file: {e}') from None
+    if not key:
+        raise argparse.ArgumentTypeError('wpa-sec key file is empty')
+    return key
 
 
 def _non_negative_int(value):
@@ -246,6 +260,7 @@ against the real AP and captures valid passwords.
             epilog = self._get_eviltwin_examples() + '\n' + self._get_wpa3_examples()
 
         parser = argparse.ArgumentParser(usage=argparse.SUPPRESS,
+                                         allow_abbrev=False,
                                          formatter_class=lambda prog:
                                          argparse.RawDescriptionHelpFormatter(prog, max_help_position=80, width=130),
                                          epilog=epilog)
@@ -352,10 +367,10 @@ against the real AP and captures valid passwords.
                           nargs='?',
                           const=10,
                           metavar='scan_time',
-                          type=int,
+                          type=_non_negative_int,
                           help=Color.s('{G}Pillage{W}: Attack all targets after {C}scan_time{W} (seconds)'))
         glob.add_argument('--pillage', help=argparse.SUPPRESS, action='store',
-                          dest='scan_time', nargs='?', const=10, type=int)
+                          dest='scan_time', nargs='?', const=10, type=_non_negative_int)
 
         glob.add_argument('--kill',
                           action='store_true',
@@ -380,7 +395,7 @@ against the real AP and captures valid passwords.
                           action='store',
                           dest='attack_max',
                           metavar='[attack_max]',
-                          type=int,
+                          type=_non_negative_int,
                           help=Color.s('Attacks the first {C}attack_max{W} targets'))
 
         glob.add_argument('--target-timeout',
@@ -465,7 +480,7 @@ against the real AP and captures valid passwords.
 
         glob.add_argument('--num-deauths',
                           action='store',
-                          type=int,
+                          type=_non_negative_int,
                           dest='num_deauths',
                           metavar='[num]',
                           default=None,
@@ -562,7 +577,7 @@ against the real AP and captures valid passwords.
                           action='store',
                           dest='eviltwin_port',
                           metavar='[port]',
-                          type=int,
+                          type=_non_negative_int,
                           help=self._verbose('Port for captive portal (default: {G}80{W})'))
 
         group.add_argument('--eviltwin-deauth-interval',
@@ -591,7 +606,7 @@ against the real AP and captures valid passwords.
                           action='store',
                           dest='eviltwin_channel',
                           metavar='[channel]',
-                          type=int,
+                          type=_non_negative_int,
                           help=self._verbose('Override channel for rogue AP (default: {G}same as target{W})'))
 
         group.add_argument('--eviltwin-no-validate',
@@ -614,7 +629,7 @@ against the real AP and captures valid passwords.
                             action='store',
                             dest='monitor_duration',
                             metavar='[seconds]',
-                            type=int,
+                            type=_non_negative_int,
                             default=0,
                             help=self._verbose('Duration for attack monitoring in seconds. '
                                               'Set to 0 for infinite monitoring. '
@@ -638,7 +653,7 @@ against the real AP and captures valid passwords.
                             action='store',
                             dest='monitor_channel',
                             metavar='[channel]',
-                            type=int,
+                            type=_non_negative_int,
                             default=None,
                             help=self._verbose('Monitor specific channel for attacks. '
                                               'Focuses monitoring on a single channel for better performance. '
@@ -681,57 +696,57 @@ against the real AP and captures valid passwords.
                          action='store',
                          dest='wep_pps',
                          metavar='[pps]',
-                         type=int,
+                         type=_non_negative_int,
                          help=self._verbose(
                              'Packets-per-second to replay (default: {G}%d pps{W})' % self.config.wep_pps))
-        wep.add_argument('-pps', help=argparse.SUPPRESS, action='store', dest='wep_pps', type=int)
+        wep.add_argument('-pps', help=argparse.SUPPRESS, action='store', dest='wep_pps', type=_non_negative_int)
 
         wep.add_argument('--wept',
                          action='store',
                          dest='wep_timeout',
                          metavar='[seconds]',
-                         type=int,
+                         type=_non_negative_int,
                          help=self._verbose(
                              'Seconds to wait before failing (default: {G}%d sec{W})' % self.config.wep_timeout))
-        wep.add_argument('-wept', help=argparse.SUPPRESS, action='store', dest='wep_timeout', type=int)
+        wep.add_argument('-wept', help=argparse.SUPPRESS, action='store', dest='wep_timeout', type=_non_negative_int)
 
         wep.add_argument('--wep-fakeauth-time',
                          action='store',
                          dest='wep_fakeauth_time',
                          metavar='[seconds]',
-                         type=int,
+                         type=_non_negative_int,
                          help=self._verbose(
                              'Seconds to wait for fake-authentication (default: {G}%d sec{W})'
                              % self.config.wep_fakeauth_time))
         wep.add_argument('-wep-fakeauth-time', help=argparse.SUPPRESS, action='store',
-                         dest='wep_fakeauth_time', type=int)
+                         dest='wep_fakeauth_time', type=_non_negative_int)
 
         wep.add_argument('--wepca',
                          action='store',
                          dest='wep_crack_at_ivs',
                          metavar='[ivs]',
-                         type=int,
+                         type=_non_negative_int,
                          help=self._verbose('Start cracking at this many IVs (default: {G}%d ivs{W})'
                                             % self.config.wep_crack_at_ivs))
-        wep.add_argument('-wepca', help=argparse.SUPPRESS, action='store', dest='wep_crack_at_ivs', type=int)
+        wep.add_argument('-wepca', help=argparse.SUPPRESS, action='store', dest='wep_crack_at_ivs', type=_non_negative_int)
 
         wep.add_argument('--weprs',
                          action='store',
                          dest='wep_restart_stale_ivs',
                          metavar='[seconds]',
-                         type=int,
+                         type=_non_negative_int,
                          help=self._verbose('Restart aireplay if no new IVs appear (default: {G}%d sec{W})'
                                             % self.config.wep_restart_stale_ivs))
-        wep.add_argument('-weprs', help=argparse.SUPPRESS, action='store', dest='wep_restart_stale_ivs', type=int)
+        wep.add_argument('-weprs', help=argparse.SUPPRESS, action='store', dest='wep_restart_stale_ivs', type=_non_negative_int)
 
         wep.add_argument('--weprc',
                          action='store',
                          dest='wep_restart_aircrack',
                          metavar='[seconds]',
-                         type=int,
+                         type=_non_negative_int,
                          help=self._verbose('Restart aircrack after this delay (default: {G}%d sec{W})'
                                             % self.config.wep_restart_aircrack))
-        wep.add_argument('-weprc', help=argparse.SUPPRESS, action='store', dest='wep_restart_aircrack', type=int)
+        wep.add_argument('-weprc', help=argparse.SUPPRESS, action='store', dest='wep_restart_aircrack', type=_non_negative_int)
 
         wep.add_argument('--arpreplay',
                          action='store_true',
@@ -841,20 +856,20 @@ against the real AP and captures valid passwords.
                          action='store',
                          dest='dragonblood_samples',
                          metavar='[count]',
-                         type=int,
+                         type=_non_negative_int,
                          help=self._verbose('Number of timing samples per password candidate '
                                             'during Dragonblood attack. More samples improve accuracy '
                                             'but take longer. (default: {G}3{W})'))
-        wpa.add_argument('-dragonblood-samples', help=argparse.SUPPRESS, action='store', dest='dragonblood_samples', type=int)
+        wpa.add_argument('-dragonblood-samples', help=argparse.SUPPRESS, action='store', dest='dragonblood_samples', type=_non_negative_int)
 
         wpa.add_argument('--dragonblood-max',
                          action='store',
                          dest='dragonblood_max_passwords',
                          metavar='[count]',
-                         type=int,
+                         type=_non_negative_int,
                          help=self._verbose('Maximum number of passwords to probe during '
                                             'Dragonblood timing attack. (default: {G}50{W})'))
-        wpa.add_argument('-dragonblood-max', help=argparse.SUPPRESS, action='store', dest='dragonblood_max_passwords', type=int)
+        wpa.add_argument('-dragonblood-max', help=argparse.SUPPRESS, action='store', dest='dragonblood_max_passwords', type=_non_negative_int)
 
         wpa.add_argument('--owe',
                          action='store_true',
@@ -971,33 +986,33 @@ against the real AP and captures valid passwords.
                          action='store',
                          dest='wps_pixie_timeout',
                          metavar='[sec]',
-                         type=int,
+                         type=_non_negative_int,
                          help=self._verbose('Total time to wait before failing PixieDust attack (default: {G}%d sec{W})'
                                             % self.config.wps_pixie_timeout))
         # Alias
-        wps.add_argument('-wpst', help=argparse.SUPPRESS, action='store', dest='wps_pixie_timeout', type=int)
+        wps.add_argument('-wpst', help=argparse.SUPPRESS, action='store', dest='wps_pixie_timeout', type=_non_negative_int)
 
         # Maximum number of 'failures' (WPSFail)
         wps.add_argument('--wps-fails',
                          action='store',
                          dest='wps_fail_threshold',
                          metavar='[num]',
-                         type=int,
+                         type=_non_negative_int,
                          help=self._verbose('Maximum number of WPSFail/NoAssoc errors before failing '
                                             '(default: {G}%d{W})' % self.config.wps_fail_threshold))
         # Alias
-        wps.add_argument('-wpsf', help=argparse.SUPPRESS, action='store', dest='wps_fail_threshold', type=int)
+        wps.add_argument('-wpsf', help=argparse.SUPPRESS, action='store', dest='wps_fail_threshold', type=_non_negative_int)
 
         # Maximum number of 'timeouts'
         wps.add_argument('--wps-timeouts',
                          action='store',
                          dest='wps_timeout_threshold',
                          metavar='[num]',
-                         type=int,
+                         type=_non_negative_int,
                          help=self._verbose('Maximum number of Timeouts before failing (default: {G}%d{W})'
                                             % self.config.wps_timeout_threshold))
         # Alias
-        wps.add_argument('-wpsto', help=argparse.SUPPRESS, action='store', dest='wps_timeout_threshold', type=int)
+        wps.add_argument('-wpsto', help=argparse.SUPPRESS, action='store', dest='wps_timeout_threshold', type=_non_negative_int)
 
     def _add_pmkid_args(self, pmkid):
         pmkid.add_argument('--pmkid',
@@ -1039,7 +1054,7 @@ against the real AP and captures valid passwords.
                            action='store',
                            dest='pmkid_passive_duration',
                            metavar='[seconds]',
-                           type=int,
+                           type=_non_negative_int,
                            help=self._verbose('Duration for passive capture in seconds '
                                              '(default: {G}infinite{W})'))
 
@@ -1047,7 +1062,7 @@ against the real AP and captures valid passwords.
                            action='store',
                            dest='pmkid_passive_interval',
                            metavar='[seconds]',
-                           type=int,
+                           type=_non_negative_int,
                            help=self._verbose('Interval between hash extractions '
                                              '(default: {G}%d{W} seconds)'
                                              % self.config.pmkid_passive_interval))
@@ -1058,7 +1073,7 @@ against the real AP and captures valid passwords.
 
         Defines all wpa-sec related arguments including:
         - --wpasec: Enable upload functionality
-        - --wpasec-key: API key for authentication
+        - --wpasec-key-file: File containing the API key
         - --wpasec-auto: Automatic upload mode
         - --wpasec-url: Custom server URL
         - --wpasec-timeout: Connection timeout
@@ -1079,16 +1094,17 @@ against the real AP and captures valid passwords.
                                         'Uploads captured handshakes to online cracking service. '
                                         'Requires API key from wpa-sec.stanev.org (default: {G}off{W})'))
 
-        wpasec.add_argument('--wpasec-key',
+        wpasec.add_argument('--wpasec-key-file',
                             action='store',
                             dest='wpasec_api_key',
-                            metavar='[key]',
-                            type=str,
-                            help=Color.s('API key for {C}wpa-sec.stanev.org{W}. '
-                                        'Register at wpa-sec.stanev.org to obtain your key. '
-                                        'Required for uploading captures. '
-                                        'Prefer {C}WIFITE_WPASEC_KEY{W} in the environment '
-                                        'to keep the key out of the process list.'))
+                            metavar='[path]',
+                            type=_wpasec_key_from_file,
+                            help=Color.s('Read the {C}wpa-sec.stanev.org{W} API key from the '
+                                        'first line of a file. Keeping the key in a file '
+                                        'rather than the command line prevents other local '
+                                        'users from reading it via the process list. '
+                                        'Alternatively set {C}WIFITE_WPASEC_KEY{W}. '
+                                        'Add {C}--wpasec{W} to enable uploads.'))
 
         wpasec.add_argument('--wpasec-auto',
                             action='store_true',

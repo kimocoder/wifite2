@@ -12,14 +12,14 @@ from .dependency import Dependency
 from ..util.process import Process
 from ..util.hcxtools import channel_spec, filter_hash_lines
 from ..util.color import Color
-from ..util.logger import log_warning
+from ..util.logger import log_warning, log_debug
 from ..config import Configuration
 
 import os
 import re
 import time
 import signal
-
+from typing import ClassVar
 
 def _hand_over_monitor_mode(interfaces):
     """Return Wifite-owned monitor interfaces to managed mode.
@@ -56,7 +56,6 @@ def _hand_over_monitor_mode(interfaces):
             continue
     return handed_over
 
-
 def _return_monitor_mode(interfaces):
     """Re-arm interfaces after hcxdumptool restored them to managed."""
     if not interfaces:
@@ -68,12 +67,10 @@ def _return_monitor_mode(interfaces):
     for iface in interfaces:
         try:
             manager.rearm_monitor(iface)
-        except Exception:
-            pass
-
+        except Exception as e:
+            log_debug('HcxDumpTool', f'Failed to re-arm monitor on {iface}: {e}')
 
 _ANSI_ESCAPE = re.compile(r'\x1b\[[0-9;?]*[A-Za-z]')
-
 
 def _exit_reason(text):
     """Translate hcxdumptool's own stop lines into one human sentence.
@@ -100,7 +97,6 @@ def _exit_reason(text):
                 'interface' % match.group(1))
     return ''
 
-
 _RDS_ROW = re.compile(r'^\d+\|')
 _BENIGN_EXIT = re.compile(r'exit on (?:sigterm|eapol)$', re.I)
 # hcxdumptool prints these on every start. Returning one as the reason says
@@ -111,7 +107,6 @@ _NOISE_LINE = re.compile(
     r'it is made to detect|misuse within a network|irreparable damage|'
     r'not understanding what you were doing|\d+ Packet\(s\) (?:captured|dropped)'
     r' by kernel)', re.I)
-
 
 def _last_meaningful_line(text):
     """Last line of hcxdumptool output that tells a human anything.
@@ -133,7 +128,6 @@ def _last_meaningful_line(text):
             return ''
         return clean
     return ''
-
 
 class HcxDumpTool(Dependency):
     """Wrapper around hcxdumptool program for SAE handshake capture."""
@@ -244,7 +238,7 @@ class HcxDumpTool(Dependency):
         return [iface for iface in self.interfaces
                 if (self._driver_name(iface) or '').startswith('mt76')]
 
-    _bpf_cache = {}
+    _bpf_cache: ClassVar[dict] = {}
 
     def _install_target_bpf(self, bssid):
         """Compile and cache a BPF filter for the target BSSID.
@@ -576,7 +570,6 @@ class HcxDumpTool(Dependency):
         except ValueError:
             return False
 
-
 class HcxDumpToolPassive:
     """
     Wrapper for hcxdumptool in receive-only ("passive") mode.
@@ -713,7 +706,6 @@ class HcxDumpToolPassive:
         if reason:
             return reason
         return _last_meaningful_line('\n'.join(part for part in (stdout, stderr) if part))
-
 
 class HcxPcapngTool(Dependency):
     """Wrapper around hcxpcapngtool for converting captures to hashcat format."""

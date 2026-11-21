@@ -9,7 +9,7 @@ for WPA3-SAE attack capabilities.
 """
 
 import re
-from typing import Optional
+from typing import Optional, ClassVar
 
 from ..util.color import Color
 from ..util.process import Process
@@ -32,7 +32,7 @@ class WPA3ToolChecker:
     # hcxdumptool must be 7.x: the HcxDumpTool wrapper emits 7.x-only capture
     # syntax (-w output, --rds=0, channel band-suffixes like 1a/6a), so a 6.x
     # binary would pass an older gate and then fail at runtime.
-    MIN_VERSIONS = {
+    MIN_VERSIONS: ClassVar[dict[str, str]] = {
         'hcxdumptool': (7, 0, 0),
         'hcxpcapngtool': (1, 0, 0),
         'hashcat': (6, 0, 0),
@@ -40,7 +40,7 @@ class WPA3ToolChecker:
     }
 
     # Tool installation URLs
-    INSTALL_URLS = {
+    INSTALL_URLS: ClassVar[dict[str, str]] = {
         'hcxdumptool': 'apt install hcxdumptool or https://github.com/ZerBea/hcxdumptool',
         'hcxpcapngtool': 'apt install hcxtools or https://github.com/ZerBea/hcxtools',
         'hashcat': 'apt install hashcat or https://hashcat.net/hashcat/',
@@ -189,7 +189,7 @@ class WPA3ToolChecker:
         tools = WPA3ToolChecker.check_all_tools()
 
         # Check if all required tools are available and meet minimum versions
-        for tool_name, info in tools.items():
+        for info in tools.values():
             if info['required']:
                 if not info['available'] or not info['meets_minimum']:
                     return False

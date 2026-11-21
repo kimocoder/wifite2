@@ -5,6 +5,7 @@ import csv
 from datetime import datetime
 
 import requests
+from typing import ClassVar
 
 # keep the same import style as your example (adjust to your project layout)
 from ..config import Configuration
@@ -15,7 +16,7 @@ class DBUpdater:
     """
 
     # Registry URLs (same idea as your original script)
-    SOURCES = {
+    SOURCES: ClassVar[dict[str, str]] = {
         "OUI":   "https://standards-oui.ieee.org/oui/oui.csv",
         "MAM":   "https://standards-oui.ieee.org/oui28/mam.csv",
         "OUI36": "https://standards-oui.ieee.org/oui36/oui36.csv",
@@ -103,7 +104,6 @@ class DBUpdater:
         last_update = datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M:%S")
         age_seconds = datetime.now().timestamp() - mtime
         return age_seconds < (7 * 24 * 3600), last_update #if file is older than 7 days it is not up to date
-
 
 if __name__ == '__main__':
     DBUpdater.run()

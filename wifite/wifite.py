@@ -1059,6 +1059,13 @@ class Wifite:
         Color.pl('{+} {O}Detection mode - no attacks will be performed{W}')
         Color.pl('')
 
+        # Detection-only mode has no attack loop to stop, so an unbounded
+        # default scan never finishes. Use a finite window unless -p was set.
+        if Configuration.scan_time == 0:
+            Configuration.scan_time = 30
+            Color.pl('{+} {C}Dragonblood scan:{W} scanning for {G}%d{W} seconds '
+                     '(use {C}-p{W} to change)' % Configuration.scan_time)
+
         # Scan for targets
         s = Scanner()
         s.find_targets()
@@ -1079,8 +1086,6 @@ class Wifite:
             Color.pl('{!} {O}Found {R}%d{O} vulnerable network(s){W}' % results['vulnerable_count'])
             Color.pl('{!} {O}Consider updating firmware on vulnerable devices{W}')
             Color.pl('{!} {O}Reference: {C}https://wpa3.mathyvanhoef.com/{W}')
-        else:
-            Color.pl('{+} {G}No Dragonblood vulnerabilities detected{W}')
 
         Color.pl('')
 

@@ -26,8 +26,8 @@ def run(*args):
 @unittest.skipUnless(hasattr(os, 'geteuid'), 'requires POSIX')
 class TestNegativeDurations(unittest.TestCase):
 
-    def _assert_rejected(self, arg):
-        code, output = run('--syscheck', arg)
+    def _assert_rejected(self, *args):
+        code, output = run('--syscheck', *args)
         self.assertEqual(code, 2, output)
         self.assertIn('must be zero or a positive integer', output)
         self.assertNotIn('Traceback', output)
@@ -47,9 +47,45 @@ class TestNegativeDurations(unittest.TestCase):
     def test_alias_also_rejects(self):
         self._assert_rejected('-wpat=-3')
 
+    def test_scan_time(self):
+        self._assert_rejected('-p=-1')
+
+    def test_wps_pixie_timeout(self):
+        self._assert_rejected('--wps-time=-1')
+
+    def test_pmkid_passive_duration(self):
+        self._assert_rejected('--pmkid-passive-duration=-5')
+
+    def test_wep_timeout(self):
+        self._assert_rejected('--wept=-1')
+
 
 @unittest.skipUnless(os.geteuid() == 0 if hasattr(os, 'geteuid') else False,
                      'requires root for configuration initialization')
+@unittest.skipUnless(os.geteuid() == 0 if hasattr(os, 'geteuid') else False,
+                     'requires root for configuration initialization')
+class TestWpasecKeyHandling(unittest.TestCase):
+
+    def test_value_flag_is_rejected(self):
+        code, output = run('--syscheck', '--wpasec-key', 'secret')
+        self.assertEqual(code, 2, output)
+        self.assertIn('unrecognized arguments', output)
+
+    def test_key_file_is_accepted(self):
+        import tempfile
+
+        fd, path = tempfile.mkstemp()
+        os.write(fd, b'a' * 32 + b'\n')
+        os.close(fd)
+        try:
+            code, output = run('--syscheck', '--wpasec',
+                               '--wpasec-key-file', path)
+            self.assertEqual(code, 0, output)
+            self.assertNotIn('Traceback', output)
+        finally:
+            os.remove(path)
+
+
 class TestConfigErrorsAreClean(unittest.TestCase):
 
     def _assert_clean_failure(self, *args):
@@ -73,6 +109,23 @@ class TestConfigErrorsAreClean(unittest.TestCase):
             '--syscheck', '-i', 'wlan1',
             '--interface-primary', 'wlan1',
             '--interface-secondary', 'wlan1', '--wpa')
+
+    def test_conflicting_dual_interface_flags(self):
+        self._assert_clean_failure(
+            '--syscheck', '--dual-interface', '--no-dual-interface')
+
+    def test_conflicting_eviltwin_and_pmkid(self):
+        self._assert_clean_failure('--syscheck', '--eviltwin', '--pmkid')
+
+    def test_wpa3_only_with_wpa_filter_warns(self):
+        code, output = run('--syscheck', '--wpa3-only', '--wpa')
+        self.assertEqual(code, 0, output)
+        self.assertIn('--wpa3-only limits attacks to WPA3', output)
+
+    def test_wps_only_with_wpa_filter_is_allowed(self):
+        code, output = run('--syscheck', '--wps-only', '--wpa')
+        self.assertEqual(code, 0, output)
+        self.assertNotIn('Bad Configuration', output)
 
 
 if __name__ == '__main__':

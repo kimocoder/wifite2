@@ -13,7 +13,7 @@ from ..tools.airodump import Airodump
 from ..tools.ip import Ip
 from ..util.color import Color
 from ..util.input import interactive_input
-from ..util.logger import log_info
+from ..util.logger import log_info, log_debug
 from ..util.output import OutputManager
 
 
@@ -247,8 +247,8 @@ class AttackWEP(Attack):
                                 # No new IVs within threshold, restart aireplay
                                 try:
                                     aireplay.stop()
-                                except Exception:
-                                    pass
+                                except Exception as e:
+                                    log_debug('AttackWEP', f'Failed to stop aireplay: {e}')
                                 Color.pl('\n{!} Restarting {C}aireplay{W} after {C}%d{W} seconds of no new IVs'
                                          % stale_seconds)
                                 aireplay = Aireplay(self.target,

@@ -76,7 +76,7 @@ class TUIController:
             # If TUI initialization fails, clean up and raise
             log_tui_error("TUI initialization failed", e)
             self.stop()
-            raise RuntimeError(f"Failed to initialize TUI: {e}")
+            raise RuntimeError(f"Failed to initialize TUI: {e}") from e
 
     def stop(self):
         """

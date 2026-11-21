@@ -14,7 +14,7 @@ import re
 import threading
 import contextlib
 import time
-from typing import Optional
+from typing import Optional, ClassVar
 from dataclasses import dataclass, field
 
 from ..tools.iw import Iw
@@ -1783,20 +1783,20 @@ class InterfaceManager:
     # ========================================================================
     
     # Known driver lists for capability detection
-    INJECTION_CAPABLE_DRIVERS = {
+    INJECTION_CAPABLE_DRIVERS: ClassVar[set[str]] = {
         'ath9k', 'ath9k_htc', 'ath10k', 'ath11k',
         'rt2800usb', 'rt2800pci', 'rt73usb', 'rt61pci',
         'rtl8812au', 'rtl8814au', 'rtl8821au', 'rtl88xxau',
         'carl9170', 'zd1211rw', 'p54usb', 'p54pci'
     }
     
-    NO_INJECTION_DRIVERS = {
+    NO_INJECTION_DRIVERS: ClassVar[set[str]] = {
         'brcmfmac',  # Broadcom - limited injection
         'iwlwifi',   # Intel - no injection
         'rtw88',     # Realtek new driver - limited
     }
     
-    AP_CAPABLE_DRIVERS = {
+    AP_CAPABLE_DRIVERS: ClassVar[set[str]] = {
         'ath9k', 'ath9k_htc', 'ath10k', 'ath11k',
         'rt2800usb', 'rt2800pci', 'rt73usb', 'rt61pci',
         'rtl8812au', 'rtl8814au', 'rtl8821au', 'rtl88xxau',
@@ -1804,7 +1804,7 @@ class InterfaceManager:
     }
     
     # Driver to chipset mapping for common drivers
-    DRIVER_CHIPSET_MAP = {
+    DRIVER_CHIPSET_MAP: ClassVar[dict[str, str]] = {
         'ath9k': 'Atheros AR9xxx',
         'ath9k_htc': 'Atheros AR9271',
         'ath10k': 'Qualcomm Atheros QCA9xxx',
@@ -2378,7 +2378,7 @@ class InterfaceManager:
                 log_error('InterfaceManager', f'Failed to enumerate interfaces: {e}', e)
                 Color.pl('{!} {R}Error: Failed to enumerate wireless interfaces{W}')
                 Color.pl('{!} {O}Make sure wireless tools (iw) are installed{W}')
-                raise InterfaceNotFoundError(message=f'Failed to enumerate interfaces: {e}')
+                raise InterfaceNotFoundError(message=f'Failed to enumerate interfaces: {e}') from e
             
             if not interface_names:
                 log_warning('InterfaceManager', 'No wireless interfaces found on system')
@@ -2408,8 +2408,8 @@ class InterfaceManager:
                                 parts = interface_info.mac_address.split(':')
                                 if len(parts) == 6:
                                     masked_mac = ':'.join(parts[:3] + ['**', '**', '**'])
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            log_debug('InterfaceManager', f'Failed to mask MAC: {e}')
                         log_debug('InterfaceManager', 
                                  f'  {interface_name} details: driver={interface_info.driver}, '
                                  f'chipset={interface_info.chipset}, phy={interface_info.phy}, '
@@ -2461,7 +2461,7 @@ class InterfaceManager:
         except Exception as e:
             log_error('InterfaceManager', f'Unexpected error during interface detection: {e}', e)
             Color.pl('{!} {R}Unexpected error during interface detection:{W} %s' % str(e))
-            raise InterfaceNotFoundError(message=f'Interface detection failed: {e}')
+            raise InterfaceNotFoundError(message=f'Interface detection failed: {e}') from e
         
         return interfaces
     

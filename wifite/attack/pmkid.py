@@ -459,8 +459,8 @@ class AttackPMKID(Attack):
                 self.keep_capturing = False
                 try:
                     t.join(timeout=5)
-                except Exception:
-                    pass
+                except Exception as e:
+                    log_debug('AttackPMKID', f'Capture thread join failed: {e}')
                 if NATIVE_PMKID_AVAILABLE:
                     Color.pl('{+} {G}Falling back to native PMKID capture (Scapy){W}')
                     return self.capture_pmkid_native()
@@ -571,8 +571,8 @@ class AttackPMKID(Attack):
         # Wait for dump tool thread to finish cleanup
         try:
             t.join(timeout=5)
-        except Exception:
-            pass
+        except Exception as e:
+            log_debug('AttackPMKID', f'Dump tool thread join failed: {e}')
 
         # The same session also collects EAPOL frames. Publish the capture so
         # the handshake attack can reuse it instead of capturing again.

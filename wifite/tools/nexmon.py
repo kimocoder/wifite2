@@ -228,8 +228,8 @@ def _read_driver(interface: str) -> str:
         name = InterfaceManager._get_interface_driver(interface)
         if name and name != 'unknown':
             return name
-    except Exception:
-        pass
+    except Exception as e:
+        log_debug('Nexmon', f'Driver lookup failed: {e}')
     return 'unknown'
 
 

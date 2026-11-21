@@ -299,8 +299,8 @@ class HashcatCracker:
         try:
             if self.proc:
                 self.proc.wait()
-        except Exception:
-            pass
+        except Exception as e:
+            log_debug('Hashcat', f'Failed waiting for process: {e}')
 
         self.cpu_fallback = True
         self._result_key = None

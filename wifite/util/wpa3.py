@@ -11,7 +11,7 @@ Dragonblood vulnerability indicators.
 
 import os
 import re
-from typing import Any, Optional
+from typing import Any, Optional, ClassVar
 
 
 class WPA3Detector:
@@ -34,7 +34,7 @@ class WPA3Detector:
     PMF_REQUIRED = 'required'
 
     # Known vulnerable SAE groups (Dragonblood)
-    VULNERABLE_SAE_GROUPS = [22, 23, 24]  # Groups susceptible to timing attacks
+    VULNERABLE_SAE_GROUPS: ClassVar[list[int]] = [22, 23, 24]  # Groups susceptible to timing attacks
 
     # Default SAE group (most common)
     DEFAULT_SAE_GROUP = 19
@@ -345,7 +345,7 @@ class WPA3Detector:
 
     # Common SAE groups worth probing. ECP groups (19/20/21) are the
     # modern default; MODP groups (22/23/24) are the Dragonblood set.
-    DEFAULT_PROBE_GROUPS = [19, 20, 21, 22, 23, 24]
+    DEFAULT_PROBE_GROUPS: ClassVar[list[int]] = [19, 20, 21, 22, 23, 24]
 
     @staticmethod
     def _channel_to_freq(channel: int) -> int:
@@ -465,7 +465,7 @@ class WPA3Detector:
         # A throwaway password. wpa_supplicant will compute a valid PWE
         # from it; the AP reaches the commit-response step without us
         # needing to know a real password.
-        probe_password = 'wifite-sae-probe-pw'
+        probe_password = 'wifite-sae-probe-pw'  # noqa: S105  # throwaway probe value
 
         config_body = WPA3Detector._build_probe_config(
             bssid=bssid, essid=essid, channel=channel,

@@ -2,21 +2,20 @@
 # -*- coding: utf-8 -*-
 
 import re
+from typing import ClassVar
 
 from .dependency import Dependency
-
 
 def _check_iface(name):
     """Validate interface name before passing to subprocess (SEC-010)."""
     from ..config.validators import validate_interface_name
     validate_interface_name(name)
 
-
 class Ip(Dependency):
     dependency_required = True
     dependency_name = 'ip'
     dependency_url = 'apt install iproute2'
-    dependency_packages = {
+    dependency_packages: ClassVar[dict[str, str]] = {
         'apt': 'iproute2', 'pacman': 'iproute2', 'dnf': 'iproute',
         'apk': 'iproute2',
     }

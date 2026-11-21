@@ -2,13 +2,13 @@
 # -*- coding: utf-8 -*-
 
 import sys
-
+from typing import ClassVar
 
 class Color:
     """ Helper object for easily printing colored text to the terminal. """
 
     # Basic console colors
-    colors = {
+    colors: ClassVar[dict[str, str]] = {
         'W': '\033[0m',   # white (normal)
         'R': '\033[31m',  # red
         'G': '\033[32m',  # green
@@ -21,7 +21,7 @@ class Color:
     }
 
     # Helper string replacements
-    replacements = {
+    replacements: ClassVar[dict[str, str]] = {
         '{+}': ' {W}{D}[{W}{G}+{W}{D}]{W}',
         '{!}': ' {O}[{R}!{O}]{W}',
         '{?}': ' {W}[{C}?{W}]'
@@ -180,7 +180,6 @@ class Color:
             Color.pl(err)
         else:
             Color.pl('{!} {D}Run with {W}-v{D} to see the full stack trace{W}')
-
 
 if __name__ == '__main__':
     Color.pl('{R}Testing{G}One{C}Two{P}Three{W}Done')

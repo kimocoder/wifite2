@@ -3,6 +3,8 @@
 
 """hcxdumptool lifecycle: version floors, pairing, radio handover, readiness."""
 
+import ast
+import inspect
 import sys
 import unittest
 from types import SimpleNamespace
@@ -201,6 +203,37 @@ class TestReadinessVersionGates(unittest.TestCase):
         ])
         readiness = checker.assess_attack_readiness()
         self.assertEqual(readiness['WPA3/SAE'], CheckStatus.WARN)
+
+
+class TestOptionalHealthRegistration(unittest.TestCase):
+    """hcxdumptool may exit early; the supervisor must not treat it as fatal."""
+
+    def _register_health_calls(self, method_name):
+        from wifite.attack.wpa import AttackWPA
+
+        tree = ast.parse(inspect.getsource(AttackWPA))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef) and node.name == method_name:
+                calls = []
+                for child in ast.walk(node):
+                    if (isinstance(child, ast.Call)
+                            and isinstance(child.func, ast.Attribute)
+                            and child.func.attr == 'register_health'):
+                        calls.append(child)
+                return calls
+        self.fail(f'{method_name} not found in AttackWPA')
+
+    def test_both_capture_paths_register_hcxdumptool_as_optional(self):
+        for method in ('_capture_handshake_dual_hcxdump',
+                       '_capture_handshake_single_hcxdump'):
+            calls = self._register_health_calls(method)
+            self.assertTrue(calls, method)
+            for call in calls:
+                self.assertEqual(len(call.args), 2, method)
+                self.assertEqual(call.args[0].value, 'hcxdumptool', method)
+                required = [kw for kw in call.keywords if kw.arg == 'required']
+                self.assertEqual(len(required), 1, method)
+                self.assertIs(required[0].value.value, False, method)
 
 
 class TestPmkidWrapperHandover(unittest.TestCase):

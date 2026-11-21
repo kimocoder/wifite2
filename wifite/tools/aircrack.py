@@ -3,17 +3,17 @@
 
 import os
 import re
+from typing import ClassVar
 
 from .dependency import Dependency
 from ..config import Configuration
 from ..util.process import Process
 
-
 class Aircrack(Dependency):
     dependency_required = True
     dependency_name = 'aircrack-ng'
     dependency_url = 'https://www.aircrack-ng.org/install.html'
-    dependency_packages = {
+    dependency_packages: ClassVar[dict[str, str]] = {
         'apt': 'aircrack-ng', 'pacman': 'aircrack-ng',
         'dnf': 'aircrack-ng', 'brew': 'aircrack-ng',
     }
@@ -149,7 +149,6 @@ class Aircrack(Dependency):
         os.remove(key_file)
 
         return key
-
 
 if __name__ == '__main__':
     (hexkey, asciikey) = Aircrack._hex_and_ascii_key('A1B1C1D1E1')

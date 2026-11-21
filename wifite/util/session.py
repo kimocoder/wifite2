@@ -472,9 +472,9 @@ class SessionManager:
             with open(session_path) as f:
                 data = json.load(f)
         except json.JSONDecodeError as e:
-            raise ValueError(f"Corrupted session file (invalid JSON): {e}")
+            raise ValueError(f"Corrupted session file (invalid JSON): {e}") from e
         except OSError as e:
-            raise ValueError(f"Cannot read session file: {e}")
+            raise ValueError(f"Cannot read session file: {e}") from e
         
         # Validate session data structure
         self._validate_session_data(data, session_id)
@@ -482,7 +482,7 @@ class SessionManager:
         try:
             return SessionState.from_dict(data)
         except (KeyError, TypeError, AttributeError) as e:
-            raise ValueError(f"Corrupted session file (invalid structure): {e}")
+            raise ValueError(f"Corrupted session file (invalid structure): {e}") from e
     
     def _validate_file_permissions(self, session_path: str) -> None:
         """
@@ -532,9 +532,9 @@ class SessionManager:
         """
         # Check required fields
         required_fields = ['session_id', 'created_at', 'updated_at', 'config', 'targets']
-        for field in required_fields:
-            if field not in data:
-                raise ValueError(f"Missing required field: {field}")
+        for required_field in required_fields:
+            if required_field not in data:
+                raise ValueError(f"Missing required field: {required_field}")
         
         # Validate session ID matches
         if data['session_id'] != session_id:
@@ -567,9 +567,10 @@ class SessionManager:
                 raise ValueError(f"Target {i} is not a dictionary")
             
             required_target_fields = ['bssid', 'channel', 'encryption', 'power', 'wps', 'status']
-            for field in required_target_fields:
-                if field not in target:
-                    raise ValueError(f"Target {i} missing required field: {field}")
+            for required_field in required_target_fields:
+                if required_field not in target:
+                    raise ValueError(
+                        f"Target {i} missing required field: {required_field}")
             
             # Validate BSSID format (basic check)
             bssid = target['bssid']
