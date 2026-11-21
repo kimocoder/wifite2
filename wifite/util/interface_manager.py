@@ -215,14 +215,129 @@ class InterfaceManager:
         except (OSError, ValueError):
             return None
 
-    @classmethod
-    def _set_link_state(cls, interface: str, up: bool,
-                        attempts: int = 3, delay: float = 0.5) -> bool:
+    @staticmethod
+    def _disable_mt76_usb_sg() -> None:
+        """Disable mt76_usb scatter-gather before re-probing a wedged adapter.
+
+        On xHCI controllers such as Raspberry Pi 5's RP1, mt76_usb scatter-gather
+        causes -EPROTO (-71) TX URB failures and hung WPDMA queues.
+        __mt76u_init() re-reads this parameter on every probe.
+        """
+        param_path = '/sys/module/mt76_usb/parameters/disable_usb_sg'
+        try:
+            if not os.path.exists(param_path):
+                return
+            with open(param_path) as handle:
+                current = handle.read().strip().upper()
+            if current not in ('Y', '1'):
+                with open(param_path, 'w') as handle:
+                    handle.write('Y\n')
+                log_info('InterfaceManager',
+                         'Disabled mt76_usb scatter-gather (disable_usb_sg=Y)')
+        except OSError as e:
+            log_debug('InterfaceManager',
+                      f'Could not set mt76_usb disable_usb_sg: {e}')
+
+    def _recover_timed_out_link(self, interface: str,
+                                target_mode: Optional[str] = None,
+                                target_mac: Optional[str] = None) -> bool:
+        """Reset a USB/wireless driver after persistent ETIMEDOUT on link-up.
+
+        When a driver such as mt76x0u wedges its WPDMA queue on a timed-out
+        TX URB, ``ip link set <iface> up`` fails with ETIMEDOUT until the
+        device is re-probed (via sysfs driver unbind/bind or modprobe reload).
+        Re-probing recreates the netdev in managed mode with a new ifindex,
+        so the tracked ifindex and any pending mode/MAC are re-applied while
+        the link is still down.
+        """
+        driver = self._get_interface_driver(interface)
+        if driver and driver.startswith('mt76'):
+            self._disable_mt76_usb_sg()
+
+        rebound = False
+        device_link = f'/sys/class/net/{interface}/device'
+        driver_link = f'{device_link}/driver'
+        try:
+            if os.path.exists(device_link) and os.path.exists(driver_link):
+                device_id = os.path.basename(os.path.realpath(device_link))
+                driver_dir = os.path.realpath(driver_link)
+                unbind_path = os.path.join(driver_dir, 'unbind')
+                bind_path = os.path.join(driver_dir, 'bind')
+                if os.path.exists(unbind_path) and os.path.exists(bind_path):
+                    log_warning('InterfaceManager',
+                                f'Rebinding {interface} ({device_id}) on '
+                                f'{os.path.basename(driver_dir)} after link-up timeout')
+                    with open(unbind_path, 'w') as handle:
+                        handle.write(device_id)
+                    time.sleep(0.5)
+                    with open(bind_path, 'w') as handle:
+                        handle.write(device_id)
+                    rebound = True
+        except OSError as e:
+            log_debug('InterfaceManager',
+                      f'Sysfs rebind failed for {interface}: {e}')
+
+        if not rebound:
+            if driver in (None, '', 'unknown'):
+                return False
+            log_warning('InterfaceManager',
+                        f'Reloading driver {driver} for {interface} after link-up timeout')
+            try:
+                unload = Process.run_simple(['modprobe', '-r', driver])
+                if unload.returncode != 0:
+                    return False
+                load = Process.run_simple(['modprobe', driver])
+                if load.returncode != 0:
+                    return False
+            except Exception as e:
+                log_debug('InterfaceManager',
+                          f'Driver reload failed for {interface} ({driver}): {e}')
+                return False
+
+        new_ifindex = None
+        for _ in range(20):
+            new_ifindex = self._get_interface_ifindex(interface)
+            if new_ifindex is not None:
+                break
+            time.sleep(0.25)
+
+        state = self.interface_states.get(interface)
+        if state is not None and new_ifindex is not None:
+            state.original_ifindex = new_ifindex
+            if interface in self.managed_interfaces:
+                self.managed_interfaces[interface]['ifindex'] = new_ifindex
+
+        with contextlib.suppress(Exception):
+            Process.run_simple(['ip', 'link', 'set', interface, 'down'])
+
+        if target_mac:
+            if not self._run_checked(['ip', 'link', 'set', 'dev', interface,
+                                      'address', target_mac]):
+                return False
+
+        desired_mode = self._canonical_mode(
+            target_mode or (state.current_mode if state is not None else None))
+        if desired_mode:
+            mode_cmd = self._mode_command(interface, desired_mode)
+            if mode_cmd is not None:
+                if not self._run_checked(
+                        mode_cmd,
+                        f'Re-apply {desired_mode} mode on {interface} after driver reset'):
+                    return False
+
+        return True
+
+    def _set_link_state(self, interface: str, up: bool,
+                        attempts: int = 3, delay: float = 0.5,
+                        target_mode: Optional[str] = None,
+                        target_mac: Optional[str] = None) -> bool:
         """Bring a link up or down, retrying driver-level timeouts.
 
         Some USB drivers (notably mt76x0u) answer the first mode-change
         request with ETIMEDOUT while a queued transfer is still pending.
-        The same command usually succeeds once the transfer drains.
+        The same command usually succeeds once the transfer drains; if all
+        attempts still time out on link-up, reset the device/driver once
+        and retry.
         """
         command = ['ip', 'link', 'set', interface, 'up' if up else 'down']
         returncode = None
@@ -242,6 +357,24 @@ class InterfaceManager:
                           f'{" ".join(command)} failed ({detail}); '
                           f'retrying ({attempt + 1}/{attempts})')
                 time.sleep(delay)
+
+        if up and 'timed out' in detail.lower():
+            if self._recover_timed_out_link(interface,
+                                            target_mode=target_mode,
+                                            target_mac=target_mac):
+                for attempt in range(1, attempts + 1):
+                    try:
+                        result = Process.run_simple(command)
+                    except Exception as e:
+                        detail = str(e)
+                    else:
+                        returncode = result.returncode
+                        if returncode == 0:
+                            return True
+                        detail = (result.stderr or result.stdout or '').strip()
+                    if attempt < attempts:
+                        time.sleep(delay)
+
         log_error('InterfaceManager',
                   f'Command exited {returncode}: {command}: {detail}')
         return False
@@ -502,7 +635,8 @@ class InterfaceManager:
                 if not self._claim_interface(interface):
                     return False
                 state = self.interface_states[interface]
-                if not self._set_link_state(interface, up):
+                if not self._set_link_state(interface, up,
+                                            target_mode=state.current_mode):
                     if up:
                         self._log_link_recovery_hint(interface)
                     return False
@@ -556,9 +690,11 @@ class InterfaceManager:
                 state.changed_fields.add('mode')
                 if not self._run_checked(command, f'Set {interface} to {desired} mode'):
                     if was_up:
-                        self._set_link_state(interface, True)
+                        self._set_link_state(interface, True,
+                                             target_mode=state.current_mode)
                     return False
-                if was_up and not self._set_link_state(interface, True):
+                if was_up and not self._set_link_state(interface, True,
+                                                       target_mode=desired):
                     self._log_link_recovery_hint(interface)
                     return False
 
@@ -617,9 +753,11 @@ class InterfaceManager:
                         ['iw', 'dev', interface, 'set', 'type', 'managed'],
                         f'Hand {interface} to hcxdumptool in managed mode'):
                     if was_up:
-                        self._set_link_state(interface, True)
+                        self._set_link_state(interface, True,
+                                             target_mode='monitor')
                     return False
-                if was_up and not self._set_link_state(interface, True):
+                if was_up and not self._set_link_state(interface, True,
+                                                       target_mode='managed'):
                     self._log_link_recovery_hint(interface)
                     return False
 
@@ -660,9 +798,11 @@ class InterfaceManager:
                         ['iw', 'dev', interface, 'set', 'type', 'monitor'],
                         f'Re-arm {interface} in monitor mode'):
                     if was_up:
-                        self._set_link_state(interface, True)
+                        self._set_link_state(interface, True,
+                                             target_mode='managed')
                     return False
-                if was_up and not self._set_link_state(interface, True):
+                if was_up and not self._set_link_state(interface, True,
+                                                       target_mode='monitor'):
                     self._log_link_recovery_hint(interface)
                     return False
 
@@ -730,9 +870,12 @@ class InterfaceManager:
                 command = ['ip', 'link', 'set', 'dev', interface, 'address', mac]
                 if not self._run_checked(command):
                     if was_up:
-                        self._set_link_state(interface, True)
+                        self._set_link_state(interface, True,
+                                             target_mode=state.current_mode)
                     return False
-                if was_up and not self._set_link_state(interface, True):
+                if was_up and not self._set_link_state(interface, True,
+                                                       target_mode=state.current_mode,
+                                                       target_mac=mac):
                     self._log_link_recovery_hint(interface)
                     return False
                 observed = self._get_interface_mac(interface)

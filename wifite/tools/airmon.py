@@ -162,7 +162,8 @@ class Airmon(Dependency):
     def start_monitor(interface):
         """Put interface into monitor mode through the state owner."""
         manager = Configuration.get_interface_manager()
-        if not manager.set_interface_mode(interface, 'monitor'):
+        if not manager.set_interface_mode(interface, 'monitor') or \
+                not manager.set_interface_up(interface, True):
             Color.pl('{!} {O}Failed to put %s into monitor mode{W}' % interface)
             return None
 
@@ -512,8 +513,12 @@ class Airmon(Dependency):
         for pid, pname in pid_pnames:
             if pname == 'NetworkManager' and Process.exists('systemctl'):
                 Process(['systemctl', 'stop', 'NetworkManager']).stdout()
+                Airmon.killed_network_manager = True
             elif pname == 'network-manager' and Process.exists('service'):
                 Process(['service', 'network-manager', 'stop']).stdout()
+                Airmon.killed_network_manager = True
+            elif pname == 'wpa_supplicant' and Process.exists('systemctl'):
+                Process(['systemctl', 'stop', 'wpa_supplicant']).stdout()
             elif pname == 'avahi-daemon' and Process.exists('service'):
                 Process(['service', 'avahi-daemon', 'stop']).stdout()
             else:

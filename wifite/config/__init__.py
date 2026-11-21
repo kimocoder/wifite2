@@ -271,6 +271,7 @@ class Configuration:
             from ..tools.airmon import Airmon
             from ..tools.iw import Iw
             Airmon.require_interface(cls.interface)
+            Airmon.terminate_conflicting_processes()
             iface_info = Airmon.get_iface_info(cls.interface)
             if iface_info and iface_info.driver == 'brcmfmac':
                 from ..tools.nexmon import Nexmon
@@ -281,6 +282,11 @@ class Configuration:
                     return
             if not Iw.is_monitor(cls.interface):
                 cls.interface = Airmon.start(cls.interface)
+            if cls.random_mac or cls.random_mac_vendor:
+                if cls.hcxdumptool_owns_radio():
+                    Color.pl('{!} {O}Skipping macchanger: hcxdumptool randomizes the MAC itself{W}')
+                else:
+                    Macchanger.random(full_random=not cls.random_mac_vendor)
 
     @classmethod
     def load_from_arguments(cls):

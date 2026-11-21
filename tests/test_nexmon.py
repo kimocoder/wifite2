@@ -607,10 +607,12 @@ class TestConfigMonitorModeSetup(unittest.TestCase):
         with patch('wifite.tools.airmon.Airmon.start',
                    return_value='wlan0mon') as start, \
                 patch('wifite.tools.airmon.Airmon.require_interface'), \
+                patch('wifite.tools.airmon.Airmon.terminate_conflicting_processes') as kill_procs, \
                 patch('wifite.tools.airmon.Airmon.get_iface_info',
                       return_value=None), \
                 patch('wifite.tools.iw.Iw.is_monitor', return_value=False):
             Configuration.get_monitor_mode_interface()
+        kill_procs.assert_called_once()
         start.assert_called_once_with('wlan0')
         self.assertEqual(Configuration.interface, 'wlan0mon')
 
@@ -619,10 +621,12 @@ class TestConfigMonitorModeSetup(unittest.TestCase):
         Configuration.interface = 'wlan0mon'
         with patch('wifite.tools.airmon.Airmon.start') as start, \
                 patch('wifite.tools.airmon.Airmon.require_interface'), \
+                patch('wifite.tools.airmon.Airmon.terminate_conflicting_processes') as kill_procs, \
                 patch('wifite.tools.airmon.Airmon.get_iface_info',
                       return_value=SimpleNamespace(driver='mt76x0u')), \
                 patch('wifite.tools.iw.Iw.is_monitor', return_value=True):
             Configuration.get_monitor_mode_interface()
+        kill_procs.assert_called_once()
         start.assert_not_called()
         self.assertEqual(Configuration.interface, 'wlan0mon')
 
@@ -635,11 +639,13 @@ class TestConfigMonitorModeSetup(unittest.TestCase):
         with patch('wifite.tools.airmon.Airmon.start',
                    return_value='wlan0') as start, \
                 patch('wifite.tools.airmon.Airmon.require_interface'), \
+                patch('wifite.tools.airmon.Airmon.terminate_conflicting_processes') as kill_procs, \
                 patch('wifite.tools.airmon.Airmon.get_iface_info',
                       return_value=SimpleNamespace(driver='brcmfmac')), \
                 patch('wifite.tools.nexmon.Nexmon.probe', return_value=caps), \
                 patch('wifite.tools.iw.Iw.is_monitor', return_value=True):
             Configuration.get_monitor_mode_interface()
+        kill_procs.assert_called_once()
         start.assert_called_once_with('wlan0')
 
     def test_auto_selection_flow_unchanged(self):

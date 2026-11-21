@@ -186,6 +186,45 @@ def test_link_up_failure_logs_recovery_hint(manager, system):
     assert 'modprobe -r mt76x0u' in message
 
 
+def test_link_up_timeout_recovers_by_reloading_driver_and_reapplying_mode(manager, system):
+    up_attempts = {'count': 0}
+    original_run = system.run
+
+    def run_with_wedged_driver(command, timeout=5):
+        command = list(command)
+        if command[:5] == ['ip', 'link', 'set', IFACE, 'up']:
+            up_attempts['count'] += 1
+            if up_attempts['count'] <= 3:
+                system.commands.append(command)
+                return subprocess.CompletedProcess(
+                    command, 2, '', 'RTNETLINK answers: Connection timed out')
+        elif command == ['modprobe', 'mt76x0u']:
+            # Re-probing recreates the netdev in managed mode with a new ifindex.
+            system.commands.append(command)
+            system.mode = 'managed'
+            system.up = False
+            system.ifindex = 42
+            return subprocess.CompletedProcess(command, 0, '', '')
+        return original_run(command, timeout=timeout)
+
+    with patch('wifite.util.interface_manager.Process.run_simple',
+               side_effect=run_with_wedged_driver), \
+            patch.object(InterfaceManager, '_get_interface_driver', return_value='mt76x0u'), \
+            patch.object(InterfaceManager, '_disable_mt76_usb_sg') as disable_sg, \
+            patch('wifite.util.interface_manager.os.path.exists', return_value=False), \
+            patch('wifite.util.interface_manager.time.sleep'):
+        assert manager.set_interface_mode(IFACE, 'monitor')
+        assert system.mode == 'monitor'
+        assert system.up is True
+        assert manager.interface_states[IFACE].original_ifindex == 42
+        disable_sg.assert_called_once()
+
+        # Subsequent cleanup succeeds even though ifindex changed during reset.
+        assert manager.cleanup_all() == 1
+        assert system.mode == 'managed'
+        assert system.up is True
+
+
 def test_mode_mutation_executes_once_and_verifies(manager, system):
     assert manager.set_interface_mode(IFACE, 'monitor')
 
